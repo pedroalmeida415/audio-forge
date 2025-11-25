@@ -7,11 +7,10 @@
  * need to use are documented accordingly near the end.
  */
 
-import { initTRPC, TRPCError } from "@trpc/server";
+import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
-import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 
 /**
@@ -26,15 +25,10 @@ import { db } from "~/server/db";
  *
  * @see https://trpc.io/docs/server/context
  */
-export const createTRPCContext = async (opts: { headers: Headers }) => {
-  const session = await auth();
-
-  return {
-    db,
-    session,
-    ...opts,
-  };
-};
+export const createTRPCContext = async (opts: { headers: Headers }) => ({
+  db,
+  ...opts,
+});
 
 /**
  * 2. INITIALIZATION
@@ -84,22 +78,22 @@ export const createTRPCRouter = t.router;
  * You can remove this if you don't like it, but it can help catch unwanted waterfalls by simulating
  * network latency that would occur in production but not in local development.
  */
-const timingMiddleware = t.middleware(async ({ next, path }) => {
-  const start = Date.now();
+// const timingMiddleware = t.middleware(async ({ next, path }) => {
+//   const start = Date.now();
 
-  if (t._config.isDev) {
-    // artificial delay in dev
-    const waitMs = Math.floor(Math.random() * 400) + 100;
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-  }
+//   if (t._config.isDev) {
+//     // artificial delay in dev
+//     const waitMs = Math.floor(Math.random() * 400) + 100;
+//     await new Promise((resolve) => setTimeout(resolve, waitMs));
+//   }
 
-  const result = await next();
+//   const result = await next();
 
-  const end = Date.now();
-  console.log(`[TRPC] ${path} took ${end - start}ms to execute`);
+//   const end = Date.now();
+//   console.log(`[TRPC] ${path} took ${end - start}ms to execute`);
 
-  return result;
-});
+//   return result;
+// });
 
 /**
  * Public (unauthenticated) procedure
@@ -108,7 +102,8 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * guarantee that a user querying is authorized, but you can still access user session data if they
  * are logged in.
  */
-export const publicProcedure = t.procedure.use(timingMiddleware);
+// export const publicProcedure = t.procedure.use(timingMiddleware);
+export const publicProcedure = t.procedure;
 
 /**
  * Protected (authenticated) procedure
@@ -118,16 +113,16 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  *
  * @see https://trpc.io/docs/procedures
  */
-export const protectedProcedure = t.procedure
-  .use(timingMiddleware)
-  .use(({ ctx, next }) => {
-    if (!ctx.session?.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
-    return next({
-      ctx: {
-        // infers the `session` as non-nullable
-        session: { ...ctx.session, user: ctx.session.user },
-      },
-    });
-  });
+// export const protectedProcedure = t.procedure
+//   .use(timingMiddleware)
+//   .use(({ ctx, next }) => {
+//     if (!ctx.session?.user) {
+//       throw new TRPCError({ code: "UNAUTHORIZED" });
+//     }
+//     return next({
+//       ctx: {
+//         // infers the `session` as non-nullable
+//         session: { ...ctx.session, user: ctx.session.user },
+//       },
+//     });
+//   });
