@@ -7,7 +7,6 @@ import { SegmentList } from "~/components/segments/segment-list";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { WaveformViewer } from "~/components/waveform/waveform-viewer";
 import { useJobWorkspace } from "~/hooks/use-job-workspace";
 
@@ -25,20 +24,12 @@ function getStatusVariant(status: string) {
   }
 }
 
-function ProcessingIndicator({
-  processedFiles,
-  totalFiles,
-}: {
-  processedFiles: number;
-  totalFiles: number;
-}) {
+function ProcessingIndicator({ status }: { status: string }) {
   return (
     <div className="mb-6 rounded-lg border bg-muted/50 p-6 text-center">
       <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-muted-foreground" />
-      <p className="font-medium">Processing audio files...</p>
-      <p className="mt-1 text-muted-foreground text-sm">
-        {processedFiles} of {totalFiles} files processed
-      </p>
+      <p className="font-medium">Processing audio file...</p>
+      <p className="mt-1 text-muted-foreground text-sm">Status: {status}</p>
     </div>
   );
 }
@@ -56,7 +47,7 @@ function ErrorMessage({ message }: { message: string | null }) {
 type JobHeaderProps = {
   projectId: string;
   projectName: string;
-  filesCount: number;
+  filename: string | null;
   status: string;
   isExtracting: boolean;
   extractableCount: number;
@@ -67,7 +58,7 @@ type JobHeaderProps = {
 function JobHeader({
   projectId,
   projectName,
-  filesCount,
+  filename,
   status,
   isExtracting,
   extractableCount,
@@ -87,9 +78,9 @@ function JobHeader({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-bold text-2xl">Diarization Job</h1>
-          <p className="mt-1 text-muted-foreground text-sm">
-            {filesCount} file{filesCount !== 1 ? "s" : ""}
-          </p>
+          {filename && (
+            <p className="mt-1 text-muted-foreground text-sm">{filename}</p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <Badge variant={getStatusVariant(status)}>{status}</Badge>
@@ -128,9 +119,6 @@ export default function JobWorkspacePage({
   const {
     job,
     isLoading,
-    selectedFile,
-    selectedFileId,
-    setSelectedFileId,
     selectedSegmentId,
     setSelectedSegmentId,
     segments,
@@ -170,7 +158,7 @@ export default function JobWorkspacePage({
       {/* Header */}
       <JobHeader
         extractableCount={extractableCount}
-        filesCount={job.audioFiles.length}
+        filename={job.originalFilename}
         isExtracting={isExtracting}
         onExtractClips={handleExtractClips}
         onRefetch={refetch}
@@ -183,35 +171,15 @@ export default function JobWorkspacePage({
       {(job.status === "processing" ||
         job.status === "uploading" ||
         job.status === "pending") && (
-        <ProcessingIndicator
-          processedFiles={job.processedFiles}
-          totalFiles={job.totalFiles}
-        />
+        <ProcessingIndicator status={job.status} />
       )}
 
       {/* Error state */}
       {job.status === "failed" && <ErrorMessage message={job.errorMessage} />}
 
       {/* Main workspace - only show when job is completed */}
-      {job.status === "completed" && job.audioFiles.length > 0 && (
+      {job.status === "completed" && (
         <>
-          {/* File tabs */}
-          {job.audioFiles.length > 1 && (
-            <Tabs
-              className="mb-6"
-              onValueChange={setSelectedFileId}
-              value={selectedFileId ?? undefined}
-            >
-              <TabsList>
-                {job.audioFiles.map((file) => (
-                  <TabsTrigger key={file.id} value={file.id}>
-                    {file.originalFilename}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          )}
-
           {/* Workspace grid */}
           <div className="grid gap-6 lg:grid-cols-[1fr,350px]">
             {/* Waveform section */}
@@ -224,14 +192,14 @@ export default function JobWorkspacePage({
                 selectedSegmentId={selectedSegmentId}
               />
 
-              {/* Selected file info */}
-              {selectedFile && (
+              {/* File info */}
+              {job.originalFilename && (
                 <div className="flex gap-4 text-muted-foreground text-sm">
-                  <span>{selectedFile.originalFilename}</span>
-                  {selectedFile.durationSeconds && (
+                  <span>{job.originalFilename}</span>
+                  {job.durationSeconds && (
                     <span>
-                      {Math.floor(selectedFile.durationSeconds / 60)}:
-                      {Math.floor(selectedFile.durationSeconds % 60)
+                      {Math.floor(job.durationSeconds / 60)}:
+                      {Math.floor(job.durationSeconds % 60)
                         .toString()
                         .padStart(2, "0")}
                     </span>
@@ -243,15 +211,13 @@ export default function JobWorkspacePage({
 
             {/* Segment list sidebar */}
             <div className="h-[600px] rounded-lg border p-4">
-              {selectedFileId && (
-                <SegmentList
-                  audioFileId={selectedFileId}
-                  onSegmentSelect={setSelectedSegmentId}
-                  projectId={projectId}
-                  segments={segments}
-                  selectedSegmentId={selectedSegmentId}
-                />
-              )}
+              <SegmentList
+                jobId={jobId}
+                onSegmentSelect={setSelectedSegmentId}
+                projectId={projectId}
+                segments={segments}
+                selectedSegmentId={selectedSegmentId}
+              />
             </div>
           </div>
         </>

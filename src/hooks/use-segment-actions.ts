@@ -1,12 +1,12 @@
 import { api } from "~/trpc/react";
 
 type UseSegmentActionsParams = {
-  audioFileId: string;
+  jobId: string;
   projectId: string;
 };
 
 export function useSegmentActions({
-  audioFileId,
+  jobId,
   projectId,
 }: UseSegmentActionsParams) {
   const utils = api.useUtils();
@@ -14,21 +14,21 @@ export function useSegmentActions({
   const assignCollectionMutation = api.segment.assignCollection.useMutation({
     onSuccess: () => {
       utils.diarization.getJob.invalidate();
-      utils.segment.listByAudioFile.invalidate({ audioFileId });
+      utils.segment.listByJob.invalidate({ jobId });
     },
   });
 
   const setExcludedMutation = api.segment.setExcluded.useMutation({
     onSuccess: () => {
       utils.diarization.getJob.invalidate();
-      utils.segment.listByAudioFile.invalidate({ audioFileId });
+      utils.segment.listByJob.invalidate({ jobId });
     },
   });
 
   const resetTimestampsMutation = api.segment.resetTimestamps.useMutation({
     onSuccess: () => {
       utils.diarization.getJob.invalidate();
-      utils.segment.listByAudioFile.invalidate({ audioFileId });
+      utils.segment.listByJob.invalidate({ jobId });
     },
   });
 

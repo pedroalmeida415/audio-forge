@@ -6,17 +6,17 @@ import { collections, segments } from "~/server/db/schema";
 
 export const segmentRouter = createTRPCRouter({
   /**
-   * List segments for an audio file
+   * List segments for a diarization job
    */
-  listByAudioFile: publicProcedure
+  listByJob: publicProcedure
     .input(
       z.object({
-        audioFileId: z.string().uuid(),
+        jobId: z.string().uuid(),
       })
     )
     .query(async ({ ctx, input }) =>
       ctx.db.query.segments.findMany({
-        where: eq(segments.audioFileId, input.audioFileId),
+        where: eq(segments.jobId, input.jobId),
         orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],
         with: {
           collection: {
@@ -30,17 +30,17 @@ export const segmentRouter = createTRPCRouter({
     ),
 
   /**
-   * Get unique speakers from an audio file's segments
+   * Get unique speakers from a job's segments
    */
   getSpeakers: publicProcedure
     .input(
       z.object({
-        audioFileId: z.string().uuid(),
+        jobId: z.string().uuid(),
       })
     )
     .query(async ({ ctx, input }) => {
       const allSegments = await ctx.db.query.segments.findMany({
-        where: eq(segments.audioFileId, input.audioFileId),
+        where: eq(segments.jobId, input.jobId),
         columns: {
           pyannoteSpeakerLabel: true,
           collectionId: true,
@@ -193,7 +193,7 @@ export const segmentRouter = createTRPCRouter({
   bulkAssignByLabel: publicProcedure
     .input(
       z.object({
-        audioFileId: z.string().uuid(),
+        jobId: z.string().uuid(),
         pyannoteSpeakerLabel: z.string(),
         collectionId: z.string().uuid().nullable(),
       })
@@ -219,7 +219,7 @@ export const segmentRouter = createTRPCRouter({
         })
         .where(
           and(
-            eq(segments.audioFileId, input.audioFileId),
+            eq(segments.jobId, input.jobId),
             eq(segments.pyannoteSpeakerLabel, input.pyannoteSpeakerLabel)
           )
         )
@@ -261,7 +261,7 @@ export const segmentRouter = createTRPCRouter({
   bulkExcludeByLabel: publicProcedure
     .input(
       z.object({
-        audioFileId: z.string().uuid(),
+        jobId: z.string().uuid(),
         pyannoteSpeakerLabel: z.string(),
         excluded: z.boolean(),
       })
@@ -275,7 +275,7 @@ export const segmentRouter = createTRPCRouter({
         })
         .where(
           and(
-            eq(segments.audioFileId, input.audioFileId),
+            eq(segments.jobId, input.jobId),
             eq(segments.pyannoteSpeakerLabel, input.pyannoteSpeakerLabel)
           )
         )
@@ -314,13 +314,13 @@ export const segmentRouter = createTRPCRouter({
   getExtractable: publicProcedure
     .input(
       z.object({
-        audioFileId: z.string().uuid(),
+        jobId: z.string().uuid(),
       })
     )
     .query(async ({ ctx, input }) =>
       ctx.db.query.segments.findMany({
         where: and(
-          eq(segments.audioFileId, input.audioFileId),
+          eq(segments.jobId, input.jobId),
           eq(segments.status, "approved")
         ),
         orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],

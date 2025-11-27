@@ -1,3 +1,4 @@
+import { Client } from "minio";
 import { env } from "~/env";
 
 // Parse endpoint URL to extract host and port

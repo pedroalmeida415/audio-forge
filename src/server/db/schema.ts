@@ -1,7 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
   bigint,
-  boolean,
   doublePrecision,
   index,
   integer,
@@ -98,7 +97,8 @@ export const collections = createTable(
 );
 
 /**
- * Diarization Jobs - Track processing jobs (max 10 files per job)
+ * Diarization Jobs - One job per audio file (1:1 relationship)
+ * Max 10 concurrent jobs allowed per project
  */
 export const diarizationJobs = createTable(
   "diarization_job",
@@ -107,15 +107,30 @@ export const diarizationJobs = createTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+
+    // Job status
     status: jobStatusEnum("status").default("pending").notNull(),
-    totalFiles: integer("total_files").notNull().default(0),
-    processedFiles: integer("processed_files").notNull().default(0),
     errorMessage: text("error_message"),
-    errorDetails: jsonb("error_details").$type<{
-      failedFileId?: string;
-      stackTrace?: string;
-      pyannoteError?: string;
-    }>(),
+
+    // MinIO storage info
+    storageBucket: varchar("storage_bucket", { length: 255 }),
+    storageKey: varchar("storage_key", { length: 1024 }),
+
+    // Original file metadata
+    originalFilename: varchar("original_filename", { length: 255 }),
+    mimeType: varchar("mime_type", { length: 100 }),
+    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
+
+    // Audio metadata (populated after upload/analysis)
+    durationSeconds: doublePrecision("duration_seconds"),
+    sampleRate: integer("sample_rate"),
+    channels: integer("channels"),
+
+    // Pyannote processing info
+    pyannoteJobId: varchar("pyannote_job_id", { length: 255 }),
+    pyannoteMediaUrl: varchar("pyannote_media_url", { length: 1024 }),
+
+    // Timestamps
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -137,53 +152,16 @@ export const diarizationJobs = createTable(
 );
 
 /**
- * Audio Files - Uploaded files linked to diarization jobs
- */
-export const audioFiles = createTable(
-  "audio_file",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    jobId: uuid("job_id")
-      .notNull()
-      .references(() => diarizationJobs.id, { onDelete: "cascade" }),
-    // MinIO storage info
-    storageBucket: varchar("storage_bucket", { length: 255 }).notNull(),
-    storageKey: varchar("storage_key", { length: 1024 }).notNull(),
-    // Original file metadata
-    originalFilename: varchar("original_filename", { length: 255 }).notNull(),
-    mimeType: varchar("mime_type", { length: 100 }).notNull(),
-    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }).notNull(),
-    // Audio metadata (populated after upload/analysis)
-    durationSeconds: doublePrecision("duration_seconds"),
-    sampleRate: integer("sample_rate"),
-    channels: integer("channels"),
-    // Pyannote processing info
-    pyannoteJobId: varchar("pyannote_job_id", { length: 255 }),
-    pyannoteMediaUrl: varchar("pyannote_media_url", { length: 1024 }),
-    // Processing status
-    processed: boolean("processed").default(false).notNull(),
-    processingError: text("processing_error"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index("audio_file_job_id_idx").on(table.jobId),
-    index("audio_file_processed_idx").on(table.jobId, table.processed),
-  ]
-);
-
-/**
- * Segments - Diarization results per audio file
+ * Segments - Diarization results per job
  * Stores both original Pyannote timestamps and user-edited timestamps
  */
 export const segments = createTable(
   "segment",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    audioFileId: uuid("audio_file_id")
+    jobId: uuid("job_id")
       .notNull()
-      .references(() => audioFiles.id, { onDelete: "cascade" }),
+      .references(() => diarizationJobs.id, { onDelete: "cascade" }),
     // Temporary speaker label from Pyannote (e.g., "SPEAKER_00")
     pyannoteSpeakerLabel: varchar("pyannote_speaker_label", {
       length: 50,
@@ -213,15 +191,15 @@ export const segments = createTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index("segment_audio_file_id_idx").on(table.audioFileId),
+    index("segment_job_id_idx").on(table.jobId),
     index("segment_collection_id_idx").on(table.collectionId),
     index("segment_status_idx").on(table.status),
     index("segment_speaker_label_idx").on(
-      table.audioFileId,
+      table.jobId,
       table.pyannoteSpeakerLabel
     ),
     index("segment_time_range_idx").on(
-      table.audioFileId,
+      table.jobId,
       table.editedStartTime,
       table.editedEndTime
     ),
@@ -302,22 +280,14 @@ export const diarizationJobsRelations = relations(
       fields: [diarizationJobs.projectId],
       references: [projects.id],
     }),
-    audioFiles: many(audioFiles),
+    segments: many(segments),
   })
 );
 
-export const audioFilesRelations = relations(audioFiles, ({ one, many }) => ({
-  job: one(diarizationJobs, {
-    fields: [audioFiles.jobId],
-    references: [diarizationJobs.id],
-  }),
-  segments: many(segments),
-}));
-
 export const segmentsRelations = relations(segments, ({ one }) => ({
-  audioFile: one(audioFiles, {
-    fields: [segments.audioFileId],
-    references: [audioFiles.id],
+  job: one(diarizationJobs, {
+    fields: [segments.jobId],
+    references: [diarizationJobs.id],
   }),
   collection: one(collections, {
     fields: [segments.collectionId],
@@ -352,9 +322,6 @@ export type NewCollection = typeof collections.$inferInsert;
 
 export type DiarizationJob = typeof diarizationJobs.$inferSelect;
 export type NewDiarizationJob = typeof diarizationJobs.$inferInsert;
-
-export type AudioFile = typeof audioFiles.$inferSelect;
-export type NewAudioFile = typeof audioFiles.$inferInsert;
 
 export type Segment = typeof segments.$inferSelect;
 export type NewSegment = typeof segments.$inferInsert;

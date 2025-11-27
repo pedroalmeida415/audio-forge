@@ -88,14 +88,11 @@ export const projectRouter = createTRPCRouter({
           diarizationJobs: {
             orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
             limit: 10,
-            with: {
-              audioFiles: {
-                columns: {
-                  id: true,
-                  originalFilename: true,
-                  processed: true,
-                },
-              },
+            columns: {
+              id: true,
+              status: true,
+              originalFilename: true,
+              createdAt: true,
             },
           },
         },

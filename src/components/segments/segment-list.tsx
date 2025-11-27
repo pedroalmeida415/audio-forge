@@ -43,7 +43,7 @@ type SegmentListProps = {
   selectedSegmentId: string | null;
   onSegmentSelect: (segmentId: string) => void;
   projectId: string;
-  audioFileId: string;
+  jobId: string;
 };
 
 function formatTime(seconds: number): string {
@@ -59,14 +59,14 @@ function SegmentItem({
   onClick,
   collections,
   projectId,
-  audioFileId,
+  jobId,
 }: {
   segment: Segment;
   isSelected: boolean;
   onClick: () => void;
   collections: Collection[];
   projectId: string;
-  audioFileId: string;
+  jobId: string;
 }) {
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
@@ -77,7 +77,7 @@ function SegmentItem({
     resetTimestamps: resetTimestampsAction,
     createAndAssign,
     isPending,
-  } = useSegmentActions({ audioFileId, projectId });
+  } = useSegmentActions({ jobId, projectId });
 
   const handleCollectionSelect = (collectionId: string | null) => {
     assignToCollection(segment.id, collectionId);
@@ -248,7 +248,7 @@ export function SegmentList({
   selectedSegmentId,
   onSegmentSelect,
   projectId,
-  audioFileId,
+  jobId,
 }: SegmentListProps) {
   const { data: collections = [] } = api.collection.search.useQuery({
     projectId,
@@ -276,9 +276,9 @@ export function SegmentList({
       <div className="flex-1 space-y-2 overflow-y-auto">
         {segments.map((segment) => (
           <SegmentItem
-            audioFileId={audioFileId}
             collections={collections}
             isSelected={selectedSegmentId === segment.id}
+            jobId={jobId}
             key={segment.id}
             onClick={() => onSegmentSelect(segment.id)}
             projectId={projectId}

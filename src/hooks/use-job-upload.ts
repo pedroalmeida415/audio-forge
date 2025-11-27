@@ -1,12 +1,20 @@
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "~/trpc/react";
 
 export type FileWithProgress = {
   file: File;
   progress: number;
-  status: "pending" | "uploading" | "uploaded" | "error";
+  status:
+    | "pending"
+    | "uploading"
+    | "uploaded"
+    | "transferring"
+    | "processing"
+    | "complete"
+    | "error";
   error?: string;
-  audioFileId?: string;
+  jobId?: string;
 };
 
 export const MAX_FILES = 10;
@@ -16,7 +24,7 @@ export const ACCEPTED_TYPES = {
 
 type UseJobUploadParams = {
   projectId: string;
-  onSuccess?: (jobId: string) => void;
+  onSuccess?: () => void;
 };
 
 type UseJobUploadReturn = {
@@ -24,32 +32,25 @@ type UseJobUploadReturn = {
   isUploading: boolean;
   addFiles: (files: File[]) => void;
   removeFile: (index: number) => void;
-  startJob: () => Promise<void>;
+  startUpload: () => Promise<void>;
   totalProgress: number;
   hasErrors: boolean;
-  allUploaded: boolean;
+  allComplete: boolean;
 };
 
 /**
- * Helper function to transfer a file from MinIO to Pyannote and start diarization
+ * Helper function to transfer a file from MinIO to Pyannote
  */
-async function transferAndProcessFile(
-  fileInfo: {
-    audioFileId: string;
-    storageKey: string;
-    mimeType: string;
-  },
-  processSingleFile: ReturnType<
-    typeof api.diarization.processSingleFile.useMutation
-  >
-): Promise<void> {
-  // Call the transfer API to move file from MinIO to Pyannote
+async function transferFile(
+  storageKey: string,
+  mimeType: string
+): Promise<string> {
   const transferResponse = await fetch("/api/transfer", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      storageKey: fileInfo.storageKey,
-      contentType: fileInfo.mimeType,
+      storageKey,
+      contentType: mimeType,
     }),
   });
 
@@ -61,11 +62,7 @@ async function transferAndProcessFile(
     mediaUrl: string;
   };
 
-  // Start Pyannote diarization job for this file
-  await processSingleFile.mutateAsync({
-    audioFileId: fileInfo.audioFileId,
-    pyannoteMediaUrl: mediaUrl,
-  });
+  return mediaUrl;
 }
 
 export function useJobUpload({
@@ -74,12 +71,11 @@ export function useJobUpload({
 }: UseJobUploadParams): UseJobUploadReturn {
   const [files, setFiles] = useState<FileWithProgress[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const router = useRouter();
 
   const createJob = api.diarization.createJob.useMutation();
-  const getUploadUrl = api.diarization.getUploadUrl.useMutation();
   const confirmUpload = api.diarization.confirmUpload.useMutation();
   const startProcessing = api.diarization.startProcessing.useMutation();
-  const processSingleFile = api.diarization.processSingleFile.useMutation();
 
   const addFiles = (newFiles: File[]) => {
     const filesToAdd = newFiles.slice(0, MAX_FILES - files.length);
@@ -95,30 +91,43 @@ export function useJobUpload({
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const uploadFile = async (
+  /**
+   * Process a single file: create job, upload, transfer, and start processing
+   */
+  const processFile = async (
     fileWithProgress: FileWithProgress,
-    currentJobId: string,
     index: number
   ): Promise<void> => {
     const { file } = fileWithProgress;
 
     try {
-      // Get presigned URL
-      const { uploadUrl, audioFileId } = await getUploadUrl.mutateAsync({
-        jobId: currentJobId,
+      // Step 1: Create job for this file (returns jobId + uploadUrl)
+      const result = await createJob.mutateAsync({
+        projectId,
         filename: file.name,
         contentType: file.type || "audio/mpeg",
         fileSizeBytes: file.size,
       });
 
-      // Update status
+      const jobId = result?.jobId;
+      const uploadUrl = result?.uploadUrl;
+      const storageKey = result?.storageKey;
+
+      if (!(jobId && uploadUrl && storageKey)) {
+        throw new Error("Failed to create job");
+      }
+
+      setFiles((prev) =>
+        prev.map((f, i) => (i === index ? { ...f, jobId } : f))
+      );
+
+      // Step 2: Upload to MinIO
       setFiles((prev) =>
         prev.map((f, i) =>
-          i === index ? { ...f, status: "uploading" as const, audioFileId } : f
+          i === index ? { ...f, status: "uploading" as const } : f
         )
       );
 
-      // Upload to MinIO with XMLHttpRequest for progress tracking
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
@@ -148,13 +157,46 @@ export function useJobUpload({
         xhr.send(file);
       });
 
-      // Confirm upload
-      await confirmUpload.mutateAsync({ audioFileId });
-
-      // Update status to uploaded
+      // Step 3: Confirm upload
       setFiles((prev) =>
         prev.map((f, i) =>
           i === index ? { ...f, status: "uploaded" as const, progress: 100 } : f
+        )
+      );
+
+      await confirmUpload.mutateAsync({
+        jobId,
+        // Audio metadata can be added here if available
+      });
+
+      // Step 4: Transfer file to Pyannote
+      setFiles((prev) =>
+        prev.map((f, i) =>
+          i === index ? { ...f, status: "transferring" as const } : f
+        )
+      );
+
+      const mediaUrl = await transferFile(
+        storageKey,
+        file.type || "audio/mpeg"
+      );
+
+      // Step 5: Start Pyannote processing
+      setFiles((prev) =>
+        prev.map((f, i) =>
+          i === index ? { ...f, status: "processing" as const } : f
+        )
+      );
+
+      await startProcessing.mutateAsync({
+        jobId,
+        pyannoteMediaUrl: mediaUrl,
+      });
+
+      // Mark as complete
+      setFiles((prev) =>
+        prev.map((f, i) =>
+          i === index ? { ...f, status: "complete" as const } : f
         )
       );
     } catch (error) {
@@ -173,8 +215,7 @@ export function useJobUpload({
     }
   };
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Job orchestration requires sequential operations
-  const startJob = async (): Promise<void> => {
+  const startUpload = async (): Promise<void> => {
     if (files.length === 0) {
       return;
     }
@@ -182,50 +223,24 @@ export function useJobUpload({
     setIsUploading(true);
 
     try {
-      // Create job
-      const job = await createJob.mutateAsync({ projectId });
-      const currentJobId = job?.id;
-
-      if (!currentJobId) {
-        throw new Error("Failed to create job");
-      }
-
-      // Upload all files to MinIO
-      await Promise.all(
-        files.map((file, index) => uploadFile(file, currentJobId, index))
+      // Process all files in parallel (each creates its own job)
+      await Promise.allSettled(
+        files.map((file, index) => processFile(file, index))
       );
 
-      // Start processing (this updates job status to "uploading")
-      const processingResult = await startProcessing.mutateAsync({
-        jobId: currentJobId,
-      });
-
-      // Transfer each file from MinIO to Pyannote and start diarization
-      if (processingResult?.files) {
-        for (const fileInfo of processingResult.files) {
-          try {
-            await transferAndProcessFile(fileInfo, processSingleFile);
-          } catch (error) {
-            console.error(
-              `Failed to process file ${fileInfo.audioFileId}:`,
-              error
-            );
-            // Continue with other files even if one fails
-          }
-        }
-      }
-
-      // Call success callback
+      // Navigate to project page when done
       if (onSuccess) {
-        onSuccess(currentJobId);
+        onSuccess();
+      } else {
+        router.push(`/projects/${projectId}`);
       }
     } finally {
       setIsUploading(false);
     }
   };
 
-  const allUploaded =
-    files.length > 0 && files.every((f) => f.status === "uploaded");
+  const allComplete =
+    files.length > 0 && files.every((f) => f.status === "complete");
   const hasErrors = files.some((f) => f.status === "error");
   const totalProgress =
     files.length > 0
@@ -237,9 +252,9 @@ export function useJobUpload({
     isUploading,
     addFiles,
     removeFile,
-    startJob,
+    startUpload,
     totalProgress,
     hasErrors,
-    allUploaded,
+    allComplete,
   };
 }

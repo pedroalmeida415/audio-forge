@@ -121,40 +121,16 @@ export default function ProjectDetailPage({
                   <Card className="transition-colors hover:bg-muted/50">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="font-medium text-base">
-                        Job {job.id.slice(0, 8)}...
+                        {job.originalFilename ?? `Job ${job.id.slice(0, 8)}...`}
                       </CardTitle>
                       <Badge variant={getJobStatusVariant(job.status)}>
                         {job.status}
                       </Badge>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-muted-foreground text-sm">
-                        {job.audioFiles.length} file
-                        {job.audioFiles.length !== 1 ? "s" : ""}
-                        {job.audioFiles.length > 0 && (
-                          <span>
-                            {" "}
-                            ({job.audioFiles.filter((f) => f.processed).length}{" "}
-                            processed)
-                          </span>
-                        )}
+                      <p className="text-muted-foreground text-xs">
+                        Created {job.createdAt.toLocaleDateString()}
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {job.audioFiles.slice(0, 3).map((file) => (
-                          <Badge
-                            className="text-xs"
-                            key={file.id}
-                            variant="outline"
-                          >
-                            {file.originalFilename}
-                          </Badge>
-                        ))}
-                        {job.audioFiles.length > 3 && (
-                          <Badge className="text-xs" variant="outline">
-                            +{job.audioFiles.length - 3} more
-                          </Badge>
-                        )}
-                      </div>
                     </CardContent>
                   </Card>
                 </Link>

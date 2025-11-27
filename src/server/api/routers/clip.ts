@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { audioClips, audioFiles, segments } from "~/server/db/schema";
+import { audioClips, diarizationJobs, segments } from "~/server/db/schema";
 import { extractClip } from "~/server/services/ffmpeg";
 import {
   BUCKET_NAME,
@@ -15,44 +15,44 @@ import {
 
 export const clipRouter = createTRPCRouter({
   /**
-   * Extract clips from approved segments for a single audio file
+   * Extract clips from approved segments for a single diarization job
    */
   extractClips: publicProcedure
     .input(
       z.object({
-        audioFileId: z.string().uuid(),
+        jobId: z.string().uuid(),
         segmentIds: z.array(z.string().uuid()).optional(),
         format: z.enum(["mp3", "wav", "flac"]).default("mp3"),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Get audio file
-      const audioFile = await ctx.db.query.audioFiles.findFirst({
-        where: eq(audioFiles.id, input.audioFileId),
-        with: {
-          job: {
-            columns: {
-              projectId: true,
-            },
-          },
+      // Get diarization job (audio file info is now in the job)
+      const job = await ctx.db.query.diarizationJobs.findFirst({
+        where: eq(diarizationJobs.id, input.jobId),
+        columns: {
+          id: true,
+          projectId: true,
+          storageKey: true,
+          storageBucket: true,
         },
       });
 
-      if (!audioFile) {
-        throw new Error("Audio file not found");
+      if (!job) {
+        throw new Error("Diarization job not found");
+      }
+
+      if (!job.storageKey) {
+        throw new Error("Job has no associated audio file");
       }
 
       // Get segments to extract
       const whereClause = input.segmentIds
         ? and(
-            eq(segments.audioFileId, input.audioFileId),
+            eq(segments.jobId, input.jobId),
             inArray(segments.id, input.segmentIds),
             eq(segments.status, "approved")
           )
-        : and(
-            eq(segments.audioFileId, input.audioFileId),
-            eq(segments.status, "approved")
-          );
+        : and(eq(segments.jobId, input.jobId), eq(segments.status, "approved"));
 
       const segmentsToExtract = await ctx.db.query.segments.findMany({
         where: whereClause,
@@ -70,7 +70,7 @@ export const clipRouter = createTRPCRouter({
       }
 
       // Download audio file from MinIO
-      const audioStream = await getObjectStream(audioFile.storageKey);
+      const audioStream = await getObjectStream(job.storageKey);
       if (!audioStream) {
         throw new Error("Could not retrieve audio file from storage");
       }
@@ -105,7 +105,7 @@ export const clipRouter = createTRPCRouter({
           }
 
           const storageKey = generateClipKey(
-            audioFile.job.projectId,
+            job.projectId,
             collectionId,
             segment.id,
             input.format
@@ -207,7 +207,7 @@ export const clipRouter = createTRPCRouter({
               pyannoteSpeakerLabel: true,
             },
             with: {
-              audioFile: {
+              job: {
                 columns: {
                   originalFilename: true,
                 },

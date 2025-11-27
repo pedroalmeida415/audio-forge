@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AudioFile, Segment } from "~/server/db/schema";
+import { useCallback, useMemo, useState } from "react";
+import type { Segment } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
 type UseJobWorkspaceReturn = {
   job: JobWithRelations | undefined;
   isLoading: boolean;
-  selectedFile: AudioFileWithSegments | undefined;
-  selectedFileId: string | null;
-  setSelectedFileId: (id: string | null) => void;
   selectedSegmentId: string | null;
   setSelectedSegmentId: (id: string | null) => void;
   segments: SegmentWithCollection[];
@@ -27,18 +24,13 @@ type SegmentWithCollection = Segment & {
   collection: { id: string; name: string } | null;
 };
 
-type AudioFileWithSegments = AudioFile & {
-  segments: SegmentWithCollection[];
-};
-
 type JobWithRelations = {
   id: string;
   projectId: string;
   status: string;
-  totalFiles: number;
-  processedFiles: number;
   errorMessage: string | null;
-  errorDetails: unknown;
+  originalFilename: string | null;
+  durationSeconds: number | null;
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date;
@@ -47,11 +39,10 @@ type JobWithRelations = {
     id: string;
     name: string;
   };
-  audioFiles: AudioFileWithSegments[];
+  segments: SegmentWithCollection[];
 };
 
 export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null
   );
@@ -81,8 +72,8 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
   );
 
   const { data: audioUrlData } = api.diarization.getAudioUrl.useQuery(
-    { audioFileId: selectedFileId ?? "" },
-    { enabled: !!selectedFileId }
+    { jobId },
+    { enabled: !!jobId && job?.status === "completed" }
   );
 
   const extractClips = api.clip.extractClips.useMutation({
@@ -97,28 +88,7 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
     },
   });
 
-  // Set first file as selected when job loads
-  useEffect(() => {
-    const firstFile = job?.audioFiles[0];
-    if (
-      job?.audioFiles &&
-      job.audioFiles.length > 0 &&
-      !selectedFileId &&
-      firstFile
-    ) {
-      setSelectedFileId(firstFile.id);
-    }
-  }, [job?.audioFiles, selectedFileId]);
-
-  const selectedFile = useMemo(
-    () => job?.audioFiles.find((f) => f.id === selectedFileId),
-    [job?.audioFiles, selectedFileId]
-  );
-
-  const segments = useMemo(
-    () => selectedFile?.segments ?? [],
-    [selectedFile?.segments]
-  );
+  const segments = useMemo(() => job?.segments ?? [], [job?.segments]);
 
   const audioUrl = useMemo(
     () => audioUrlData?.url ?? null,
@@ -143,10 +113,6 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
   );
 
   const handleExtractClips = useCallback(() => {
-    if (!selectedFileId) {
-      return;
-    }
-
     // Get segments that are approved and have collections assigned
     const extractableSegments = segments.filter(
       (s) => s.status === "approved" && s.collectionId
@@ -157,18 +123,15 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
     }
 
     extractClips.mutate({
-      audioFileId: selectedFileId,
+      jobId,
       segmentIds: extractableSegments.map((s) => s.id),
       format: "mp3",
     });
-  }, [selectedFileId, segments, extractClips]);
+  }, [jobId, segments, extractClips]);
 
   return {
     job,
     isLoading,
-    selectedFile,
-    selectedFileId,
-    setSelectedFileId,
     selectedSegmentId,
     setSelectedSegmentId,
     segments,
