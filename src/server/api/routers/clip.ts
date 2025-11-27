@@ -6,6 +6,7 @@ import { audioClips, audioFiles, segments } from "~/server/db/schema";
 import { extractClip } from "~/server/services/ffmpeg";
 import {
   BUCKET_NAME,
+  deleteObject,
   generateClipKey,
   getObjectStream,
   getPresignedDownloadUrl,
@@ -55,7 +56,7 @@ export const clipRouter = createTRPCRouter({
 
       const segmentsToExtract = await ctx.db.query.segments.findMany({
         where: whereClause,
-        orderBy: (segments, { asc }) => [asc(segments.editedStartTime)],
+        orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],
       });
 
       if (segmentsToExtract.length === 0) {
@@ -97,10 +98,15 @@ export const clipRouter = createTRPCRouter({
             format: input.format,
           });
 
-          // Generate storage key
+          // Generate storage key (safe to use collectionId since we verified above)
+          const collectionId = segment.collectionId;
+          if (!collectionId) {
+            throw new Error("Collection ID is missing");
+          }
+
           const storageKey = generateClipKey(
             audioFile.job.projectId,
-            segment.collectionId!,
+            collectionId,
             segment.id,
             input.format
           );
@@ -117,7 +123,7 @@ export const clipRouter = createTRPCRouter({
             .insert(audioClips)
             .values({
               segmentId: segment.id,
-              collectionId: segment.collectionId!,
+              collectionId,
               storageBucket: BUCKET_NAME,
               storageKey,
               durationSeconds: result.durationSeconds,
@@ -134,9 +140,13 @@ export const clipRouter = createTRPCRouter({
             .set({ status: "extracted" })
             .where(eq(segments.id, segment.id));
 
+          if (!clip) {
+            throw new Error("Failed to create clip record");
+          }
+
           extractedClips.push({
             segmentId: segment.id,
-            clipId: clip!.id,
+            clipId: clip.id,
             storageKey,
           });
         } catch (error) {
@@ -190,7 +200,7 @@ export const clipRouter = createTRPCRouter({
         where: eq(audioClips.collectionId, input.collectionId),
         limit: input.limit,
         offset: input.offset,
-        orderBy: (clips, { desc }) => [desc(clips.createdAt)],
+        orderBy: (clip, { desc }) => [desc(clip.createdAt)],
         with: {
           segment: {
             columns: {
@@ -214,13 +224,12 @@ export const clipRouter = createTRPCRouter({
   delete: publicProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // TODO: Also delete file from MinIO storage
-
-      // Get the segment to update its status
+      // Get the clip with storage info
       const clip = await ctx.db.query.audioClips.findFirst({
         where: eq(audioClips.id, input.clipId),
         columns: {
           segmentId: true,
+          storageKey: true,
         },
       });
 
@@ -228,7 +237,18 @@ export const clipRouter = createTRPCRouter({
         throw new Error("Clip not found");
       }
 
-      // Delete clip
+      // Delete file from MinIO storage
+      try {
+        await deleteObject(clip.storageKey);
+      } catch (error) {
+        // Log error but continue with database deletion
+        console.error(
+          `Failed to delete clip file ${clip.storageKey}:`,
+          error instanceof Error ? error.message : "Unknown error"
+        );
+      }
+
+      // Delete clip from database
       await ctx.db.delete(audioClips).where(eq(audioClips.id, input.clipId));
 
       // Revert segment status to approved

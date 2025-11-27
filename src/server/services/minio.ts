@@ -1,42 +1,49 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "~/env";
 
 // Parse endpoint URL to extract host and port
 const endpointUrl = new URL(env.MINIO_ENDPOINT);
 
-export const s3Client = new S3Client({
-  endpoint: env.MINIO_ENDPOINT,
-  region: "us-east-1", // MinIO doesn't use regions, but AWS SDK requires it
-  credentials: {
-    accessKeyId: env.MINIO_ACCESS_KEY,
-    secretAccessKey: env.MINIO_SECRET_KEY,
-  },
-  forcePathStyle: true, // Required for MinIO
+export const minioClient = new Client({
+  endPoint: endpointUrl.hostname,
+  port: endpointUrl.port ? Number.parseInt(endpointUrl.port, 10) : undefined,
+  useSSL: env.MINIO_USE_SSL,
+  accessKey: env.MINIO_ACCESS_KEY,
+  secretKey: env.MINIO_SECRET_KEY,
 });
 
 export const BUCKET_NAME = env.MINIO_BUCKET;
+
+/**
+ * Ensure the bucket exists before performing operations
+ */
+async function ensureBucketExists(): Promise<void> {
+  try {
+    const exists = await minioClient.bucketExists(BUCKET_NAME);
+    if (!exists) {
+      throw new Error(`Bucket '${BUCKET_NAME}' does not exist`);
+    }
+  } catch (error) {
+    throw new Error(
+      `Failed to verify bucket existence: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+}
 
 /**
  * Generate a presigned URL for uploading a file directly from the browser
  */
 export async function getPresignedUploadUrl(
   key: string,
-  contentType: string,
   expiresIn = 3600
 ): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-    ContentType: contentType,
-  });
-
-  return getSignedUrl(s3Client, command, { expiresIn });
+  try {
+    await ensureBucketExists();
+    return await minioClient.presignedPutObject(BUCKET_NAME, key, expiresIn);
+  } catch (error) {
+    throw new Error(
+      `Failed to generate presigned upload URL: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
 }
 
 /**
@@ -46,25 +53,28 @@ export async function getPresignedDownloadUrl(
   key: string,
   expiresIn = 3600
 ): Promise<string> {
-  const command = new GetObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-  });
-
-  return getSignedUrl(s3Client, command, { expiresIn });
+  try {
+    await ensureBucketExists();
+    return await minioClient.presignedGetObject(BUCKET_NAME, key, expiresIn);
+  } catch (error) {
+    throw new Error(
+      `Failed to generate presigned download URL: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
 }
 
 /**
  * Get an object from MinIO as a stream
  */
 export async function getObjectStream(key: string) {
-  const command = new GetObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-  });
-
-  const response = await s3Client.send(command);
-  return response.Body;
+  try {
+    await ensureBucketExists();
+    return await minioClient.getObject(BUCKET_NAME, key);
+  } catch (error) {
+    throw new Error(
+      `Failed to get object stream for key '${key}': ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
 }
 
 /**
@@ -74,27 +84,60 @@ export async function uploadObject(
   key: string,
   body: Buffer | ReadableStream | Blob,
   contentType: string
-) {
-  const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-    Body: body,
-    ContentType: contentType,
-  });
+): Promise<void> {
+  try {
+    await ensureBucketExists();
 
-  return s3Client.send(command);
+    // Convert body to Buffer if it's a Blob or ReadableStream
+    let buffer: Buffer;
+    if (body instanceof Buffer) {
+      buffer = body;
+    } else if (body instanceof Blob) {
+      buffer = Buffer.from(await body.arrayBuffer());
+    } else {
+      // ReadableStream - convert to Buffer
+      const chunks: Uint8Array[] = [];
+      const reader = body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        chunks.push(value);
+      }
+      buffer = Buffer.concat(chunks);
+    }
+
+    const metadata = {
+      "Content-Type": contentType,
+    };
+
+    await minioClient.putObject(
+      BUCKET_NAME,
+      key,
+      buffer,
+      buffer.length,
+      metadata
+    );
+  } catch (error) {
+    throw new Error(
+      `Failed to upload object to key '${key}': ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
 }
 
 /**
  * Delete an object from MinIO
  */
-export async function deleteObject(key: string) {
-  const command = new DeleteObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-  });
-
-  return s3Client.send(command);
+export async function deleteObject(key: string): Promise<void> {
+  try {
+    await ensureBucketExists();
+    await minioClient.removeObject(BUCKET_NAME, key);
+  } catch (error) {
+    throw new Error(
+      `Failed to delete object with key '${key}': ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
 }
 
 /**

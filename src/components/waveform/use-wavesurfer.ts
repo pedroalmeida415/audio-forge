@@ -8,16 +8,16 @@ import type {
 } from "wavesurfer.js/dist/plugins/regions.js";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 
-export interface UseWaveSurferOptions {
+export type UseWaveSurferOptions = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   audioUrl: string | null;
   onReady?: (duration: number) => void;
   onTimeUpdate?: (time: number) => void;
   onRegionUpdate?: (region: Region) => void;
   onRegionClick?: (region: Region) => void;
-}
+};
 
-export interface UseWaveSurferReturn {
+export type UseWaveSurferReturn = {
   isReady: boolean;
   isPlaying: boolean;
   currentTime: number;
@@ -32,7 +32,7 @@ export interface UseWaveSurferReturn {
   updateRegion: (id: string, params: Partial<RegionParams>) => void;
   clearRegions: () => void;
   getRegions: () => Region[];
-}
+};
 
 const SNAP_GRID = 0.1; // 0.1 second precision
 
@@ -58,7 +58,9 @@ export function useWaveSurfer({
 
   // Initialize WaveSurfer
   useEffect(() => {
-    if (!(containerRef.current && audioUrl)) return;
+    if (!(containerRef.current && audioUrl)) {
+      return;
+    }
 
     // Clean up any existing instance
     if (wavesurferRef.current) {
@@ -176,7 +178,9 @@ export function useWaveSurfer({
   }, []);
 
   const addRegion = useCallback((params: RegionParams): Region | undefined => {
-    if (!regionsRef.current) return;
+    if (!regionsRef.current) {
+      return;
+    }
 
     return regionsRef.current.addRegion({
       ...params,

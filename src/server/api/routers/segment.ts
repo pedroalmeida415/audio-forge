@@ -17,7 +17,7 @@ export const segmentRouter = createTRPCRouter({
     .query(async ({ ctx, input }) =>
       ctx.db.query.segments.findMany({
         where: eq(segments.audioFileId, input.audioFileId),
-        orderBy: (segments, { asc }) => [asc(segments.editedStartTime)],
+        orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],
         with: {
           collection: {
             columns: {
@@ -68,7 +68,7 @@ export const segmentRouter = createTRPCRouter({
       for (const seg of allSegments) {
         const existing = speakerMap.get(seg.pyannoteSpeakerLabel);
         if (existing) {
-          existing.segmentCount++;
+          existing.segmentCount += 1;
         } else {
           speakerMap.set(seg.pyannoteSpeakerLabel, {
             label: seg.pyannoteSpeakerLabel,
@@ -323,7 +323,7 @@ export const segmentRouter = createTRPCRouter({
           eq(segments.audioFileId, input.audioFileId),
           eq(segments.status, "approved")
         ),
-        orderBy: (segments, { asc }) => [asc(segments.editedStartTime)],
+        orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],
         with: {
           collection: {
             columns: {

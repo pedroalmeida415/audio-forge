@@ -15,9 +15,9 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { api } from "~/trpc/react";
 
-interface CreateProjectDialogProps {
+type CreateProjectDialogProps = {
   children: React.ReactNode;
-}
+};
 
 export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
   const [open, setOpen] = useState(false);
@@ -37,7 +37,9 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      return;
+    }
 
     createProject.mutate({
       name: name.trim(),

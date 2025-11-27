@@ -20,16 +20,16 @@ const SPEAKER_COLORS = [
   "rgba(20, 184, 166, 0.4)", // Teal
 ];
 
-interface Segment {
+type Segment = {
   id: string;
   pyannoteSpeakerLabel: string;
   editedStartTime: number;
   editedEndTime: number;
   status: string;
   collectionId: string | null;
-}
+};
 
-interface WaveformViewerProps {
+type WaveformViewerProps = {
   audioUrl: string | null;
   segments: Segment[];
   selectedSegmentId: string | null;
@@ -39,7 +39,7 @@ interface WaveformViewerProps {
     startTime: number,
     endTime: number
   ) => void;
-}
+};
 
 export function WaveformViewer({
   audioUrl,
@@ -57,7 +57,8 @@ export function WaveformViewer({
       index = speakerColorMap.current.size;
       speakerColorMap.current.set(speakerLabel, index);
     }
-    return SPEAKER_COLORS[index % SPEAKER_COLORS.length]!;
+    const color = SPEAKER_COLORS[index % SPEAKER_COLORS.length];
+    return color ?? "rgba(128, 128, 128, 0.4)";
   }, []);
 
   const debouncedSegmentUpdate = useDebouncedCallback(
@@ -100,12 +101,16 @@ export function WaveformViewer({
 
   // Sync segments to regions when segments change
   useEffect(() => {
-    if (!isReady) return;
+    if (!isReady) {
+      return;
+    }
 
     clearRegions();
 
     for (const segment of segments) {
-      if (segment.status === "excluded") continue;
+      if (segment.status === "excluded") {
+        continue;
+      }
 
       const color = getSpeakerColor(segment.pyannoteSpeakerLabel);
       addRegion({
@@ -121,11 +126,15 @@ export function WaveformViewer({
 
   // Highlight selected segment
   useEffect(() => {
-    if (!(isReady && selectedSegmentId)) return;
+    if (!(isReady && selectedSegmentId)) {
+      return;
+    }
 
     // Update all regions to show/hide selection state
     for (const segment of segments) {
-      if (segment.status === "excluded") continue;
+      if (segment.status === "excluded") {
+        continue;
+      }
 
       const isSelected = segment.id === selectedSegmentId;
       const baseColor = getSpeakerColor(segment.pyannoteSpeakerLabel);
@@ -148,15 +157,12 @@ export function WaveformViewer({
     <div className="space-y-4">
       {/* Waveform container */}
       <div className="rounded-lg border bg-muted/30 p-4">
-        {audioUrl ? (
-          isReady ? null : (
-            <Skeleton className="h-32 w-full" />
-          )
-        ) : (
+        {!audioUrl && (
           <div className="flex h-32 items-center justify-center text-muted-foreground">
             No audio loaded
           </div>
         )}
+        {audioUrl && !isReady && <Skeleton className="h-32 w-full" />}
         <div
           className={isReady && audioUrl ? "" : "hidden"}
           ref={containerRef}

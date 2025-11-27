@@ -1,23 +1,23 @@
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 
-export interface ClipExtractionParams {
+export type ClipExtractionParams = {
   startTime: number;
   endTime: number;
   format?: "mp3" | "wav" | "flac";
-}
+};
 
-export interface ClipExtractionResult {
+export type ClipExtractionResult = {
   buffer: Buffer;
   durationSeconds: number;
   format: string;
-}
+};
 
 /**
  * Extract an audio clip from a source audio buffer
  * Uses FFmpeg for processing
  */
-export async function extractClip(
+export function extractClip(
   inputBuffer: Buffer,
   params: ClipExtractionParams
 ): Promise<ClipExtractionResult> {
@@ -81,10 +81,10 @@ export async function extractClip(
 /**
  * Extract clip using streams (for larger files)
  */
-export async function extractClipStream(
+export function extractClipStream(
   inputStream: Readable,
   params: ClipExtractionParams
-): Promise<Readable> {
+): Readable {
   const { startTime, endTime, format = "mp3" } = params;
   const duration = endTime - startTime;
 
@@ -133,7 +133,7 @@ function getCodecArgs(format: string): string[] {
 /**
  * Get audio duration using FFprobe
  */
-export async function getAudioDuration(inputBuffer: Buffer): Promise<number> {
+export function getAudioDuration(inputBuffer: Buffer): Promise<number> {
   return new Promise((resolve, reject) => {
     const ffprobe = spawn("ffprobe", [
       "-v",
@@ -184,7 +184,7 @@ export async function getAudioDuration(inputBuffer: Buffer): Promise<number> {
 /**
  * Get detailed audio metadata using FFprobe
  */
-export async function getAudioMetadata(inputBuffer: Buffer): Promise<{
+export function getAudioMetadata(inputBuffer: Buffer): Promise<{
   duration: number;
   sampleRate: number;
   channels: number;

@@ -15,11 +15,11 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { api } from "~/trpc/react";
 
-interface CreateCollectionDialogProps {
+type CreateCollectionDialogProps = {
   projectId: string;
   children: React.ReactNode;
   onCreated?: (collectionId: string) => void;
-}
+};
 
 export function CreateCollectionDialog({
   projectId,
@@ -40,13 +40,17 @@ export function CreateCollectionDialog({
       setOpen(false);
       setName("");
       setDescription("");
-      onCreated?.(collection!.id);
+      if (collection?.id) {
+        onCreated?.(collection.id);
+      }
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      return;
+    }
 
     createCollection.mutate({
       projectId,

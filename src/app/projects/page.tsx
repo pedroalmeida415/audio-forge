@@ -27,13 +27,15 @@ export default function ProjectsPage() {
         </CreateProjectDialog>
       </div>
 
-      {isLoading ? (
+      {isLoading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton className="h-[180px]" key={i} />
+          {Array.from({ length: 6 }, (_, i) => i).map((index) => (
+            <Skeleton className="h-[180px]" key={index} />
           ))}
         </div>
-      ) : projects?.length === 0 ? (
+      )}
+
+      {!isLoading && projects?.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
           <p className="mb-4 text-muted-foreground">No projects yet</p>
           <CreateProjectDialog>
@@ -43,9 +45,11 @@ export default function ProjectsPage() {
             </Button>
           </CreateProjectDialog>
         </div>
-      ) : (
+      )}
+
+      {!isLoading && projects && projects.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects?.map((project) => (
+          {projects.map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>

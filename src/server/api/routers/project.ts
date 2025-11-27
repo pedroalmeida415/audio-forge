@@ -46,7 +46,7 @@ export const projectRouter = createTRPCRouter({
       const result = await ctx.db.query.projects.findMany({
         limit,
         offset,
-        orderBy: (projects, { desc }) => [desc(projects.createdAt)],
+        orderBy: (projectsTable, { desc }) => [desc(projectsTable.createdAt)],
         with: {
           collections: {
             columns: {

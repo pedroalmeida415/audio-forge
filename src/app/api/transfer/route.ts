@@ -38,19 +38,19 @@ export async function POST(request: NextRequest) {
     // Get the file from MinIO as a stream
     const stream = await getObjectStream(storageKey);
 
-    if (!stream) {
-      return NextResponse.json(
-        { error: "File not found in storage" },
-        { status: 404 }
-      );
-    }
-
     // Convert stream to buffer
     const chunks: Buffer[] = [];
     for await (const chunk of stream as AsyncIterable<Buffer>) {
       chunks.push(chunk);
     }
     const fileBuffer = Buffer.concat(chunks);
+
+    if (fileBuffer.length === 0) {
+      return NextResponse.json(
+        { error: "File is empty or not found in storage" },
+        { status: 404 }
+      );
+    }
 
     // Get a presigned upload URL from Pyannote
     const { url: uploadUrl } = await createMediaUploadUrl();
@@ -59,7 +59,10 @@ export async function POST(request: NextRequest) {
     await uploadToPyannoteStorage(uploadUrl, fileBuffer, contentType);
 
     // The media URL is the upload URL without query params
-    const mediaUrl = uploadUrl.split("?")[0];
+    // Pyannote returns a presigned URL like: https://storage.com/media/abc123?signature=...
+    // We need just the base URL: https://storage.com/media/abc123
+    const urlObj = new URL(uploadUrl);
+    const mediaUrl = `${urlObj.origin}${urlObj.pathname}`;
 
     return NextResponse.json({ mediaUrl });
   } catch (error) {

@@ -17,10 +17,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import { useSegmentActions } from "~/hooks/use-segment-actions";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
-interface Segment {
+type Segment = {
   id: string;
   pyannoteSpeakerLabel: string;
   originalStartTime: number;
@@ -30,20 +31,20 @@ interface Segment {
   status: string;
   collectionId: string | null;
   collection: { id: string; name: string } | null;
-}
+};
 
-interface Collection {
+type Collection = {
   id: string;
   name: string;
-}
+};
 
-interface SegmentListProps {
+type SegmentListProps = {
   segments: Segment[];
   selectedSegmentId: string | null;
   onSegmentSelect: (segmentId: string) => void;
   projectId: string;
   audioFileId: string;
-}
+};
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -68,60 +69,28 @@ function SegmentItem({
   audioFileId: string;
 }) {
   const [comboboxOpen, setComboboxOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
 
-  const utils = api.useUtils();
-
-  const assignCollection = api.segment.assignCollection.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate();
-      utils.segment.listByAudioFile.invalidate({ audioFileId });
-    },
-  });
-
-  const setExcluded = api.segment.setExcluded.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate();
-      utils.segment.listByAudioFile.invalidate({ audioFileId });
-    },
-  });
-
-  const resetTimestamps = api.segment.resetTimestamps.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate();
-      utils.segment.listByAudioFile.invalidate({ audioFileId });
-    },
-  });
-
-  const createCollection = api.collection.create.useMutation({
-    onSuccess: (collection) => {
-      utils.collection.search.invalidate({ projectId });
-      // Assign segment to new collection
-      assignCollection.mutate({
-        segmentId: segment.id,
-        collectionId: collection!.id,
-      });
-      setIsCreating(false);
-      setNewCollectionName("");
-      setComboboxOpen(false);
-    },
-  });
+  const {
+    assignToCollection,
+    toggleExcluded,
+    resetTimestamps: resetTimestampsAction,
+    createAndAssign,
+    isPending,
+  } = useSegmentActions({ audioFileId, projectId });
 
   const handleCollectionSelect = (collectionId: string | null) => {
-    assignCollection.mutate({
-      segmentId: segment.id,
-      collectionId,
-    });
+    assignToCollection(segment.id, collectionId);
     setComboboxOpen(false);
   };
 
   const handleCreateCollection = () => {
-    if (!newCollectionName.trim()) return;
-    createCollection.mutate({
-      projectId,
-      name: newCollectionName.trim(),
-    });
+    if (!newCollectionName.trim()) {
+      return;
+    }
+    createAndAssign(segment.id, newCollectionName.trim());
+    setNewCollectionName("");
+    setComboboxOpen(false);
   };
 
   const isExcluded = segment.status === "excluded";
@@ -139,7 +108,9 @@ function SegmentItem({
       )}
       onClick={onClick}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onClick();
+        if (e.key === "Enter" || e.key === " ") {
+          onClick();
+        }
       }}
       role="button"
       tabIndex={0}
@@ -160,10 +131,10 @@ function SegmentItem({
         <div className="flex gap-1">
           {hasTimestampChanges && (
             <Button
-              disabled={resetTimestamps.isPending}
+              disabled={isPending}
               onClick={(e) => {
                 e.stopPropagation();
-                resetTimestamps.mutate({ segmentId: segment.id });
+                resetTimestampsAction(segment.id);
               }}
               size="icon"
               title="Reset to original timestamps"
@@ -173,12 +144,10 @@ function SegmentItem({
             </Button>
           )}
           <Button
+            disabled={isPending}
             onClick={(e) => {
               e.stopPropagation();
-              setExcluded.mutate({
-                segmentId: segment.id,
-                excluded: !isExcluded,
-              });
+              toggleExcluded(segment.id, isExcluded);
             }}
             size="icon"
             title={isExcluded ? "Include segment" : "Exclude segment"}
@@ -190,7 +159,10 @@ function SegmentItem({
       </div>
 
       {!isExcluded && (
-        <div onClick={(e) => e.stopPropagation()}>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <Popover onOpenChange={setComboboxOpen} open={comboboxOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -222,7 +194,7 @@ function SegmentItem({
                     {newCollectionName.trim() ? (
                       <Button
                         className="w-full"
-                        disabled={createCollection.isPending}
+                        disabled={isPending}
                         onClick={handleCreateCollection}
                         size="sm"
                         variant="ghost"

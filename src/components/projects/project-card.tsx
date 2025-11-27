@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 
-interface ProjectCardProps {
+type ProjectCardProps = {
   project: {
     id: string;
     name: string;
@@ -21,7 +21,7 @@ interface ProjectCardProps {
       diarizationJobs: number;
     };
   };
-}
+};
 
 export function ProjectCard({ project }: ProjectCardProps) {
   return (

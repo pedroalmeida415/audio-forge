@@ -65,7 +65,7 @@ export const collectionRouter = createTRPCRouter({
         where: eq(collections.projectId, input.projectId),
         limit: input.limit,
         offset: input.offset,
-        orderBy: (collections, { asc }) => [asc(collections.name)],
+        orderBy: (collectionsTable, { asc }) => [asc(collectionsTable.name)],
         with: {
           segments: {
             columns: { id: true },
@@ -177,7 +177,7 @@ export const collectionRouter = createTRPCRouter({
       const result = await ctx.db.query.collections.findMany({
         where: eq(collections.projectId, input.projectId),
         limit: input.limit,
-        orderBy: (collections, { asc }) => [asc(collections.name)],
+        orderBy: (collectionsTable, { asc }) => [asc(collectionsTable.name)],
         columns: {
           id: true,
           name: true,

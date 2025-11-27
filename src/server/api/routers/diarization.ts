@@ -10,6 +10,7 @@ import {
 } from "~/server/db/schema";
 import {
   BUCKET_NAME,
+  deleteObject,
   generateAudioFileKey,
   getPresignedDownloadUrl,
   getPresignedUploadUrl,
@@ -21,6 +22,121 @@ import {
 } from "~/server/services/pyannote";
 
 const MAX_FILES_PER_JOB = 10;
+
+/**
+ * Helper function to update job status based on file processing results
+ */
+async function updateJobStatus(options: {
+  jobId: string;
+  allCompleted: boolean;
+  processedCount: number;
+  totalFiles: number;
+  anyFailed: boolean;
+  // biome-ignore lint/suspicious/noExplicitAny: DB type is complex to extract
+  db: any;
+}): Promise<void> {
+  const { jobId, allCompleted, processedCount, totalFiles, anyFailed, db } =
+    options;
+
+  if (allCompleted && processedCount === totalFiles) {
+    await db
+      .update(diarizationJobs)
+      .set({
+        status: "completed",
+        processedFiles: processedCount,
+        completedAt: new Date(),
+      })
+      .where(eq(diarizationJobs.id, jobId));
+  } else if (anyFailed) {
+    await db
+      .update(diarizationJobs)
+      .set({
+        status: "failed",
+        processedFiles: processedCount,
+        errorMessage: "One or more files failed to process",
+      })
+      .where(eq(diarizationJobs.id, jobId));
+  } else {
+    await db
+      .update(diarizationJobs)
+      .set({ processedFiles: processedCount })
+      .where(eq(diarizationJobs.id, jobId));
+  }
+}
+
+/**
+ * Helper function to process Pyannote job status for a single file
+ */
+async function processPyannoteStatus(
+  file: {
+    id: string;
+    pyannoteJobId: string | null;
+    processed: boolean;
+    processingError: string | null;
+  },
+  // biome-ignore lint/suspicious/noExplicitAny: DB type is complex to extract
+  db: any
+): Promise<{
+  processed: boolean;
+  failed: boolean;
+}> {
+  if (!file.pyannoteJobId) {
+    return { processed: false, failed: false };
+  }
+
+  try {
+    const pyannoteStatus = await getPyannoteJobStatus(file.pyannoteJobId);
+
+    if (pyannoteStatus.status === "succeeded") {
+      // Save segments to database
+      if (pyannoteStatus.output?.diarization) {
+        const segmentsToInsert = pyannoteStatus.output.diarization.map(
+          (seg) => ({
+            audioFileId: file.id,
+            pyannoteSpeakerLabel: seg.speaker,
+            originalStartTime: seg.start,
+            originalEndTime: seg.end,
+            editedStartTime: seg.start,
+            editedEndTime: seg.end,
+            status: "pending" as const,
+          })
+        );
+
+        if (segmentsToInsert.length > 0) {
+          await db.insert(segments).values(segmentsToInsert);
+        }
+      }
+
+      // Mark file as processed
+      await db
+        .update(audioFiles)
+        .set({ processed: true })
+        .where(eq(audioFiles.id, file.id));
+
+      return { processed: true, failed: false };
+    }
+
+    if (pyannoteStatus.status === "failed") {
+      await db
+        .update(audioFiles)
+        .set({
+          processingError: pyannoteStatus.error ?? "Diarization failed",
+          processed: false,
+        })
+        .where(eq(audioFiles.id, file.id));
+
+      return { processed: false, failed: true };
+    }
+
+    // Still pending or running
+    return { processed: false, failed: false };
+  } catch (error) {
+    // Error fetching status from Pyannote - don't mark as failed yet
+    // Just log and continue polling on next check
+    console.error(`Error checking Pyannote status for file ${file.id}:`, error);
+    return { processed: false, failed: false };
+  }
+}
 
 export const diarizationRouter = createTRPCRouter({
   /**
@@ -115,13 +231,10 @@ export const diarizationRouter = createTRPCRouter({
         .where(eq(diarizationJobs.id, job.id));
 
       // Generate presigned upload URL
-      const uploadUrl = await getPresignedUploadUrl(
-        storageKey,
-        input.contentType
-      );
+      const uploadUrl = await getPresignedUploadUrl(storageKey);
 
       return {
-        audioFileId: audioFile!.id,
+        audioFileId: audioFile?.id,
         uploadUrl,
         storageKey,
       };
@@ -155,6 +268,8 @@ export const diarizationRouter = createTRPCRouter({
 
   /**
    * Start processing all files in a job
+   * This initiates the transfer process - the actual transfer happens client-side
+   * by calling the /api/transfer route for each file, then calling processSingleFile
    */
   startProcessing: publicProcedure
     .input(
@@ -192,13 +307,18 @@ export const diarizationRouter = createTRPCRouter({
         })
         .where(eq(diarizationJobs.id, job.id));
 
-      // For each file, we need to:
-      // 1. Get a presigned URL from Pyannote for their temp storage
-      // 2. Stream the file from MinIO to Pyannote
-      // 3. Start diarization job
-      // This will be handled by a separate API route for streaming
-
-      return { success: true, jobId: job.id, fileCount: job.audioFiles.length };
+      // Return files that need to be transferred
+      // The client will call /api/transfer for each file, then processSingleFile
+      return {
+        success: true,
+        jobId: job.id,
+        fileCount: job.audioFiles.length,
+        files: job.audioFiles.map((f) => ({
+          audioFileId: f.id,
+          storageKey: f.storageKey,
+          mimeType: f.mimeType,
+        })),
+      };
     }),
 
   /**
@@ -264,6 +384,7 @@ export const diarizationRouter = createTRPCRouter({
    */
   getJobStatus: publicProcedure
     .input(z.object({ jobId: z.string().uuid() }))
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Job status polling requires multiple conditional checks
     .query(async ({ ctx, input }) => {
       const job = await ctx.db.query.diarizationJobs.findFirst({
         where: eq(diarizationJobs.id, input.jobId),
@@ -276,15 +397,21 @@ export const diarizationRouter = createTRPCRouter({
         throw new Error("Job not found");
       }
 
-      // If job is still processing, check Pyannote status for each file
-      if (job.status === "processing") {
+      // If job is still processing or uploading, check Pyannote status for each file
+      if (job.status === "processing" || job.status === "uploading") {
         let allCompleted = true;
         let anyFailed = false;
         let processedCount = 0;
 
         for (const file of job.audioFiles) {
           if (file.processed) {
-            processedCount++;
+            processedCount += 1;
+            continue;
+          }
+
+          // If file has an error but no pyannoteJobId, count it as failed
+          if (file.processingError && !file.pyannoteJobId) {
+            anyFailed = true;
             continue;
           }
 
@@ -293,79 +420,29 @@ export const diarizationRouter = createTRPCRouter({
             continue;
           }
 
-          try {
-            const pyannoteStatus = await getPyannoteJobStatus(
-              file.pyannoteJobId
-            );
+          // Process this file's status
+          const result = await processPyannoteStatus(file, ctx.db);
 
-            if (pyannoteStatus.status === "succeeded") {
-              // Save segments to database
-              if (pyannoteStatus.output?.diarization) {
-                const segmentsToInsert = pyannoteStatus.output.diarization.map(
-                  (seg) => ({
-                    audioFileId: file.id,
-                    pyannoteSpeakerLabel: seg.speaker,
-                    originalStartTime: seg.start,
-                    originalEndTime: seg.end,
-                    editedStartTime: seg.start,
-                    editedEndTime: seg.end,
-                    status: "pending" as const,
-                  })
-                );
-
-                if (segmentsToInsert.length > 0) {
-                  await ctx.db.insert(segments).values(segmentsToInsert);
-                }
-              }
-
-              // Mark file as processed
-              await ctx.db
-                .update(audioFiles)
-                .set({ processed: true })
-                .where(eq(audioFiles.id, file.id));
-
-              processedCount++;
-            } else if (pyannoteStatus.status === "failed") {
-              anyFailed = true;
-              await ctx.db
-                .update(audioFiles)
-                .set({
-                  processingError: pyannoteStatus.error ?? "Diarization failed",
-                })
-                .where(eq(audioFiles.id, file.id));
-            } else {
-              allCompleted = false;
-            }
-          } catch (error) {
+          if (result.processed) {
+            processedCount += 1;
+          }
+          if (result.failed) {
+            anyFailed = true;
+          }
+          if (!(result.processed || result.failed)) {
             allCompleted = false;
           }
         }
 
-        // Update job status
-        if (allCompleted && processedCount === job.audioFiles.length) {
-          await ctx.db
-            .update(diarizationJobs)
-            .set({
-              status: "completed",
-              processedFiles: processedCount,
-              completedAt: new Date(),
-            })
-            .where(eq(diarizationJobs.id, job.id));
-        } else if (anyFailed) {
-          await ctx.db
-            .update(diarizationJobs)
-            .set({
-              status: "failed",
-              processedFiles: processedCount,
-              errorMessage: "One or more files failed to process",
-            })
-            .where(eq(diarizationJobs.id, job.id));
-        } else {
-          await ctx.db
-            .update(diarizationJobs)
-            .set({ processedFiles: processedCount })
-            .where(eq(diarizationJobs.id, job.id));
-        }
+        // Update job status based on results
+        await updateJobStatus({
+          jobId: job.id,
+          allCompleted,
+          processedCount,
+          totalFiles: job.audioFiles.length,
+          anyFailed,
+          db: ctx.db,
+        });
       }
 
       // Return fresh job data
@@ -434,7 +511,7 @@ export const diarizationRouter = createTRPCRouter({
           audioFiles: {
             with: {
               segments: {
-                orderBy: (segments, { asc }) => [asc(segments.editedStartTime)],
+                orderBy: (segs, { asc }) => [asc(segs.editedStartTime)],
                 with: {
                   collection: {
                     columns: {
@@ -483,8 +560,38 @@ export const diarizationRouter = createTRPCRouter({
   deleteJob: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // TODO: Also delete files from MinIO storage
+      // Get job with audio files to delete from storage
+      const job = await ctx.db.query.diarizationJobs.findFirst({
+        where: eq(diarizationJobs.id, input.id),
+        with: {
+          audioFiles: {
+            columns: {
+              storageKey: true,
+            },
+          },
+        },
+      });
 
+      if (!job) {
+        throw new Error("Job not found");
+      }
+
+      // Delete files from MinIO storage
+      const deletionErrors: string[] = [];
+      for (const file of job.audioFiles) {
+        try {
+          await deleteObject(file.storageKey);
+        } catch (error) {
+          // Log error but continue deleting other files
+          console.error(
+            `Failed to delete file ${file.storageKey}:`,
+            error instanceof Error ? error.message : "Unknown error"
+          );
+          deletionErrors.push(file.storageKey);
+        }
+      }
+
+      // Delete from database (cascade will delete audio files and segments)
       const [deleted] = await ctx.db
         .delete(diarizationJobs)
         .where(eq(diarizationJobs.id, input.id))
@@ -494,7 +601,11 @@ export const diarizationRouter = createTRPCRouter({
         throw new Error("Job not found");
       }
 
-      return { success: true, deletedId: deleted.id };
+      return {
+        success: true,
+        deletedId: deleted.id,
+        storageErrors: deletionErrors.length > 0 ? deletionErrors : undefined,
+      };
     }),
 
   /**
