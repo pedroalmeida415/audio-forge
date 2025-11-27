@@ -34,7 +34,12 @@ export function StartJobDialog({ projectId, children }: StartJobDialogProps) {
     useJobUpload({
       projectId,
       onSuccess: (jobId) => {
-        router.push(`/projects/${projectId}/jobs/${jobId}`);
+        // Navigate to job page if single file, project page if multiple
+        if (jobId && files.length === 1) {
+          router.push(`/projects/${projectId}/jobs/${jobId}`);
+        } else {
+          router.push(`/projects/${projectId}`);
+        }
         setOpen(false);
       },
     });

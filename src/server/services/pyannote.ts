@@ -6,53 +6,53 @@ const PYANNOTE_API_BASE = "https://api.pyannote.ai/v1";
  * Custom error class for Pyannote API errors
  */
 export class PyannoteError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number,
-    public retryable = false
-  ) {
+  statusCode: number;
+  retryable: boolean;
+
+  constructor(message: string, statusCode: number, retryable = false) {
     super(message);
     this.name = "PyannoteError";
+    this.statusCode = statusCode;
     // Determine if retryable based on status code
-    this.retryable = statusCode === 429 || statusCode >= 500;
+    this.retryable = retryable || statusCode === 429 || statusCode >= 500;
   }
 }
 
 /**
  * Types for Pyannote API responses
  */
-export interface PyannoteMediaResponse {
-  url: string;
-}
+export type PyannoteMediaUploadResponse = {
+  url: string; // Presigned upload URL for PUT
+};
 
-export interface PyannoteDiarizeParams {
+export type PyannoteDiarizeParams = {
   url: string;
   webhook?: string;
   numSpeakers?: number;
   minSpeakers?: number;
   maxSpeakers?: number;
   confidence?: boolean;
-}
+};
 
-export interface PyannoteJobResponse {
+export type PyannoteJobResponse = {
   jobId: string;
   status: "pending" | "running" | "succeeded" | "failed";
-}
+};
 
-export interface DiarizationSegment {
+export type DiarizationSegment = {
   speaker: string;
   start: number;
   end: number;
-}
+};
 
-export interface PyannoteJobResult {
+export type PyannoteJobResult = {
   jobId: string;
   status: "pending" | "running" | "succeeded" | "failed";
   output?: {
     diarization: DiarizationSegment[];
   };
   error?: string;
-}
+};
 
 /**
  * Make an authenticated request to the Pyannote API
@@ -84,12 +84,44 @@ async function pyannoteRequest<T>(
 }
 
 /**
- * Create a pre-signed upload URL for Pyannote's temporary storage
+ * Generate a unique object key for Pyannote media storage
  */
-export async function createMediaUploadUrl(): Promise<PyannoteMediaResponse> {
-  return pyannoteRequest<PyannoteMediaResponse>("/media", {
-    method: "POST",
-  });
+function generateMediaKey(): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 10);
+  return `audio-${timestamp}-${random}`;
+}
+
+/**
+ * Create a pre-signed upload URL for Pyannote's temporary storage
+ *
+ * Flow:
+ * 1. POST to /media/input with a media://object-key URL
+ * 2. Receive a presigned URL for PUT upload
+ * 3. PUT the file to the presigned URL
+ * 4. Use the media://object-key URL in diarization requests
+ *
+ * @returns Object with presigned upload URL and the media:// URL to use for diarization
+ */
+export async function createMediaUploadUrl(): Promise<{
+  uploadUrl: string;
+  mediaUrl: string;
+}> {
+  const objectKey = generateMediaKey();
+  const mediaUrl = `media://${objectKey}`;
+
+  const response = await pyannoteRequest<PyannoteMediaUploadResponse>(
+    "/media/input",
+    {
+      method: "POST",
+      body: JSON.stringify({ url: mediaUrl }),
+    }
+  );
+
+  return {
+    uploadUrl: response.url,
+    mediaUrl,
+  };
 }
 
 /**
@@ -120,7 +152,7 @@ export async function uploadToPyannoteStorage(
 /**
  * Start a diarization job
  */
-export async function startDiarization(
+export function startDiarization(
   params: PyannoteDiarizeParams
 ): Promise<PyannoteJobResponse> {
   return pyannoteRequest<PyannoteJobResponse>("/diarize", {
@@ -132,14 +164,14 @@ export async function startDiarization(
 /**
  * Get the status and results of a diarization job
  */
-export async function getJobStatus(jobId: string): Promise<PyannoteJobResult> {
+export function getJobStatus(jobId: string): Promise<PyannoteJobResult> {
   return pyannoteRequest<PyannoteJobResult>(`/jobs/${jobId}`);
 }
 
 /**
  * Cancel a running diarization job
  */
-export async function cancelJob(jobId: string): Promise<{ success: boolean }> {
+export function cancelJob(jobId: string): Promise<{ success: boolean }> {
   return pyannoteRequest<{ success: boolean }>(`/jobs/${jobId}`, {
     method: "DELETE",
   });

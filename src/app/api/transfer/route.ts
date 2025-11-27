@@ -53,17 +53,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get a presigned upload URL from Pyannote
-    const { url: uploadUrl } = await createMediaUploadUrl();
+    const { uploadUrl, mediaUrl } = await createMediaUploadUrl();
 
     // Upload the file to Pyannote's temp storage
     await uploadToPyannoteStorage(uploadUrl, fileBuffer, contentType);
 
-    // The media URL is the upload URL without query params
-    // Pyannote returns a presigned URL like: https://storage.com/media/abc123?signature=...
-    // We need just the base URL: https://storage.com/media/abc123
-    const urlObj = new URL(uploadUrl);
-    const mediaUrl = `${urlObj.origin}${urlObj.pathname}`;
-
+    // Return the media:// URL to use for diarization
     return NextResponse.json({ mediaUrl });
   } catch (error) {
     console.error("Transfer error:", error);

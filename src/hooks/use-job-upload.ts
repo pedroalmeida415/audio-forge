@@ -24,7 +24,7 @@ export const ACCEPTED_TYPES = {
 
 type UseJobUploadParams = {
   projectId: string;
-  onSuccess?: () => void;
+  onSuccess?: (jobId?: string) => void;
 };
 
 type UseJobUploadReturn = {
@@ -32,7 +32,7 @@ type UseJobUploadReturn = {
   isUploading: boolean;
   addFiles: (files: File[]) => void;
   removeFile: (index: number) => void;
-  startUpload: () => Promise<void>;
+  startJob: () => Promise<void>;
   totalProgress: number;
   hasErrors: boolean;
   allComplete: boolean;
@@ -215,7 +215,7 @@ export function useJobUpload({
     }
   };
 
-  const startUpload = async (): Promise<void> => {
+  const startJob = async (): Promise<void> => {
     if (files.length === 0) {
       return;
     }
@@ -228,9 +228,12 @@ export function useJobUpload({
         files.map((file, index) => processFile(file, index))
       );
 
+      // Get the first successful job ID for navigation (if single file)
+      const firstJobId = files.find((f) => f.jobId)?.jobId;
+
       // Navigate to project page when done
       if (onSuccess) {
-        onSuccess();
+        onSuccess(firstJobId);
       } else {
         router.push(`/projects/${projectId}`);
       }
@@ -252,7 +255,7 @@ export function useJobUpload({
     isUploading,
     addFiles,
     removeFile,
-    startUpload,
+    startJob,
     totalProgress,
     hasErrors,
     allComplete,
