@@ -12,6 +12,15 @@ export const env = createEnv({
       .enum(["development", "test", "production"])
       .default("development"),
     PYANNOTE_API_KEY: z.string().min(1),
+    // MinIO Configuration
+    MINIO_ENDPOINT: z.string().url(),
+    MINIO_ACCESS_KEY: z.string().min(1),
+    MINIO_SECRET_KEY: z.string().min(1),
+    MINIO_BUCKET: z.string().min(1),
+    MINIO_USE_SSL: z
+      .string()
+      .transform((val) => val === "true")
+      .default("false"),
   },
 
   /**
@@ -31,6 +40,11 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,
     PYANNOTE_API_KEY: process.env.PYANNOTE_API_KEY,
+    MINIO_ENDPOINT: process.env.MINIO_ENDPOINT,
+    MINIO_ACCESS_KEY: process.env.MINIO_ACCESS_KEY,
+    MINIO_SECRET_KEY: process.env.MINIO_SECRET_KEY,
+    MINIO_BUCKET: process.env.MINIO_BUCKET,
+    MINIO_USE_SSL: process.env.MINIO_USE_SSL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

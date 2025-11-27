@@ -1,4 +1,8 @@
-import { pyannoteRouter } from "~/server/api/routers/pyannote";
+import { clipRouter } from "~/server/api/routers/clip";
+import { collectionRouter } from "~/server/api/routers/collection";
+import { diarizationRouter } from "~/server/api/routers/diarization";
+import { projectRouter } from "~/server/api/routers/project";
+import { segmentRouter } from "~/server/api/routers/segment";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -7,7 +11,11 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
-  pyannote: pyannoteRouter,
+  project: projectRouter,
+  collection: collectionRouter,
+  diarization: diarizationRouter,
+  segment: segmentRouter,
+  clip: clipRouter,
 });
 
 // export type definition of API
