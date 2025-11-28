@@ -1,25 +1,11 @@
 "use client";
 
-import { Check, ChevronsUpDown, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { RotateCcw, X } from "lucide-react";
+import { CollectionCombobox } from "~/components/clipping/collection-combobox";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "~/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "~/components/ui/popover";
 import { useSegmentActions } from "~/hooks/use-segment-actions";
 import { cn } from "~/lib/utils";
-import { api } from "~/trpc/react";
 
 type Segment = {
   id: string;
@@ -30,19 +16,17 @@ type Segment = {
   editedEndTime: number;
   status: string;
   collectionId: string | null;
-  collection: { id: string; name: string } | null;
-};
-
-type Collection = {
-  id: string;
-  name: string;
+  collection: {
+    id: string;
+    name: string;
+    project?: { id: string; name: string };
+  } | null;
 };
 
 type SegmentListProps = {
   segments: Segment[];
   selectedSegmentId: string | null;
   onSegmentSelect: (segmentId: string) => void;
-  projectId: string;
   jobId: string;
 };
 
@@ -57,46 +41,42 @@ function SegmentItem({
   segment,
   isSelected,
   onClick,
-  collections,
-  projectId,
   jobId,
 }: {
   segment: Segment;
   isSelected: boolean;
   onClick: () => void;
-  collections: Collection[];
-  projectId: string;
   jobId: string;
 }) {
-  const [comboboxOpen, setComboboxOpen] = useState(false);
-  const [newCollectionName, setNewCollectionName] = useState("");
-
   const {
     assignToCollection,
     toggleExcluded,
     resetTimestamps: resetTimestampsAction,
     createAndAssign,
     isPending,
-  } = useSegmentActions({ jobId, projectId });
+  } = useSegmentActions({ jobId });
 
-  const handleCollectionSelect = (collectionId: string | null) => {
+  function handleCollectionSelect(collectionId: string | null) {
     assignToCollection(segment.id, collectionId);
-    setComboboxOpen(false);
-  };
+  }
 
-  const handleCreateCollection = () => {
-    if (!newCollectionName.trim()) {
-      return;
-    }
-    createAndAssign(segment.id, newCollectionName.trim());
-    setNewCollectionName("");
-    setComboboxOpen(false);
-  };
+  function handleCreateAndAssign(name: string, projectId: string) {
+    createAndAssign(segment.id, name, projectId);
+  }
 
   const isExcluded = segment.status === "excluded";
   const hasTimestampChanges =
     segment.editedStartTime !== segment.originalStartTime ||
     segment.editedEndTime !== segment.originalEndTime;
+
+  // Build selectedCollection with project info for the combobox
+  const selectedCollection = segment.collection
+    ? {
+        id: segment.collection.id,
+        name: segment.collection.name,
+        project: segment.collection.project ?? { id: "", name: "Unknown" },
+      }
+    : null;
 
   return (
     <div
@@ -163,80 +143,12 @@ function SegmentItem({
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <Popover onOpenChange={setComboboxOpen} open={comboboxOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                aria-expanded={comboboxOpen}
-                className="w-full justify-between"
-                role="combobox"
-                size="sm"
-                variant="outline"
-              >
-                {segment.collection ? (
-                  <span className="truncate">{segment.collection.name}</span>
-                ) : (
-                  <span className="text-muted-foreground">
-                    Assign to collection...
-                  </span>
-                )}
-                <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-[200px] p-0">
-              <Command>
-                <CommandInput
-                  onValueChange={setNewCollectionName}
-                  placeholder="Search or create..."
-                  value={newCollectionName}
-                />
-                <CommandList>
-                  <CommandEmpty>
-                    {newCollectionName.trim() ? (
-                      <Button
-                        className="w-full"
-                        disabled={isPending}
-                        onClick={handleCreateCollection}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Create "{newCollectionName}"
-                      </Button>
-                    ) : (
-                      "No collections found"
-                    )}
-                  </CommandEmpty>
-                  <CommandGroup>
-                    {segment.collectionId && (
-                      <CommandItem
-                        onSelect={() => handleCollectionSelect(null)}
-                        value="__unassign__"
-                      >
-                        <X className="mr-2 h-3 w-3" />
-                        Unassign
-                      </CommandItem>
-                    )}
-                    {collections.map((collection) => (
-                      <CommandItem
-                        key={collection.id}
-                        onSelect={() => handleCollectionSelect(collection.id)}
-                        value={collection.name}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-3 w-3",
-                            segment.collectionId === collection.id
-                              ? "opacity-100"
-                              : "opacity-0"
-                          )}
-                        />
-                        {collection.name}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          <CollectionCombobox
+            disabled={isPending}
+            onCreateAndAssign={handleCreateAndAssign}
+            onSelect={handleCollectionSelect}
+            selectedCollection={selectedCollection}
+          />
         </div>
       )}
     </div>
@@ -247,14 +159,8 @@ export function SegmentList({
   segments,
   selectedSegmentId,
   onSegmentSelect,
-  projectId,
   jobId,
 }: SegmentListProps) {
-  const { data: collections = [] } = api.collection.search.useQuery({
-    projectId,
-    limit: 20,
-  });
-
   const approvedCount = segments.filter(
     (s) => s.status === "approved" && s.collectionId
   ).length;
@@ -276,12 +182,10 @@ export function SegmentList({
       <div className="flex-1 space-y-2 overflow-y-auto">
         {segments.map((segment) => (
           <SegmentItem
-            collections={collections}
             isSelected={selectedSegmentId === segment.id}
             jobId={jobId}
             key={segment.id}
             onClick={() => onSegmentSelect(segment.id)}
-            projectId={projectId}
             segment={segment}
           />
         ))}

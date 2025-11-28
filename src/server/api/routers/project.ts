@@ -53,12 +53,6 @@ export const projectRouter = createTRPCRouter({
               id: true,
             },
           },
-          diarizationJobs: {
-            columns: {
-              id: true,
-              status: true,
-            },
-          },
         },
       });
 
@@ -66,10 +60,8 @@ export const projectRouter = createTRPCRouter({
         ...project,
         _count: {
           collections: project.collections.length,
-          diarizationJobs: project.diarizationJobs.length,
         },
         collections: undefined,
-        diarizationJobs: undefined,
       }));
     }),
 
@@ -83,17 +75,9 @@ export const projectRouter = createTRPCRouter({
         where: eq(projects.id, input.id),
         with: {
           collections: {
-            orderBy: (collections, { asc }) => [asc(collections.name)],
-          },
-          diarizationJobs: {
-            orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
-            limit: 10,
-            columns: {
-              id: true,
-              status: true,
-              originalFilename: true,
-              createdAt: true,
-            },
+            orderBy: (collectionsTable, { asc }) => [
+              asc(collectionsTable.name),
+            ],
           },
         },
       });

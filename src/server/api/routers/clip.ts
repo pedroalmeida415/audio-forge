@@ -26,12 +26,11 @@ export const clipRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Get diarization job (audio file info is now in the job)
+      // Get diarization job (audio file info is in the job)
       const job = await ctx.db.query.diarizationJobs.findFirst({
         where: eq(diarizationJobs.id, input.jobId),
         columns: {
           id: true,
-          projectId: true,
           storageKey: true,
           storageBucket: true,
         },
@@ -45,7 +44,7 @@ export const clipRouter = createTRPCRouter({
         throw new Error("Job has no associated audio file");
       }
 
-      // Get segments to extract
+      // Get segments to extract with their collections
       const whereClause = input.segmentIds
         ? and(
             eq(segments.jobId, input.jobId),
@@ -57,6 +56,14 @@ export const clipRouter = createTRPCRouter({
       const segmentsToExtract = await ctx.db.query.segments.findMany({
         where: whereClause,
         orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],
+        with: {
+          collection: {
+            columns: {
+              id: true,
+              projectId: true,
+            },
+          },
+        },
       });
 
       if (segmentsToExtract.length === 0) {
@@ -64,7 +71,7 @@ export const clipRouter = createTRPCRouter({
       }
 
       // Verify all segments have collections assigned
-      const missingCollection = segmentsToExtract.find((s) => !s.collectionId);
+      const missingCollection = segmentsToExtract.find((s) => !s.collection);
       if (missingCollection) {
         throw new Error("All segments must have a collection assigned");
       }
@@ -98,15 +105,15 @@ export const clipRouter = createTRPCRouter({
             format: input.format,
           });
 
-          // Generate storage key (safe to use collectionId since we verified above)
-          const collectionId = segment.collectionId;
-          if (!collectionId) {
-            throw new Error("Collection ID is missing");
+          // Get projectId from collection (verified above that collection exists)
+          const collection = segment.collection;
+          if (!collection) {
+            throw new Error("Collection is missing");
           }
 
           const storageKey = generateClipKey(
-            job.projectId,
-            collectionId,
+            collection.projectId,
+            collection.id,
             segment.id,
             input.format
           );
@@ -123,7 +130,7 @@ export const clipRouter = createTRPCRouter({
             .insert(audioClips)
             .values({
               segmentId: segment.id,
-              collectionId,
+              collectionId: collection.id,
               storageBucket: BUCKET_NAME,
               storageKey,
               durationSeconds: result.durationSeconds,

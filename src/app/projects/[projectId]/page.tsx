@@ -1,30 +1,13 @@
 "use client";
 
-import { ArrowLeft, AudioLines, FolderOpen, Plus } from "lucide-react";
+import { ArrowLeft, FolderOpen, Plus, Scissors } from "lucide-react";
 import Link from "next/link";
 import { use } from "react";
-import { StartJobDialog } from "~/components/jobs/start-job-dialog";
 import { CreateCollectionDialog } from "~/components/projects/create-collection-dialog";
-import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { api } from "~/trpc/react";
-
-function getJobStatusVariant(status: string) {
-  switch (status) {
-    case "completed":
-      return "default";
-    case "processing":
-    case "uploading":
-      return "secondary";
-    case "failed":
-      return "destructive";
-    default:
-      return "outline";
-  }
-}
 
 export default function ProjectDetailPage({
   params,
@@ -61,6 +44,7 @@ export default function ProjectDetailPage({
 
   return (
     <div className="container mx-auto py-8">
+      {/* Header */}
       <div className="mb-8">
         <Link
           className="mb-4 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
@@ -78,104 +62,54 @@ export default function ProjectDetailPage({
               </p>
             )}
           </div>
-          <StartJobDialog projectId={projectId}>
-            <Button>
-              <AudioLines className="mr-2 h-4 w-4" />
-              New Diarization Job
+          <CreateCollectionDialog projectId={projectId}>
+            <Button variant="outline">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Collection
             </Button>
-          </StartJobDialog>
+          </CreateCollectionDialog>
         </div>
       </div>
 
-      <Tabs defaultValue="jobs">
-        <TabsList>
-          <TabsTrigger value="jobs">
-            Diarization Jobs ({project.diarizationJobs.length})
-          </TabsTrigger>
-          <TabsTrigger value="collections">
+      {/* Collections Section */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-xl">
             Collections ({project.collections.length})
-          </TabsTrigger>
-        </TabsList>
+          </h2>
+        </div>
 
-        <TabsContent className="mt-6" value="jobs">
-          {project.diarizationJobs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-              <AudioLines className="mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="mb-4 text-muted-foreground">
-                No diarization jobs yet
-              </p>
-              <StartJobDialog projectId={projectId}>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Start your first job
-                </Button>
-              </StartJobDialog>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {project.diarizationJobs.map((job) => (
-                <Link
-                  href={`/projects/${projectId}/jobs/${job.id}`}
-                  key={job.id}
-                >
-                  <Card className="transition-colors hover:bg-muted/50">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="font-medium text-base">
-                        {job.originalFilename ?? `Job ${job.id.slice(0, 8)}...`}
-                      </CardTitle>
-                      <Badge variant={getJobStatusVariant(job.status)}>
-                        {job.status}
-                      </Badge>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground text-xs">
-                        Created {job.createdAt.toLocaleDateString()}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent className="mt-6" value="collections">
-          <div className="mb-4 flex justify-end">
-            <CreateCollectionDialog projectId={projectId}>
-              <Button size="sm" variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Collection
+        {project.collections.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
+            <FolderOpen className="mb-4 h-12 w-12 text-muted-foreground" />
+            <p className="mb-2 text-muted-foreground">No collections yet</p>
+            <p className="mb-4 max-w-sm text-center text-muted-foreground text-sm">
+              Collections are created when you assign speakers to segments in
+              the clipping workspace
+            </p>
+            <Link href="/clipping">
+              <Button variant="outline">
+                <Scissors className="mr-2 h-4 w-4" />
+                Go to Clipping
               </Button>
-            </CreateCollectionDialog>
+            </Link>
           </div>
-
-          {project.collections.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-              <FolderOpen className="mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="mb-4 text-muted-foreground">No collections yet</p>
-              <p className="mb-4 max-w-sm text-center text-muted-foreground text-sm">
-                Collections are created when you assign speakers to segments
-                after diarization
-              </p>
-              <CreateCollectionDialog projectId={projectId}>
-                <Button variant="outline">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create a collection manually
-                </Button>
-              </CreateCollectionDialog>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {project.collections.map((collection) => (
-                <Card key={collection.id}>
-                  <CardHeader>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {project.collections.map((collection) => (
+              <Link
+                href={`/projects/${projectId}/collections/${collection.id}`}
+                key={collection.id}
+              >
+                <Card className="h-full transition-colors hover:bg-muted/50">
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-base">
                       {collection.name}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {collection.description && (
-                      <p className="mb-2 text-muted-foreground text-sm">
+                      <p className="mb-2 line-clamp-2 text-muted-foreground text-sm">
                         {collection.description}
                       </p>
                     )}
@@ -184,11 +118,11 @@ export default function ProjectDetailPage({
                     </p>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

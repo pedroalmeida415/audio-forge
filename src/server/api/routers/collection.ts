@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, ilike } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
@@ -105,6 +105,20 @@ export const collectionRouter = createTRPCRouter({
           audioClips: {
             orderBy: (clips, { desc }) => [desc(clips.createdAt)],
             limit: 50,
+            with: {
+              segment: {
+                columns: {
+                  pyannoteSpeakerLabel: true,
+                },
+                with: {
+                  job: {
+                    columns: {
+                      originalFilename: true,
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       });
@@ -189,6 +203,68 @@ export const collectionRouter = createTRPCRouter({
         const lowerQuery = input.query.toLowerCase();
         return result.filter((c) => c.name.toLowerCase().includes(lowerQuery));
       }
+
+      return result;
+    }),
+
+  /**
+   * Search collections globally across ALL projects (for segment assignment in clipping workspace)
+   */
+  searchGlobal: publicProcedure
+    .input(
+      z.object({
+        query: z.string().min(1),
+        limit: z.number().min(1).max(20).default(10),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await ctx.db.query.collections.findMany({
+        where: ilike(collections.name, `%${input.query}%`),
+        limit: input.limit,
+        orderBy: (collectionsTable, { asc }) => [asc(collectionsTable.name)],
+        columns: {
+          id: true,
+          name: true,
+        },
+        with: {
+          project: {
+            columns: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      return result;
+    }),
+
+  /**
+   * List all collections globally (for empty query state in combobox)
+   */
+  listAll: publicProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(50).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await ctx.db.query.collections.findMany({
+        limit: input.limit,
+        orderBy: (collectionsTable, { asc }) => [asc(collectionsTable.name)],
+        columns: {
+          id: true,
+          name: true,
+        },
+        with: {
+          project: {
+            columns: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
 
       return result;
     }),

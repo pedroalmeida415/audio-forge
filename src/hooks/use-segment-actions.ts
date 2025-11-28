@@ -2,13 +2,9 @@ import { api } from "~/trpc/react";
 
 type UseSegmentActionsParams = {
   jobId: string;
-  projectId: string;
 };
 
-export function useSegmentActions({
-  jobId,
-  projectId,
-}: UseSegmentActionsParams) {
+export function useSegmentActions({ jobId }: UseSegmentActionsParams) {
   const utils = api.useUtils();
 
   const assignCollectionMutation = api.segment.assignCollection.useMutation({
@@ -34,7 +30,9 @@ export function useSegmentActions({
 
   const createCollectionMutation = api.collection.create.useMutation({
     onSuccess: () => {
-      utils.collection.search.invalidate({ projectId });
+      // Invalidate global collection queries
+      utils.collection.listAll.invalidate();
+      utils.collection.searchGlobal.invalidate();
     },
   });
 
@@ -59,7 +57,11 @@ export function useSegmentActions({
     resetTimestampsMutation.mutate({ segmentId });
   };
 
-  const createAndAssign = (segmentId: string, collectionName: string) => {
+  const createAndAssign = (
+    segmentId: string,
+    collectionName: string,
+    projectId: string
+  ) => {
     createCollectionMutation.mutate(
       {
         projectId,

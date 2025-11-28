@@ -21,12 +21,15 @@ type UseJobWorkspaceReturn = {
 };
 
 type SegmentWithCollection = Segment & {
-  collection: { id: string; name: string } | null;
+  collection: {
+    id: string;
+    name: string;
+    project?: { id: string; name: string };
+  } | null;
 };
 
 type JobWithRelations = {
   id: string;
-  projectId: string;
   status: string;
   errorMessage: string | null;
   originalFilename: string | null;
@@ -35,10 +38,6 @@ type JobWithRelations = {
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  project: {
-    id: string;
-    name: string;
-  };
   segments: SegmentWithCollection[];
 };
 

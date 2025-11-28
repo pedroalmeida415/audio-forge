@@ -18,7 +18,6 @@ type ProjectCardProps = {
     createdAt: Date;
     _count: {
       collections: number;
-      diarizationJobs: number;
     };
   };
 };
@@ -40,10 +39,6 @@ export function ProjectCard({ project }: ProjectCardProps) {
             <Badge variant="secondary">
               {project._count.collections} collection
               {project._count.collections !== 1 ? "s" : ""}
-            </Badge>
-            <Badge variant="outline">
-              {project._count.diarizationJobs} job
-              {project._count.diarizationJobs !== 1 ? "s" : ""}
             </Badge>
           </div>
           <p className="mt-3 text-muted-foreground text-xs">

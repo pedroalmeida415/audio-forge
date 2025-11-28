@@ -1,8 +1,8 @@
-import { and, count, eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { diarizationJobs, projects, segments } from "~/server/db/schema";
+import { diarizationJobs, segments } from "~/server/db/schema";
 import {
   BUCKET_NAME,
   deleteObject,
@@ -15,68 +15,25 @@ import {
   startDiarization,
 } from "~/server/services/pyannote";
 
-const MAX_CONCURRENT_JOBS = 10;
-
 export const diarizationRouter = createTRPCRouter({
   /**
    * Create a new diarization job for a single file
+   * Jobs are global (not tied to projects)
    * Returns presigned upload URL for direct browser upload
    */
   createJob: publicProcedure
     .input(
       z.object({
-        projectId: z.string().uuid(),
         filename: z.string().min(1).max(255),
         contentType: z.string().min(1),
         fileSizeBytes: z.number().positive(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Verify project exists
-      const project = await ctx.db.query.projects.findFirst({
-        where: eq(projects.id, input.projectId),
-        columns: { id: true },
-      });
-
-      if (!project) {
-        throw new Error("Project not found");
-      }
-
-      // Check concurrent job limit (processing or uploading status)
-      const [concurrentJobsResult] = await ctx.db
-        .select({ count: count() })
-        .from(diarizationJobs)
-        .where(
-          and(
-            eq(diarizationJobs.projectId, input.projectId),
-            eq(diarizationJobs.status, "processing")
-          )
-        );
-
-      const [uploadingJobsResult] = await ctx.db
-        .select({ count: count() })
-        .from(diarizationJobs)
-        .where(
-          and(
-            eq(diarizationJobs.projectId, input.projectId),
-            eq(diarizationJobs.status, "uploading")
-          )
-        );
-
-      const concurrentJobs =
-        (concurrentJobsResult?.count ?? 0) + (uploadingJobsResult?.count ?? 0);
-
-      if (concurrentJobs >= MAX_CONCURRENT_JOBS) {
-        throw new Error(
-          `Maximum ${MAX_CONCURRENT_JOBS} concurrent jobs allowed. Please wait for existing jobs to complete.`
-        );
-      }
-
-      // Create job with pending status - will generate ID first
+      // Create job with pending status
       const [job] = await ctx.db
         .insert(diarizationJobs)
         .values({
-          projectId: input.projectId,
           status: "pending",
           originalFilename: input.filename,
           mimeType: input.contentType,
@@ -89,12 +46,8 @@ export const diarizationRouter = createTRPCRouter({
         throw new Error("Failed to create job");
       }
 
-      // Generate storage key using the newly created job ID
-      const storageKey = generateAudioFileKey(
-        input.projectId,
-        job.id,
-        input.filename
-      );
+      // Generate storage key using the job ID
+      const storageKey = generateAudioFileKey(job.id, input.filename);
 
       // Update job with storage key
       await ctx.db
@@ -158,7 +111,7 @@ export const diarizationRouter = createTRPCRouter({
     .input(
       z.object({
         jobId: z.string().uuid(),
-        pyannoteMediaUrl: z.string().url(),
+        pyannoteMediaUrl: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -303,19 +256,15 @@ export const diarizationRouter = createTRPCRouter({
 
   /**
    * Get a single job with all details including segments
+   * Also polls Pyannote and syncs results when job is processing
    */
   getJob: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Polling logic requires multiple conditional checks
     .query(async ({ ctx, input }) => {
       const job = await ctx.db.query.diarizationJobs.findFirst({
         where: eq(diarizationJobs.id, input.id),
         with: {
-          project: {
-            columns: {
-              id: true,
-              name: true,
-            },
-          },
           segments: {
             orderBy: (segs, { asc }) => [asc(segs.editedStartTime)],
             with: {
@@ -323,6 +272,14 @@ export const diarizationRouter = createTRPCRouter({
                 columns: {
                   id: true,
                   name: true,
+                },
+                with: {
+                  project: {
+                    columns: {
+                      id: true,
+                      name: true,
+                    },
+                  },
                 },
               },
             },
@@ -334,28 +291,139 @@ export const diarizationRouter = createTRPCRouter({
         throw new Error("Job not found");
       }
 
+      // If job is processing, poll Pyannote for status updates
+      if (job.status === "processing" && job.pyannoteJobId) {
+        try {
+          const pyannoteStatus = await getPyannoteJobStatus(job.pyannoteJobId);
+
+          if (pyannoteStatus.status === "succeeded") {
+            // Save segments to database
+            if (pyannoteStatus.output?.diarization) {
+              const segmentsToInsert = pyannoteStatus.output.diarization.map(
+                (seg) => ({
+                  jobId: job.id,
+                  pyannoteSpeakerLabel: seg.speaker,
+                  originalStartTime: seg.start,
+                  originalEndTime: seg.end,
+                  editedStartTime: seg.start,
+                  editedEndTime: seg.end,
+                  status: "pending" as const,
+                })
+              );
+
+              if (segmentsToInsert.length > 0) {
+                await ctx.db.insert(segments).values(segmentsToInsert);
+              }
+            }
+
+            // Mark job as completed
+            await ctx.db
+              .update(diarizationJobs)
+              .set({
+                status: "completed",
+                completedAt: new Date(),
+              })
+              .where(eq(diarizationJobs.id, job.id));
+
+            // Re-fetch and return updated job with segments
+            return ctx.db.query.diarizationJobs.findFirst({
+              where: eq(diarizationJobs.id, input.id),
+              with: {
+                segments: {
+                  orderBy: (segs, { asc }) => [asc(segs.editedStartTime)],
+                  with: {
+                    collection: {
+                      columns: {
+                        id: true,
+                        name: true,
+                      },
+                      with: {
+                        project: {
+                          columns: {
+                            id: true,
+                            name: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          }
+
+          if (pyannoteStatus.status === "failed") {
+            await ctx.db
+              .update(diarizationJobs)
+              .set({
+                status: "failed",
+                errorMessage: pyannoteStatus.error ?? "Diarization failed",
+              })
+              .where(eq(diarizationJobs.id, job.id));
+
+            // Return updated job
+            return {
+              ...job,
+              status: "failed" as const,
+              errorMessage: pyannoteStatus.error ?? "Diarization failed",
+            };
+          }
+
+          // Still pending or running - return current job status
+        } catch (error) {
+          // Error checking Pyannote status - log but return current job
+          console.error(
+            `Error checking Pyannote status for job ${job.id}:`,
+            error
+          );
+        }
+      }
+
       return job;
     }),
 
   /**
-   * List jobs for a project
+   * List all jobs globally with optional status filter
    */
   listJobs: publicProcedure
     .input(
-      z.object({
-        projectId: z.string().uuid(),
-        limit: z.number().min(1).max(50).default(20),
-        offset: z.number().min(0).default(0),
-      })
+      z
+        .object({
+          status: z
+            .enum(["pending", "uploading", "processing", "completed", "failed"])
+            .optional(),
+          limit: z.number().min(1).max(50).default(20),
+          offset: z.number().min(0).default(0),
+        })
+        .optional()
     )
-    .query(async ({ ctx, input }) =>
-      ctx.db.query.diarizationJobs.findMany({
-        where: eq(diarizationJobs.projectId, input.projectId),
-        limit: input.limit,
-        offset: input.offset,
+    .query(async ({ ctx, input }) => {
+      const whereClause = input?.status
+        ? eq(diarizationJobs.status, input.status)
+        : or(
+            eq(diarizationJobs.status, "completed"),
+            eq(diarizationJobs.status, "processing"),
+            eq(diarizationJobs.status, "pending"),
+            eq(diarizationJobs.status, "uploading"),
+            eq(diarizationJobs.status, "failed")
+          );
+
+      return ctx.db.query.diarizationJobs.findMany({
+        where: whereClause,
+        limit: input?.limit ?? 20,
+        offset: input?.offset ?? 0,
         orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
-      })
-    ),
+        with: {
+          segments: {
+            columns: {
+              id: true,
+              status: true,
+              collectionId: true,
+            },
+          },
+        },
+      });
+    }),
 
   /**
    * Get presigned URL for downloading/streaming audio file

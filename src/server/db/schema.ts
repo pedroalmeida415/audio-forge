@@ -98,15 +98,12 @@ export const collections = createTable(
 
 /**
  * Diarization Jobs - One job per audio file (1:1 relationship)
- * Max 10 concurrent jobs allowed per project
+ * Jobs are global (not tied to projects) - connection happens via segment assignment
  */
 export const diarizationJobs = createTable(
   "diarization_job",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
 
     // Job status
     status: jobStatusEnum("status").default("pending").notNull(),
@@ -141,14 +138,7 @@ export const diarizationJobs = createTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  (table) => [
-    index("diarization_job_project_id_idx").on(table.projectId),
-    index("diarization_job_status_idx").on(table.status),
-    index("diarization_job_project_status_idx").on(
-      table.projectId,
-      table.status
-    ),
-  ]
+  (table) => [index("diarization_job_status_idx").on(table.status)]
 );
 
 /**
@@ -261,7 +251,6 @@ export const audioClips = createTable(
 
 export const projectsRelations = relations(projects, ({ many }) => ({
   collections: many(collections),
-  diarizationJobs: many(diarizationJobs),
 }));
 
 export const collectionsRelations = relations(collections, ({ one, many }) => ({
@@ -275,11 +264,7 @@ export const collectionsRelations = relations(collections, ({ one, many }) => ({
 
 export const diarizationJobsRelations = relations(
   diarizationJobs,
-  ({ one, many }) => ({
-    project: one(projects, {
-      fields: [diarizationJobs.projectId],
-      references: [projects.id],
-    }),
+  ({ many }) => ({
     segments: many(segments),
   })
 );

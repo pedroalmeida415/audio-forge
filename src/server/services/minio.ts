@@ -143,15 +143,12 @@ export async function deleteObject(key: string): Promise<void> {
 
 /**
  * Generate a unique storage key for an audio file
+ * Jobs are global (not tied to projects)
  */
-export function generateAudioFileKey(
-  projectId: string,
-  jobId: string,
-  filename: string
-): string {
+export function generateAudioFileKey(jobId: string, filename: string): string {
   const timestamp = Date.now();
   const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-  return `projects/${projectId}/jobs/${jobId}/uploads/${timestamp}-${sanitizedFilename}`;
+  return `jobs/${jobId}/uploads/${timestamp}-${sanitizedFilename}`;
 }
 
 /**

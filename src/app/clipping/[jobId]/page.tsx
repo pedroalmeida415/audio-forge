@@ -45,8 +45,6 @@ function ErrorMessage({ message }: { message: string | null }) {
 }
 
 type JobHeaderProps = {
-  projectId: string;
-  projectName: string;
   filename: string | null;
   status: string;
   isExtracting: boolean;
@@ -56,8 +54,6 @@ type JobHeaderProps = {
 };
 
 function JobHeader({
-  projectId,
-  projectName,
   filename,
   status,
   isExtracting,
@@ -69,15 +65,15 @@ function JobHeader({
     <div className="mb-6">
       <Link
         className="mb-4 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
-        href={`/projects/${projectId}`}
+        href="/clipping"
       >
         <ArrowLeft className="mr-1 h-4 w-4" />
-        Back to {projectName}
+        Back to Jobs
       </Link>
 
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="font-bold text-2xl">Diarization Job</h1>
+          <h1 className="font-bold text-2xl">Clipping Workspace</h1>
           {filename && (
             <p className="mt-1 text-muted-foreground text-sm">{filename}</p>
           )}
@@ -109,12 +105,12 @@ function JobHeader({
   );
 }
 
-export default function JobWorkspacePage({
+export default function ClippingWorkspacePage({
   params,
 }: {
-  params: Promise<{ projectId: string; jobId: string }>;
+  params: Promise<{ jobId: string }>;
 }) {
-  const { projectId, jobId } = use(params);
+  const { jobId } = use(params);
 
   const {
     job,
@@ -143,10 +139,10 @@ export default function JobWorkspacePage({
     return (
       <div className="container mx-auto py-8">
         <p className="text-muted-foreground">Job not found</p>
-        <Link href={`/projects/${projectId}`}>
+        <Link href="/clipping">
           <Button className="mt-4" variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Project
+            Back to Jobs
           </Button>
         </Link>
       </div>
@@ -162,8 +158,6 @@ export default function JobWorkspacePage({
         isExtracting={isExtracting}
         onExtractClips={handleExtractClips}
         onRefetch={refetch}
-        projectId={projectId}
-        projectName={job.project.name}
         status={job.status}
       />
 
@@ -214,7 +208,6 @@ export default function JobWorkspacePage({
               <SegmentList
                 jobId={jobId}
                 onSegmentSelect={setSelectedSegmentId}
-                projectId={projectId}
                 segments={segments}
                 selectedSegmentId={selectedSegmentId}
               />
