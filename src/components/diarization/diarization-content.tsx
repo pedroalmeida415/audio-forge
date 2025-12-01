@@ -30,9 +30,9 @@ type UploadState =
   | { status: "success"; jobId: string }
   | { status: "error"; message: string };
 
-interface DiarizationContentProps {
+type DiarizationContentProps = {
   onSuccess?: (jobId: string) => void;
-}
+};
 
 export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
   const router = useRouter();
@@ -61,16 +61,19 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
   });
 
   async function handleStartUpload() {
-    if (!selectedFile) return;
+    if (!selectedFile) {
+      return;
+    }
 
     try {
       // Step 1: Create job and get presigned URL
       setUploadState({ status: "creating" });
-      const { jobId, uploadUrl } = await createJobMutation.mutateAsync({
-        filename: selectedFile.name,
-        contentType: selectedFile.type,
-        fileSizeBytes: selectedFile.size,
-      });
+      const { jobId, uploadUrl, storageKey } =
+        await createJobMutation.mutateAsync({
+          filename: selectedFile.name,
+          contentType: selectedFile.type,
+          fileSizeBytes: selectedFile.size,
+        });
 
       // Step 2: Upload file directly to MinIO
       setUploadState({ status: "uploading", progress: 0 });
@@ -87,7 +90,10 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
       const transferResponse = await fetch("/api/transfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId }),
+        body: JSON.stringify({
+          storageKey,
+          contentType: selectedFile.type || "audio/mpeg",
+        }),
       });
 
       if (!transferResponse.ok) {
@@ -95,13 +101,13 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
         throw new Error(error.error ?? "Failed to transfer file");
       }
 
-      const { pyannoteMediaUrl } = await transferResponse.json();
+      const { mediaUrl } = await transferResponse.json();
 
       // Step 5: Start Pyannote processing
       setUploadState({ status: "starting" });
       await startProcessingMutation.mutateAsync({
         jobId,
-        pyannoteMediaUrl,
+        pyannoteMediaUrl: mediaUrl,
       });
 
       setUploadState({ status: "success", jobId });
@@ -122,7 +128,7 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
     }
   }
 
-  async function uploadFileWithProgress(
+  function uploadFileWithProgress(
     file: File,
     url: string,
     onProgress: (progress: number) => void
