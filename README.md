@@ -1,28 +1,147 @@
-# Create T3 App
+# Voice Dataset Builder
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+A web application for building high-quality voice datasets for TTS (Text-to-Speech) training. Upload audio files, automatically identify speakers using AI-powered diarization, and extract clean audio clips organized by speaker.
 
-## What's next? How do I make an app with this?
+## Features
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+- **Speaker Diarization** - Automatically identify and segment different speakers in audio files using [Pyannote](https://github.com/pyannote/pyannote-audio)
+- **Waveform Editor** - Visual waveform display with draggable segment handles for precise timestamp adjustments
+- **Flexible Organization** - Organize clips into collections within projects; segments can be assigned to any collection across projects
+- **Clip Extraction** - Extract audio segments as individual clips (MP3, WAV, FLAC)
+- **Audio Playback** - Preview clips directly in the browser
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+## Tech Stack
 
-- [Next.js](https://nextjs.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+- **Framework**: [Next.js 15](https://nextjs.org) (App Router)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Database**: [PostgreSQL](https://www.postgresql.org/) with [Drizzle ORM](https://orm.drizzle.team)
+- **API**: [tRPC](https://trpc.io) for type-safe APIs
+- **Storage**: [MinIO](https://min.io/) (S3-compatible object storage)
+- **Diarization**: [Pyannote API](https://www.pyannote.ai/)
+- **Audio Processing**: [FFmpeg](https://ffmpeg.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com/)
+- **Linting**: [Biome](https://biomejs.dev/) via [Ultracite](https://github.com/noahgsolomon/ultracite)
 
-## Learn More
+## Prerequisites
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+- [Node.js](https://nodejs.org/) 20+
+- [Bun](https://bun.sh/) (recommended) or npm/pnpm
+- [Docker](https://www.docker.com/) (for PostgreSQL and MinIO)
+- [FFmpeg](https://ffmpeg.org/) installed and available in PATH
+- [Pyannote API key](https://www.pyannote.ai/)
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+## Setup
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+### 1. Clone and install dependencies
 
-## How do I deploy this?
+```bash
+git clone <repository-url>
+cd t3-app
+bun install
+```
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+### 2. Start infrastructure services
+
+```bash
+docker compose up -d
+```
+
+This starts:
+- PostgreSQL on port 5432
+- MinIO on port 9000 (API) and 9001 (Console)
+
+### 3. Configure environment variables
+
+Copy the example environment file and configure:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+
+```env
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/voice_dataset"
+
+# MinIO
+MINIO_ENDPOINT="localhost"
+MINIO_PORT="9000"
+MINIO_ACCESS_KEY="minioadmin"
+MINIO_SECRET_KEY="minioadmin"
+MINIO_BUCKET="voice-dataset"
+MINIO_USE_SSL="false"
+
+# Pyannote
+PYANNOTE_API_KEY="your-pyannote-api-key"
+```
+
+### 4. Initialize the database
+
+```bash
+bun db:push
+```
+
+### 5. Start the development server
+
+```bash
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── @modal/             # Parallel route for modals
+│   ├── clipping/           # Clipping workspace pages
+│   ├── diarization/        # Diarization upload page
+│   └── projects/           # Project management pages
+├── components/
+│   ├── clipping/           # Clipping workspace components
+│   ├── diarization/        # Upload components
+│   ├── nav/                # Navigation components
+│   ├── projects/           # Project/collection components
+│   ├── segments/           # Segment list components
+│   ├── ui/                 # shadcn/ui components
+│   └── waveform/           # Waveform viewer components
+├── hooks/                  # React hooks
+├── lib/                    # Utility functions
+├── server/
+│   ├── api/                # tRPC routers
+│   ├── db/                 # Database schema and client
+│   └── services/           # External service integrations
+└── trpc/                   # tRPC client setup
+```
+
+## User Flow
+
+1. **Diarize**: Upload an audio file for speaker diarization
+2. **Clip**: Review segments, adjust timestamps, assign to collections
+3. **Extract**: Generate audio clips from approved segments
+4. **Organize**: Manage clips within project collections
+
+## Scripts
+
+```bash
+bun dev           # Start development server
+bun build         # Build for production
+bun start         # Start production server
+bun db:push       # Push schema changes to database
+bun db:studio     # Open Drizzle Studio
+bun biome:check   # Check for linting issues
+bun biome:fix     # Auto-fix linting issues
+```
+
+## Architecture
+
+- **Diarization jobs are global** - not tied to any project, allowing flexible organization
+- **Segments can be assigned to any collection** - across any project
+- **Projects contain collections** - which contain extracted clips
+- **Original audio is preserved** - clips are extracted copies, originals remain in MinIO
+
+## License
+
+MIT
