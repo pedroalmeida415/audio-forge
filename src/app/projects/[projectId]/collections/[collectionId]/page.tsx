@@ -3,14 +3,14 @@
 import { ArrowLeft, Scissors } from "lucide-react";
 import Link from "next/link";
 import { use, useCallback, useMemo, useState } from "react";
-import { Button } from "~/components/ui/button";
-import { Skeleton } from "~/components/ui/skeleton";
 import {
   BatchProcessingToolbar,
   ClipProcessingCard,
 } from "~/components/collection";
-import { api } from "~/trpc/react";
+import { Button } from "~/components/ui/button";
+import { Skeleton } from "~/components/ui/skeleton";
 import type { ProcessingType } from "~/server/db/schema";
+import { api } from "~/trpc/react";
 
 export default function CollectionDetailPage({
   params,
@@ -68,17 +68,19 @@ export default function CollectionDetailPage({
     },
   });
 
-  const batchCalculateMOSMutation = api.processing.batchCalculateMOS.useMutation({
-    onSuccess: () => {
-      utils.collection.getById.invalidate({ id: collectionId });
-    },
-  });
+  const batchCalculateMOSMutation =
+    api.processing.batchCalculateMOS.useMutation({
+      onSuccess: () => {
+        utils.collection.getById.invalidate({ id: collectionId });
+      },
+    });
 
-  const updateTranscriptMutation = api.transcription.updateTranscript.useMutation({
-    onSuccess: () => {
-      utils.collection.getById.invalidate({ id: collectionId });
-    },
-  });
+  const updateTranscriptMutation =
+    api.transcription.updateTranscript.useMutation({
+      onSuccess: () => {
+        utils.collection.getById.invalidate({ id: collectionId });
+      },
+    });
 
   const autoTranscribeMutation = api.transcription.autoTranscribe.useMutation({
     onSuccess: () => {
@@ -86,17 +88,21 @@ export default function CollectionDetailPage({
     },
   });
 
-  const batchTranscribeMutation = api.transcription.batchTranscribe.useMutation({
-    onSuccess: () => {
-      utils.collection.getById.invalidate({ id: collectionId });
-    },
-  });
+  const batchTranscribeMutation = api.transcription.batchTranscribe.useMutation(
+    {
+      onSuccess: () => {
+        utils.collection.getById.invalidate({ id: collectionId });
+      },
+    }
+  );
 
-  const clearTranscriptMutation = api.transcription.clearTranscript.useMutation({
-    onSuccess: () => {
-      utils.collection.getById.invalidate({ id: collectionId });
-    },
-  });
+  const clearTranscriptMutation = api.transcription.clearTranscript.useMutation(
+    {
+      onSuccess: () => {
+        utils.collection.getById.invalidate({ id: collectionId });
+      },
+    }
+  );
 
   // Get clip URL
   const getClipUrlQuery = api.clip.getClipUrl.useQuery;
@@ -300,8 +306,8 @@ export default function CollectionDetailPage({
                     autoTranscribeMutation.isPending &&
                     autoTranscribeMutation.variables?.clipId === clip.id,
                   isDeletingProcessed: deleteProcessedClipMutation.isPending
-                    ? deleteProcessedClipMutation.variables?.processedClipId ??
-                      null
+                    ? (deleteProcessedClipMutation.variables?.processedClipId ??
+                      null)
                     : null,
                 }}
               />
@@ -315,10 +321,10 @@ export default function CollectionDetailPage({
 
 type ClipData = {
   id: string;
-  durationSeconds: number;
-  extractedStartTime: number;
-  extractedEndTime: number;
-  format: string;
+  durationSeconds: number | null;
+  extractedStartTime: number | null;
+  extractedEndTime: number | null;
+  format: string | null;
   transcript: string | null;
   transcriptMetadata: {
     language?: string;
@@ -327,22 +333,24 @@ type ClipData = {
   } | null;
   mosScore: number | null;
   createdAt: Date;
-  segment: {
-    pyannoteSpeakerLabel: string;
-    job: {
-      originalFilename: string | null;
-    };
-  };
+  // Denormalized source info (no segment relation)
+  sourceSpeakerLabel: string | null;
+  sourceFilename: string | null;
   processedClips: Array<{
     id: string;
-    processingType: "denoise" | "remove_bg_music" | "remove_overlap" | "normalize" | "upsample";
+    processingType:
+      | "denoise"
+      | "remove_bg_music"
+      | "remove_overlap"
+      | "normalize"
+      | "upsample";
     processingStatus: "pending" | "processing" | "completed" | "failed";
     processingParams: Record<string, unknown> | null;
     mosScore: number | null;
     durationSeconds: number | null;
     sampleRate: number | null;
     format: string | null;
-    errorMessage: string | null;
+    processingErrorMessage: string | null;
     createdAt: Date;
   }>;
 };
@@ -399,13 +407,10 @@ function ClipProcessingCardWrapper({
     [processedUrlsCache]
   );
 
-  const handlePlayProcessed = useCallback(
-    async (processedClipId: string) => {
-      // If URL not cached, we could fetch it, but for now we'll rely on the query
-      // In a real app, you'd want to prefetch these
-    },
-    []
-  );
+  const handlePlayProcessed = useCallback(async (processedClipId: string) => {
+    // If URL not cached, we could fetch it, but for now we'll rely on the query
+    // In a real app, you'd want to prefetch these
+  }, []);
 
   const handleDownloadProcessed = useCallback(
     async (processedClipId: string) => {

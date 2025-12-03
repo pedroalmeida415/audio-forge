@@ -1,33 +1,33 @@
 "use client";
 
-import { RotateCcw, X } from "lucide-react";
 import { CollectionCombobox } from "~/components/clipping/collection-combobox";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
-import { useSegmentActions } from "~/hooks/use-segment-actions";
+import { Checkbox } from "~/components/ui/checkbox";
 import { cn } from "~/lib/utils";
+import type { DiarizationSegment } from "~/server/db/schema";
 
-type Segment = {
-  id: string;
-  pyannoteSpeakerLabel: string;
-  originalStartTime: number;
-  originalEndTime: number;
-  editedStartTime: number;
-  editedEndTime: number;
-  status: string;
+type SegmentSelection = {
+  selected: boolean;
   collectionId: string | null;
-  collection: {
-    id: string;
-    name: string;
-    project?: { id: string; name: string };
-  } | null;
+  projectId: string | null;
 };
 
 type SegmentListProps = {
-  segments: Segment[];
+  segments: DiarizationSegment[];
   selectedSegmentId: string | null;
   onSegmentSelect: (segmentId: string) => void;
-  jobId: string;
+  selections: Map<string, SegmentSelection>;
+  onToggleSelection: (segmentId: string) => void;
+  onSetCollection: (
+    segmentId: string,
+    collectionId: string | null,
+    projectId: string | null
+  ) => void;
+  onCreateCollection: (
+    name: string,
+    projectId: string
+  ) => Promise<{ id: string }>;
+  isCreatingCollection?: boolean;
 };
 
 function formatTime(seconds: number): string {
@@ -39,42 +39,49 @@ function formatTime(seconds: number): string {
 
 function SegmentItem({
   segment,
-  isSelected,
+  isActive,
   onClick,
-  jobId,
+  selection,
+  onToggleSelection,
+  onSetCollection,
+  onCreateCollection,
+  isCreatingCollection,
 }: {
-  segment: Segment;
-  isSelected: boolean;
+  segment: DiarizationSegment;
+  isActive: boolean;
   onClick: () => void;
-  jobId: string;
+  selection: SegmentSelection | undefined;
+  onToggleSelection: () => void;
+  onSetCollection: (
+    collectionId: string | null,
+    projectId: string | null
+  ) => void;
+  onCreateCollection: (
+    name: string,
+    projectId: string
+  ) => Promise<{ id: string }>;
+  isCreatingCollection?: boolean;
 }) {
-  const {
-    assignToCollection,
-    toggleExcluded,
-    resetTimestamps: resetTimestampsAction,
-    createAndAssign,
-    isPending,
-  } = useSegmentActions({ jobId });
+  const isSelected = selection?.selected ?? false;
 
-  function handleCollectionSelect(collectionId: string | null) {
-    assignToCollection(segment.id, collectionId);
+  function handleCollectionSelect(
+    collectionId: string | null,
+    projectId?: string | null
+  ) {
+    onSetCollection(collectionId, projectId ?? null);
   }
 
-  function handleCreateAndAssign(name: string, projectId: string) {
-    createAndAssign(segment.id, name, projectId);
+  async function handleCreateAndAssign(name: string, projectId: string) {
+    const result = await onCreateCollection(name, projectId);
+    onSetCollection(result.id, projectId);
   }
 
-  const isExcluded = segment.status === "excluded";
-  const hasTimestampChanges =
-    segment.editedStartTime !== segment.originalStartTime ||
-    segment.editedEndTime !== segment.originalEndTime;
-
-  // Build selectedCollection with project info for the combobox
-  const selectedCollection = segment.collection
+  // Build selectedCollection for the combobox if we have one
+  const selectedCollection = selection?.collectionId
     ? {
-        id: segment.collection.id,
-        name: segment.collection.name,
-        project: segment.collection.project ?? { id: "", name: "Unknown" },
+        id: selection.collectionId,
+        name: "", // Name will be resolved by combobox
+        project: { id: selection.projectId ?? "", name: "" },
       }
     : null;
 
@@ -82,9 +89,9 @@ function SegmentItem({
     <div
       className={cn(
         "rounded-lg border p-3 transition-colors",
-        isSelected && "border-primary bg-primary/5",
-        isExcluded && "opacity-50",
-        !(isSelected || isExcluded) && "hover:border-muted-foreground/50"
+        isActive && "border-primary bg-primary/5",
+        isSelected && "bg-accent/50",
+        !(isActive || isSelected) && "hover:border-muted-foreground/50"
       )}
       onClick={onClick}
       onKeyDown={(e) => {
@@ -96,55 +103,32 @@ function SegmentItem({
       tabIndex={0}
     >
       <div className="mb-2 flex items-start justify-between">
-        <div>
-          <Badge className="mb-1" variant="outline">
-            {segment.pyannoteSpeakerLabel}
-          </Badge>
-          <p className="text-muted-foreground text-xs">
-            {formatTime(segment.editedStartTime)} -{" "}
-            {formatTime(segment.editedEndTime)}
-            {hasTimestampChanges && (
-              <span className="ml-1 text-yellow-600">(edited)</span>
-            )}
-          </p>
-        </div>
-        <div className="flex gap-1">
-          {hasTimestampChanges && (
-            <Button
-              disabled={isPending}
-              onClick={(e) => {
-                e.stopPropagation();
-                resetTimestampsAction(segment.id);
-              }}
-              size="icon"
-              title="Reset to original timestamps"
-              variant="ghost"
-            >
-              <RotateCcw className="h-3 w-3" />
-            </Button>
-          )}
-          <Button
-            disabled={isPending}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleExcluded(segment.id, isExcluded);
-            }}
-            size="icon"
-            title={isExcluded ? "Include segment" : "Exclude segment"}
-            variant="ghost"
-          >
-            <X className={cn("h-3 w-3", isExcluded && "text-red-500")} />
-          </Button>
+        <div className="flex items-start gap-3">
+          <Checkbox
+            checked={isSelected}
+            className="mt-1"
+            onCheckedChange={() => onToggleSelection()}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div>
+            <Badge className="mb-1" variant="outline">
+              {segment.speaker}
+            </Badge>
+            <p className="text-muted-foreground text-xs">
+              {formatTime(segment.start)} - {formatTime(segment.end)}
+            </p>
+          </div>
         </div>
       </div>
 
-      {!isExcluded && (
+      {isSelected && (
         <div
+          className="mt-2"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
           <CollectionCombobox
-            disabled={isPending}
+            disabled={isCreatingCollection}
             onCreateAndAssign={handleCreateAndAssign}
             onSelect={handleCollectionSelect}
             selectedCollection={selectedCollection}
@@ -159,12 +143,18 @@ export function SegmentList({
   segments,
   selectedSegmentId,
   onSegmentSelect,
-  jobId,
+  selections,
+  onToggleSelection,
+  onSetCollection,
+  onCreateCollection,
+  isCreatingCollection,
 }: SegmentListProps) {
-  const approvedCount = segments.filter(
-    (s) => s.status === "approved" && s.collectionId
+  const selectedCount = Array.from(selections.values()).filter(
+    (s) => s.selected
   ).length;
-  const excludedCount = segments.filter((s) => s.status === "excluded").length;
+  const assignedCount = Array.from(selections.values()).filter(
+    (s) => s.selected && s.collectionId
+  ).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -173,20 +163,26 @@ export function SegmentList({
         <div className="flex gap-2 text-muted-foreground text-xs">
           <span>{segments.length} total</span>
           <span>·</span>
-          <span className="text-green-600">{approvedCount} assigned</span>
+          <span className="text-blue-600">{selectedCount} selected</span>
           <span>·</span>
-          <span className="text-red-600">{excludedCount} excluded</span>
+          <span className="text-green-600">{assignedCount} assigned</span>
         </div>
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto">
         {segments.map((segment) => (
           <SegmentItem
-            isSelected={selectedSegmentId === segment.id}
-            jobId={jobId}
+            isActive={selectedSegmentId === segment.id}
+            isCreatingCollection={isCreatingCollection}
             key={segment.id}
             onClick={() => onSegmentSelect(segment.id)}
+            onCreateCollection={onCreateCollection}
+            onSetCollection={(collectionId, projectId) =>
+              onSetCollection(segment.id, collectionId, projectId)
+            }
+            onToggleSelection={() => onToggleSelection(segment.id)}
             segment={segment}
+            selection={selections.get(segment.id)}
           />
         ))}
       </div>

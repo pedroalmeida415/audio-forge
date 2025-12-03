@@ -1,8 +1,8 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { audioClips, diarizationJobs, segments } from "~/server/db/schema";
+import { clips, diarizationJobs } from "~/server/db/schema";
 import { extractClip } from "~/server/services/ffmpeg";
 import {
   BUCKET_NAME,
@@ -15,24 +15,39 @@ import {
 
 export const clipRouter = createTRPCRouter({
   /**
-   * Extract clips from approved segments for a single diarization job
+   * Extract clips from segments in a diarization job
+   * Segments are read from job JSONB, collection assignment comes from input
    */
   extractClips: publicProcedure
     .input(
       z.object({
         jobId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).optional(),
+        segments: z.array(
+          z.object({
+            segmentId: z.string().uuid(),
+            collectionId: z.string().uuid(),
+            projectId: z.string().uuid(),
+            startTime: z.number().min(0),
+            endTime: z.number().min(0),
+            speakerLabel: z.string(),
+          })
+        ),
         format: z.enum(["mp3", "wav", "flac"]).default("mp3"),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Get diarization job (audio file info is in the job)
+      if (input.segments.length === 0) {
+        throw new Error("No segments to extract");
+      }
+
+      // Get diarization job for audio file info
       const job = await ctx.db.query.diarizationJobs.findFirst({
         where: eq(diarizationJobs.id, input.jobId),
         columns: {
           id: true,
           storageKey: true,
           storageBucket: true,
+          originalFilename: true,
         },
       });
 
@@ -42,38 +57,6 @@ export const clipRouter = createTRPCRouter({
 
       if (!job.storageKey) {
         throw new Error("Job has no associated audio file");
-      }
-
-      // Get segments to extract with their collections
-      const whereClause = input.segmentIds
-        ? and(
-            eq(segments.jobId, input.jobId),
-            inArray(segments.id, input.segmentIds),
-            eq(segments.status, "approved")
-          )
-        : and(eq(segments.jobId, input.jobId), eq(segments.status, "approved"));
-
-      const segmentsToExtract = await ctx.db.query.segments.findMany({
-        where: whereClause,
-        orderBy: (segment, { asc }) => [asc(segment.editedStartTime)],
-        with: {
-          collection: {
-            columns: {
-              id: true,
-              projectId: true,
-            },
-          },
-        },
-      });
-
-      if (segmentsToExtract.length === 0) {
-        throw new Error("No approved segments to extract");
-      }
-
-      // Verify all segments have collections assigned
-      const missingCollection = segmentsToExtract.find((s) => !s.collection);
-      if (missingCollection) {
-        throw new Error("All segments must have a collection assigned");
       }
 
       // Download audio file from MinIO
@@ -96,25 +79,19 @@ export const clipRouter = createTRPCRouter({
       }> = [];
 
       // Extract each segment
-      for (const segment of segmentsToExtract) {
+      for (const segment of input.segments) {
         try {
           // Extract clip using FFmpeg
           const result = await extractClip(audioBuffer, {
-            startTime: segment.editedStartTime,
-            endTime: segment.editedEndTime,
+            startTime: segment.startTime,
+            endTime: segment.endTime,
             format: input.format,
           });
 
-          // Get projectId from collection (verified above that collection exists)
-          const collection = segment.collection;
-          if (!collection) {
-            throw new Error("Collection is missing");
-          }
-
           const storageKey = generateClipKey(
-            collection.projectId,
-            collection.id,
-            segment.id,
+            segment.projectId,
+            segment.collectionId,
+            segment.segmentId,
             input.format
           );
 
@@ -125,39 +102,38 @@ export const clipRouter = createTRPCRouter({
             `audio/${input.format}`
           );
 
-          // Create clip record
+          // Create clip record in unified clips table
           const [clip] = await ctx.db
-            .insert(audioClips)
+            .insert(clips)
             .values({
-              segmentId: segment.id,
-              collectionId: collection.id,
+              collectionId: segment.collectionId,
+              clipType: "original",
               storageBucket: BUCKET_NAME,
               storageKey,
               durationSeconds: result.durationSeconds,
               fileSizeBytes: result.buffer.length,
               format: input.format,
-              extractedStartTime: segment.editedStartTime,
-              extractedEndTime: segment.editedEndTime,
+              sourceFilename: job.originalFilename,
+              sourceSpeakerLabel: segment.speakerLabel,
+              extractedStartTime: segment.startTime,
+              extractedEndTime: segment.endTime,
             })
             .returning();
-
-          // Update segment status
-          await ctx.db
-            .update(segments)
-            .set({ status: "extracted" })
-            .where(eq(segments.id, segment.id));
 
           if (!clip) {
             throw new Error("Failed to create clip record");
           }
 
           extractedClips.push({
-            segmentId: segment.id,
+            segmentId: segment.segmentId,
             clipId: clip.id,
             storageKey,
           });
         } catch (error) {
-          console.error(`Failed to extract segment ${segment.id}:`, error);
+          console.error(
+            `Failed to extract segment ${segment.segmentId}:`,
+            error
+          );
           // Continue with other segments
         }
       }
@@ -165,7 +141,7 @@ export const clipRouter = createTRPCRouter({
       return {
         success: true,
         extractedCount: extractedClips.length,
-        totalSegments: segmentsToExtract.length,
+        totalSegments: input.segments.length,
         clips: extractedClips,
       };
     }),
@@ -176,15 +152,15 @@ export const clipRouter = createTRPCRouter({
   getClipUrl: publicProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const clip = await ctx.db.query.audioClips.findFirst({
-        where: eq(audioClips.id, input.clipId),
+      const clip = await ctx.db.query.clips.findFirst({
+        where: eq(clips.id, input.clipId),
         columns: {
           storageKey: true,
         },
       });
 
-      if (!clip) {
-        throw new Error("Clip not found");
+      if (!clip?.storageKey) {
+        throw new Error("Clip not found or has no storage key");
       }
 
       const url = await getPresignedDownloadUrl(clip.storageKey);
@@ -192,7 +168,7 @@ export const clipRouter = createTRPCRouter({
     }),
 
   /**
-   * List clips for a collection
+   * List original clips for a collection (excludes processed clips)
    */
   listByCollection: publicProcedure
     .input(
@@ -202,41 +178,45 @@ export const clipRouter = createTRPCRouter({
         offset: z.number().min(0).default(0),
       })
     )
-    .query(async ({ ctx, input }) =>
-      ctx.db.query.audioClips.findMany({
-        where: eq(audioClips.collectionId, input.collectionId),
+    .query(async ({ ctx, input }) => {
+      // Get original clips (clipType = 'original', no originalClipId)
+      const originalClips = await ctx.db.query.clips.findMany({
+        where: and(
+          eq(clips.collectionId, input.collectionId),
+          eq(clips.clipType, "original")
+        ),
         limit: input.limit,
         offset: input.offset,
         orderBy: (clip, { desc }) => [desc(clip.createdAt)],
         with: {
-          segment: {
-            columns: {
-              pyannoteSpeakerLabel: true,
-            },
-            with: {
-              job: {
-                columns: {
-                  originalFilename: true,
-                },
-              },
-            },
-          },
+          processedVersions: true,
         },
-      })
-    ),
+      });
+
+      return originalClips;
+    }),
 
   /**
-   * Delete a clip
+   * Delete a clip and its processed versions
    */
   delete: publicProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // Get the clip with storage info
-      const clip = await ctx.db.query.audioClips.findFirst({
-        where: eq(audioClips.id, input.clipId),
+      // Get the clip with storage info and processed versions
+      const clip = await ctx.db.query.clips.findFirst({
+        where: eq(clips.id, input.clipId),
         columns: {
-          segmentId: true,
+          id: true,
           storageKey: true,
+          clipType: true,
+        },
+        with: {
+          processedVersions: {
+            columns: {
+              id: true,
+              storageKey: true,
+            },
+          },
         },
       });
 
@@ -244,40 +224,53 @@ export const clipRouter = createTRPCRouter({
         throw new Error("Clip not found");
       }
 
-      // Delete file from MinIO storage
-      try {
-        await deleteObject(clip.storageKey);
-      } catch (error) {
-        // Log error but continue with database deletion
-        console.error(
-          `Failed to delete clip file ${clip.storageKey}:`,
-          error instanceof Error ? error.message : "Unknown error"
-        );
+      // Collect all storage keys to delete
+      const storageKeysToDelete: string[] = [];
+      if (clip.storageKey) {
+        storageKeysToDelete.push(clip.storageKey);
       }
 
-      // Delete clip from database
-      await ctx.db.delete(audioClips).where(eq(audioClips.id, input.clipId));
+      // For original clips, also delete processed versions
+      if (clip.clipType === "original" && clip.processedVersions) {
+        for (const processed of clip.processedVersions) {
+          if (processed.storageKey) {
+            storageKeysToDelete.push(processed.storageKey);
+          }
+        }
+      }
 
-      // Revert segment status to approved
-      await ctx.db
-        .update(segments)
-        .set({ status: "approved" })
-        .where(eq(segments.id, clip.segmentId));
+      // Delete files from MinIO storage
+      for (const key of storageKeysToDelete) {
+        try {
+          await deleteObject(key);
+        } catch (error) {
+          console.error(
+            `Failed to delete file ${key}:`,
+            error instanceof Error ? error.message : "Unknown error"
+          );
+        }
+      }
+
+      // Delete clip from database (cascade will delete processed versions)
+      await ctx.db.delete(clips).where(eq(clips.id, input.clipId));
 
       return { success: true };
     }),
 
   /**
-   * Get clip count for a collection
+   * Get original clip count for a collection
    */
   getCountByCollection: publicProcedure
     .input(z.object({ collectionId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const clips = await ctx.db.query.audioClips.findMany({
-        where: eq(audioClips.collectionId, input.collectionId),
+      const clipList = await ctx.db.query.clips.findMany({
+        where: and(
+          eq(clips.collectionId, input.collectionId),
+          eq(clips.clipType, "original")
+        ),
         columns: { id: true },
       });
 
-      return { count: clips.length };
+      return { count: clipList.length };
     }),
 });

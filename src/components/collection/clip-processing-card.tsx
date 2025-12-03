@@ -11,13 +11,13 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { MOSBadge } from "~/components/collection/mos-badge";
+import { ProcessingHistoryPanel } from "~/components/collection/processing-history-panel";
+import { ProcessingOptionsPanel } from "~/components/collection/processing-options-panel";
+import { TranscriptionEditor } from "~/components/collection/transcription-editor";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Checkbox } from "~/components/ui/checkbox";
-import { MOSBadge } from "~/components/collection/mos-badge";
-import { ProcessingOptionsPanel } from "~/components/collection/processing-options-panel";
-import { ProcessingHistoryPanel } from "~/components/collection/processing-history-panel";
-import { TranscriptionEditor } from "~/components/collection/transcription-editor";
 import { cn } from "~/lib/utils";
 import type { ProcessingStatus, ProcessingType } from "~/server/db/schema";
 
@@ -48,12 +48,9 @@ type ClipData = {
   } | null;
   mosScore?: number | null;
   createdAt: Date;
-  segment: {
-    pyannoteSpeakerLabel: string;
-    job: {
-      originalFilename: string | null;
-    };
-  };
+  // Denormalized source info (no segment relation)
+  sourceSpeakerLabel: string | null;
+  sourceFilename: string | null;
   processedClips?: ProcessedClipInfo[];
 };
 
@@ -179,7 +176,8 @@ export function ClipProcessingCard({
     <Card
       className={cn(
         "transition-all duration-200",
-        isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+        isSelected &&
+          "ring-2 ring-primary ring-offset-2 ring-offset-background",
         className
       )}
     >
@@ -199,12 +197,12 @@ export function ClipProcessingCard({
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <span className="text-muted-foreground">
-                  {clip.segment.pyannoteSpeakerLabel}
+                  {clip.sourceSpeakerLabel ?? "Unknown speaker"}
                 </span>
                 <MOSBadge score={clip.mosScore} size="sm" />
               </CardTitle>
               <p className="text-muted-foreground text-xs">
-                {clip.segment.job.originalFilename ?? "Unknown source"}
+                {clip.sourceFilename ?? "Unknown source"}
               </p>
             </div>
 
@@ -244,7 +242,7 @@ export function ClipProcessingCard({
         {/* Audio player - Original */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs font-medium">
+            <span className="font-medium text-muted-foreground text-xs">
               Original
             </span>
             <MOSBadge score={clip.mosScore} size="sm" />

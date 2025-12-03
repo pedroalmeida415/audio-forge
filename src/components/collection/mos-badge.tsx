@@ -18,8 +18,10 @@ type MOSBadgeProps = {
  */
 function getMOSColor(score: number): string {
   if (score < 2.0) return "bg-red-500/20 text-red-400 border-red-500/30";
-  if (score < 3.0) return "bg-orange-500/20 text-orange-400 border-orange-500/30";
-  if (score < 4.0) return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+  if (score < 3.0)
+    return "bg-orange-500/20 text-orange-400 border-orange-500/30";
+  if (score < 4.0)
+    return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
   return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
 }
 
@@ -69,9 +71,7 @@ export function MOSBadge({
       title={`MOS: ${score.toFixed(1)} - ${label}`}
     >
       <span className="font-mono font-semibold">{score.toFixed(1)}</span>
-      {showLabel && (
-        <span className="opacity-80">{label}</span>
-      )}
+      {showLabel && <span className="opacity-80">{label}</span>}
     </div>
   );
 }
@@ -111,7 +111,7 @@ export function MOSComparison({
       {diff !== 0 && (
         <span
           className={cn(
-            "text-xs font-medium",
+            "font-medium text-xs",
             isImproved && "text-emerald-400",
             isDegraded && "text-red-400"
           )}

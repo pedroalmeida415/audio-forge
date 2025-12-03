@@ -32,7 +32,7 @@ type CollectionWithProject = {
 
 interface CollectionComboboxProps {
   selectedCollection: CollectionWithProject | null;
-  onSelect: (collectionId: string | null) => void;
+  onSelect: (collectionId: string | null, projectId: string | null) => void;
   onCreateAndAssign: (name: string, projectId: string) => void;
   disabled?: boolean;
 }
@@ -61,14 +61,21 @@ export function CollectionCombobox({
 
   const collections = searchQuery ? searchResults : allCollections;
 
-  function handleSelect(collectionId: string) {
-    onSelect(collectionId);
+  // Resolve the selected collection's display info from loaded collections
+  // (when passed from parent with empty name/project name)
+  const resolvedSelectedCollection = selectedCollection
+    ? (collections.find((c) => c.id === selectedCollection.id) ??
+      selectedCollection)
+    : null;
+
+  function handleSelect(collection: CollectionWithProject) {
+    onSelect(collection.id, collection.project.id);
     setOpen(false);
     setSearchQuery("");
   }
 
   function handleUnassign() {
-    onSelect(null);
+    onSelect(null, null);
     setOpen(false);
     setSearchQuery("");
   }
@@ -96,11 +103,11 @@ export function CollectionCombobox({
             size="sm"
             variant="outline"
           >
-            {selectedCollection ? (
+            {resolvedSelectedCollection ? (
               <span className="truncate">
-                {selectedCollection.name}
+                {resolvedSelectedCollection.name || "Loading..."}
                 <span className="ml-1 text-muted-foreground text-xs">
-                  ({selectedCollection.project.name})
+                  ({resolvedSelectedCollection.project.name})
                 </span>
               </span>
             ) : (
@@ -134,7 +141,7 @@ export function CollectionCombobox({
                 {collections.map((collection) => (
                   <CommandItem
                     key={collection.id}
-                    onSelect={() => handleSelect(collection.id)}
+                    onSelect={() => handleSelect(collection)}
                     value={`${collection.name}-${collection.project.name}`}
                   >
                     <Check

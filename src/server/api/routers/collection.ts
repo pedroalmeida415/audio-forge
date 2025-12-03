@@ -50,7 +50,7 @@ export const collectionRouter = createTRPCRouter({
     }),
 
   /**
-   * List collections for a project
+   * List collections for a project with clip counts
    */
   list: publicProcedure
     .input(
@@ -67,11 +67,8 @@ export const collectionRouter = createTRPCRouter({
         offset: input.offset,
         orderBy: (collectionsTable, { asc }) => [asc(collectionsTable.name)],
         with: {
-          segments: {
-            columns: { id: true },
-          },
-          audioClips: {
-            columns: { id: true },
+          clips: {
+            columns: { id: true, clipType: true },
           },
         },
       });
@@ -79,16 +76,18 @@ export const collectionRouter = createTRPCRouter({
       return result.map((collection) => ({
         ...collection,
         _count: {
-          segments: collection.segments.length,
-          audioClips: collection.audioClips.length,
+          clips: collection.clips.filter((c) => c.clipType === "original")
+            .length,
+          processedClips: collection.clips.filter(
+            (c) => c.clipType === "processed"
+          ).length,
         },
-        segments: undefined,
-        audioClips: undefined,
+        clips: undefined,
       }));
     }),
 
   /**
-   * Get a single collection by ID
+   * Get a single collection by ID with clips and processed versions
    */
   getById: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
@@ -102,26 +101,8 @@ export const collectionRouter = createTRPCRouter({
               name: true,
             },
           },
-          audioClips: {
-            orderBy: (clips, { desc }) => [desc(clips.createdAt)],
-            limit: 50,
-            with: {
-              segment: {
-                columns: {
-                  pyannoteSpeakerLabel: true,
-                },
-                with: {
-                  job: {
-                    columns: {
-                      originalFilename: true,
-                    },
-                  },
-                },
-              },
-              processedClips: {
-                orderBy: (processed, { desc }) => [desc(processed.createdAt)],
-              },
-            },
+          clips: {
+            orderBy: (clipsTable, { desc }) => [desc(clipsTable.createdAt)],
           },
         },
       });
@@ -130,7 +111,31 @@ export const collectionRouter = createTRPCRouter({
         throw new Error("Collection not found");
       }
 
-      return collection;
+      // Separate original clips and their processed versions
+      const originalClips = collection.clips.filter(
+        (c) => c.clipType === "original"
+      );
+      const processedClipsMap = new Map<string, typeof collection.clips>();
+
+      for (const clip of collection.clips) {
+        if (clip.clipType === "processed" && clip.originalClipId) {
+          const existing = processedClipsMap.get(clip.originalClipId) ?? [];
+          existing.push(clip);
+          processedClipsMap.set(clip.originalClipId, existing);
+        }
+      }
+
+      return {
+        ...collection,
+        audioClips: originalClips.map((clip) => ({
+          ...clip,
+          // Denormalized data is already on the clip
+          speakerLabel: clip.sourceSpeakerLabel,
+          sourceFilename: clip.sourceFilename,
+          processedClips: processedClipsMap.get(clip.id) ?? [],
+        })),
+        clips: undefined,
+      };
     }),
 
   /**
@@ -162,7 +167,7 @@ export const collectionRouter = createTRPCRouter({
     }),
 
   /**
-   * Delete a collection (segments will have collectionId set to null, clips will be deleted)
+   * Delete a collection (clips will be cascade deleted)
    */
   delete: publicProcedure
     .input(z.object({ id: z.string().uuid() }))

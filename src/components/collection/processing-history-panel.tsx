@@ -17,9 +17,9 @@ import {
   TrendingUp,
   Volume2,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { MOSComparison } from "~/components/collection/mos-badge";
 import { Button } from "~/components/ui/button";
-import { MOSBadge, MOSComparison } from "~/components/collection/mos-badge";
 import { cn } from "~/lib/utils";
 import type { ProcessingStatus, ProcessingType } from "~/server/db/schema";
 
@@ -217,12 +217,14 @@ function ProcessingHistoryItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">{typeInfo.label}</span>
-          {isCompleted && clip.mosScore !== null && clip.mosScore !== undefined && (
-            <MOSComparison
-              originalScore={originalMosScore}
-              processedScore={clip.mosScore}
-            />
-          )}
+          {isCompleted &&
+            clip.mosScore !== null &&
+            clip.mosScore !== undefined && (
+              <MOSComparison
+                originalScore={originalMosScore}
+                processedScore={clip.mosScore}
+              />
+            )}
         </div>
 
         <div className="flex items-center gap-2 text-muted-foreground text-xs">

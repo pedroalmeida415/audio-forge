@@ -6,6 +6,7 @@ import { useDebouncedCallback } from "use-debounce";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
+import type { DiarizationSegment } from "~/server/db/schema";
 import { useWaveSurfer } from "./use-wavesurfer";
 
 // Speaker colors for visual distinction
@@ -20,21 +21,12 @@ const SPEAKER_COLORS = [
   "rgba(20, 184, 166, 0.4)", // Teal
 ];
 
-type Segment = {
-  id: string;
-  pyannoteSpeakerLabel: string;
-  editedStartTime: number;
-  editedEndTime: number;
-  status: string;
-  collectionId: string | null;
-};
-
 type WaveformViewerProps = {
   audioUrl: string | null;
-  segments: Segment[];
+  segments: DiarizationSegment[];
   selectedSegmentId: string | null;
   onSegmentSelect: (segmentId: string) => void;
-  onSegmentUpdate: (
+  onSegmentUpdate?: (
     segmentId: string,
     startTime: number,
     endTime: number
@@ -63,7 +55,7 @@ export function WaveformViewer({
 
   const debouncedSegmentUpdate = useDebouncedCallback(
     (segmentId: string, start: number, end: number) => {
-      onSegmentUpdate(segmentId, start, end);
+      onSegmentUpdate?.(segmentId, start, end);
     },
     500
   );
@@ -108,21 +100,24 @@ export function WaveformViewer({
     clearRegions();
 
     for (const segment of segments) {
-      if (segment.status === "excluded") {
-        continue;
-      }
-
-      const color = getSpeakerColor(segment.pyannoteSpeakerLabel);
+      const color = getSpeakerColor(segment.speaker);
       addRegion({
         id: segment.id,
-        start: segment.editedStartTime,
-        end: segment.editedEndTime,
+        start: segment.start,
+        end: segment.end,
         color,
-        drag: true,
-        resize: true,
+        drag: !!onSegmentUpdate,
+        resize: !!onSegmentUpdate,
       });
     }
-  }, [isReady, segments, clearRegions, addRegion, getSpeakerColor]);
+  }, [
+    isReady,
+    segments,
+    clearRegions,
+    addRegion,
+    getSpeakerColor,
+    onSegmentUpdate,
+  ]);
 
   // Highlight selected segment
   useEffect(() => {
@@ -132,12 +127,8 @@ export function WaveformViewer({
 
     // Update all regions to show/hide selection state
     for (const segment of segments) {
-      if (segment.status === "excluded") {
-        continue;
-      }
-
       const isSelected = segment.id === selectedSegmentId;
-      const baseColor = getSpeakerColor(segment.pyannoteSpeakerLabel);
+      const baseColor = getSpeakerColor(segment.speaker);
       const selectedColor = baseColor.replace("0.4", "0.7");
 
       updateRegion(segment.id, {

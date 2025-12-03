@@ -82,7 +82,7 @@ export async function processAudio(
 
       const sampleRate = sampleRateMatch
         ? Number.parseInt(sampleRateMatch[1])
-        : params.targetSampleRate ?? 44100;
+        : (params.targetSampleRate ?? 44_100);
 
       resolve({
         buffer: outputBuffer,
@@ -162,12 +162,10 @@ function buildFilterChain(
 
     case "upsample": {
       // Resample to target sample rate with high-quality interpolation
-      const targetSampleRate = params.targetSampleRate ?? 48000;
+      const targetSampleRate = params.targetSampleRate ?? 48_000;
 
       // Use sinc interpolation for high-quality resampling
-      filters.push(
-        `aresample=${targetSampleRate}:resampler=soxr:precision=33`
-      );
+      filters.push(`aresample=${targetSampleRate}:resampler=soxr:precision=33`);
       break;
     }
   }

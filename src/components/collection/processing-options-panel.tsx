@@ -12,7 +12,6 @@ import {
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Label } from "~/components/ui/label";
-import { Slider } from "~/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -20,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
+import { Slider } from "~/components/ui/slider";
 import { cn } from "~/lib/utils";
 import type { ProcessingType } from "~/server/db/schema";
 
@@ -122,7 +122,7 @@ const PROCESSING_OPTIONS: ProcessingOption[] = [
         key: "targetSampleRate",
         label: "Target Sample Rate",
         type: "select",
-        default: 48000,
+        default: 48_000,
         options: [
           { value: "44100", label: "44.1 kHz (CD)" },
           { value: "48000", label: "48 kHz (Standard)" },
@@ -198,7 +198,8 @@ export function ProcessingOptionsPanel({
             <Button
               className={cn(
                 "gap-1.5",
-                isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                isSelected &&
+                  "ring-2 ring-primary ring-offset-2 ring-offset-background"
               )}
               disabled={disabled || isProcessing}
               key={option.type}

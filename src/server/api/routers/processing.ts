@@ -1,16 +1,12 @@
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { clips, type ProcessingType } from "~/server/db/schema";
 import {
-  audioClips,
-  processedClips,
-  type ProcessingType,
-} from "~/server/db/schema";
-import {
-  processAudio,
   estimateMOS,
   type ProcessingParams,
+  processAudio,
 } from "~/server/services/audio-processing";
 import {
   BUCKET_NAME,
@@ -33,7 +29,7 @@ const processingParamsSchema = z
     noiseReduction: z.number().min(0).max(1).optional(),
     targetLufs: z.number().min(-60).max(0).optional(),
     peakLimit: z.number().min(-20).max(0).optional(),
-    targetSampleRate: z.number().min(8000).max(96000).optional(),
+    targetSampleRate: z.number().min(8000).max(96_000).optional(),
     aggressiveness: z.number().min(0).max(1).optional(),
   })
   .optional();
@@ -53,6 +49,7 @@ function generateProcessedClipKey(
 export const processingRouter = createTRPCRouter({
   /**
    * Start processing a single clip
+   * Creates a new clip with clipType='processed' referencing the original
    */
   processClip: publicProcedure
     .input(
@@ -65,18 +62,24 @@ export const processingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       // Get the original clip
-      const originalClip = await ctx.db.query.audioClips.findFirst({
-        where: eq(audioClips.id, input.clipId),
+      const originalClip = await ctx.db.query.clips.findFirst({
+        where: and(eq(clips.id, input.clipId), eq(clips.clipType, "original")),
       });
 
       if (!originalClip) {
-        throw new Error("Clip not found");
+        throw new Error("Original clip not found");
       }
 
-      // Create a pending processed clip record
+      if (!originalClip.storageKey) {
+        throw new Error("Original clip has no storage key");
+      }
+
+      // Create a pending processed clip record in unified clips table
       const [pendingClip] = await ctx.db
-        .insert(processedClips)
+        .insert(clips)
         .values({
+          collectionId: originalClip.collectionId,
+          clipType: "processed",
           originalClipId: input.clipId,
           processingType: input.processingType,
           processingStatus: "processing",
@@ -125,7 +128,7 @@ export const processingRouter = createTRPCRouter({
 
         // Update the processed clip record
         const [updatedClip] = await ctx.db
-          .update(processedClips)
+          .update(clips)
           .set({
             processingStatus: "completed",
             storageBucket: BUCKET_NAME,
@@ -135,20 +138,20 @@ export const processingRouter = createTRPCRouter({
             sampleRate: result.sampleRate,
             mosScore,
           })
-          .where(eq(processedClips.id, pendingClip.id))
+          .where(eq(clips.id, pendingClip.id))
           .returning();
 
         return updatedClip;
       } catch (error) {
         // Update with error status
         await ctx.db
-          .update(processedClips)
+          .update(clips)
           .set({
             processingStatus: "failed",
-            errorMessage:
+            processingErrorMessage:
               error instanceof Error ? error.message : "Unknown error",
           })
-          .where(eq(processedClips.id, pendingClip.id));
+          .where(eq(clips.id, pendingClip.id));
 
         throw error;
       }
@@ -166,6 +169,7 @@ export const processingRouter = createTRPCRouter({
         format: z.enum(["mp3", "wav", "flac"]).default("wav"),
       })
     )
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Batch processing with error handling requires multiple conditional checks
     .mutation(async ({ ctx, input }) => {
       const results: Array<{
         clipId: string;
@@ -178,8 +182,8 @@ export const processingRouter = createTRPCRouter({
       for (const clipId of input.clipIds) {
         try {
           // Get the original clip
-          const originalClip = await ctx.db.query.audioClips.findFirst({
-            where: eq(audioClips.id, clipId),
+          const originalClip = await ctx.db.query.clips.findFirst({
+            where: and(eq(clips.id, clipId), eq(clips.clipType, "original")),
           });
 
           if (!originalClip) {
@@ -192,10 +196,22 @@ export const processingRouter = createTRPCRouter({
             continue;
           }
 
+          if (!originalClip.storageKey) {
+            results.push({
+              clipId,
+              processedClipId: null,
+              success: false,
+              error: "Clip has no storage key",
+            });
+            continue;
+          }
+
           // Create a pending processed clip record
           const [pendingClip] = await ctx.db
-            .insert(processedClips)
+            .insert(clips)
             .values({
+              collectionId: originalClip.collectionId,
+              clipType: "processed",
               originalClipId: clipId,
               processingType: input.processingType,
               processingStatus: "processing",
@@ -218,12 +234,12 @@ export const processingRouter = createTRPCRouter({
           const audioStream = await getObjectStream(originalClip.storageKey);
           if (!audioStream) {
             await ctx.db
-              .update(processedClips)
+              .update(clips)
               .set({
                 processingStatus: "failed",
-                errorMessage: "Could not retrieve audio",
+                processingErrorMessage: "Could not retrieve audio",
               })
-              .where(eq(processedClips.id, pendingClip.id));
+              .where(eq(clips.id, pendingClip.id));
 
             results.push({
               clipId,
@@ -255,10 +271,14 @@ export const processingRouter = createTRPCRouter({
             input.format
           );
 
-          await uploadObject(storageKey, result.buffer, `audio/${input.format}`);
+          await uploadObject(
+            storageKey,
+            result.buffer,
+            `audio/${input.format}`
+          );
 
           await ctx.db
-            .update(processedClips)
+            .update(clips)
             .set({
               processingStatus: "completed",
               storageBucket: BUCKET_NAME,
@@ -268,7 +288,7 @@ export const processingRouter = createTRPCRouter({
               sampleRate: result.sampleRate,
               mosScore,
             })
-            .where(eq(processedClips.id, pendingClip.id));
+            .where(eq(clips.id, pendingClip.id));
 
           results.push({
             clipId,
@@ -293,14 +313,17 @@ export const processingRouter = createTRPCRouter({
     }),
 
   /**
-   * Get processing history for a clip
+   * Get processing history for a clip (all processed versions)
    */
   getHistory: publicProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .query(async ({ ctx, input }) =>
-      ctx.db.query.processedClips.findMany({
-        where: eq(processedClips.originalClipId, input.clipId),
-        orderBy: [desc(processedClips.createdAt)],
+      ctx.db.query.clips.findMany({
+        where: and(
+          eq(clips.originalClipId, input.clipId),
+          eq(clips.clipType, "processed")
+        ),
+        orderBy: [desc(clips.createdAt)],
       })
     ),
 
@@ -310,8 +333,11 @@ export const processingRouter = createTRPCRouter({
   getProcessedClipUrl: publicProcedure
     .input(z.object({ processedClipId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const clip = await ctx.db.query.processedClips.findFirst({
-        where: eq(processedClips.id, input.processedClipId),
+      const clip = await ctx.db.query.clips.findFirst({
+        where: and(
+          eq(clips.id, input.processedClipId),
+          eq(clips.clipType, "processed")
+        ),
         columns: {
           storageKey: true,
           processingStatus: true,
@@ -336,8 +362,11 @@ export const processingRouter = createTRPCRouter({
   deleteProcessedClip: publicProcedure
     .input(z.object({ processedClipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const clip = await ctx.db.query.processedClips.findFirst({
-        where: eq(processedClips.id, input.processedClipId),
+      const clip = await ctx.db.query.clips.findFirst({
+        where: and(
+          eq(clips.id, input.processedClipId),
+          eq(clips.clipType, "processed")
+        ),
         columns: {
           storageKey: true,
         },
@@ -357,9 +386,7 @@ export const processingRouter = createTRPCRouter({
       }
 
       // Delete from database
-      await ctx.db
-        .delete(processedClips)
-        .where(eq(processedClips.id, input.processedClipId));
+      await ctx.db.delete(clips).where(eq(clips.id, input.processedClipId));
 
       return { success: true };
     }),
@@ -370,12 +397,16 @@ export const processingRouter = createTRPCRouter({
   calculateMOS: publicProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const clip = await ctx.db.query.audioClips.findFirst({
-        where: eq(audioClips.id, input.clipId),
+      const clip = await ctx.db.query.clips.findFirst({
+        where: and(eq(clips.id, input.clipId), eq(clips.clipType, "original")),
       });
 
       if (!clip) {
         throw new Error("Clip not found");
+      }
+
+      if (!clip.storageKey) {
+        throw new Error("Clip has no storage key");
       }
 
       // Download clip
@@ -395,9 +426,9 @@ export const processingRouter = createTRPCRouter({
 
       // Update clip with MOS score
       await ctx.db
-        .update(audioClips)
+        .update(clips)
         .set({ mosScore })
-        .where(eq(audioClips.id, input.clipId));
+        .where(eq(clips.id, input.clipId));
 
       return { mosScore };
     }),
@@ -416,11 +447,11 @@ export const processingRouter = createTRPCRouter({
 
       for (const clipId of input.clipIds) {
         try {
-          const clip = await ctx.db.query.audioClips.findFirst({
-            where: eq(audioClips.id, clipId),
+          const clip = await ctx.db.query.clips.findFirst({
+            where: and(eq(clips.id, clipId), eq(clips.clipType, "original")),
           });
 
-          if (!clip) {
+          if (!clip?.storageKey) {
             results.push({ clipId, mosScore: null, success: false });
             continue;
           }
@@ -440,9 +471,9 @@ export const processingRouter = createTRPCRouter({
           const mosScore = await estimateMOS(audioBuffer);
 
           await ctx.db
-            .update(audioClips)
+            .update(clips)
             .set({ mosScore })
-            .where(eq(audioClips.id, clipId));
+            .where(eq(clips.id, clipId));
 
           results.push({ clipId, mosScore, success: true });
         } catch {

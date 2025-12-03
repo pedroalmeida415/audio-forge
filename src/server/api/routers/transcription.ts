@@ -1,8 +1,8 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { audioClips } from "~/server/db/schema";
+import { clips } from "~/server/db/schema";
 import { getObjectStream } from "~/server/services/minio";
 
 export const transcriptionRouter = createTRPCRouter({
@@ -19,7 +19,7 @@ export const transcriptionRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const [updated] = await ctx.db
-        .update(audioClips)
+        .update(clips)
         .set({
           transcript: input.transcript,
           transcriptMetadata: {
@@ -28,7 +28,7 @@ export const transcriptionRouter = createTRPCRouter({
             confidence: 1.0,
           },
         })
-        .where(eq(audioClips.id, input.clipId))
+        .where(and(eq(clips.id, input.clipId), eq(clips.clipType, "original")))
         .returning();
 
       if (!updated) {
@@ -50,12 +50,16 @@ export const transcriptionRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const clip = await ctx.db.query.audioClips.findFirst({
-        where: eq(audioClips.id, input.clipId),
+      const clip = await ctx.db.query.clips.findFirst({
+        where: and(eq(clips.id, input.clipId), eq(clips.clipType, "original")),
       });
 
       if (!clip) {
         throw new Error("Clip not found");
+      }
+
+      if (!clip.storageKey) {
+        throw new Error("Clip has no storage key");
       }
 
       // Download clip for transcription
@@ -73,11 +77,14 @@ export const transcriptionRouter = createTRPCRouter({
 
       // Placeholder: In production, this would call Whisper API or similar
       // For now, we'll return a placeholder indicating the feature
-      const transcript = await performTranscription(audioBuffer, input.language);
+      const transcript = await performTranscription(
+        audioBuffer,
+        input.language
+      );
 
       // Update the clip with transcription
       const [updated] = await ctx.db
-        .update(audioClips)
+        .update(clips)
         .set({
           transcript: transcript.text,
           transcriptMetadata: {
@@ -87,7 +94,7 @@ export const transcriptionRouter = createTRPCRouter({
             wordTimestamps: transcript.words,
           },
         })
-        .where(eq(audioClips.id, input.clipId))
+        .where(eq(clips.id, input.clipId))
         .returning();
 
       return updated;
@@ -113,15 +120,15 @@ export const transcriptionRouter = createTRPCRouter({
 
       for (const clipId of input.clipIds) {
         try {
-          const clip = await ctx.db.query.audioClips.findFirst({
-            where: eq(audioClips.id, clipId),
+          const clip = await ctx.db.query.clips.findFirst({
+            where: and(eq(clips.id, clipId), eq(clips.clipType, "original")),
           });
 
-          if (!clip) {
+          if (!clip?.storageKey) {
             results.push({
               clipId,
               success: false,
-              error: "Clip not found",
+              error: "Clip not found or has no storage",
             });
             continue;
           }
@@ -148,7 +155,7 @@ export const transcriptionRouter = createTRPCRouter({
           );
 
           await ctx.db
-            .update(audioClips)
+            .update(clips)
             .set({
               transcript: transcript.text,
               transcriptMetadata: {
@@ -158,7 +165,7 @@ export const transcriptionRouter = createTRPCRouter({
                 wordTimestamps: transcript.words,
               },
             })
-            .where(eq(audioClips.id, clipId));
+            .where(eq(clips.id, clipId));
 
           results.push({
             clipId,
@@ -188,12 +195,12 @@ export const transcriptionRouter = createTRPCRouter({
     .input(z.object({ clipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const [updated] = await ctx.db
-        .update(audioClips)
+        .update(clips)
         .set({
           transcript: null,
           transcriptMetadata: null,
         })
-        .where(eq(audioClips.id, input.clipId))
+        .where(and(eq(clips.id, input.clipId), eq(clips.clipType, "original")))
         .returning();
 
       if (!updated) {
@@ -220,22 +227,6 @@ async function performTranscription(
   await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Return placeholder - in production, call actual transcription API
-  // Example integration with OpenAI Whisper:
-  //
-  // const formData = new FormData();
-  // formData.append('file', new Blob([audioBuffer]), 'audio.wav');
-  // formData.append('model', 'whisper-1');
-  // formData.append('language', language);
-  //
-  // const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-  //   method: 'POST',
-  //   headers: { 'Authorization': `Bearer ${env.OPENAI_API_KEY}` },
-  //   body: formData
-  // });
-  //
-  // const result = await response.json();
-  // return { text: result.text, confidence: 0.95 };
-
   return {
     text: "[Transcription pending - configure Whisper API]",
     confidence: 0,

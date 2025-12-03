@@ -9,6 +9,7 @@ import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 import { WaveformViewer } from "~/components/waveform/waveform-viewer";
 import { useJobWorkspace } from "~/hooks/use-job-workspace";
+import { useSegmentActions } from "~/hooks/use-segment-actions";
 
 function getStatusVariant(status: string) {
   switch (status) {
@@ -89,7 +90,7 @@ function JobHeader({
           {status === "completed" && (
             <Button
               disabled={isExtracting || extractableCount === 0}
-              onClick={onExtractClips}
+              onClick={() => onExtractClips()}
             >
               {isExtracting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -115,16 +116,20 @@ export default function ClippingWorkspacePage({
   const {
     job,
     isLoading,
-    selectedSegmentId,
-    setSelectedSegmentId,
+    activeSegmentId,
+    setActiveSegmentId,
     segments,
     audioUrl,
-    handleSegmentUpdate,
+    selections,
+    toggleSegmentSelection,
+    setSegmentCollection,
     handleExtractClips,
     isExtracting,
-    extractableCount,
+    extractableSegments,
     refetch,
   } = useJobWorkspace(jobId);
+
+  const { createCollection, isCreatingCollection } = useSegmentActions();
 
   if (isLoading) {
     return (
@@ -153,7 +158,7 @@ export default function ClippingWorkspacePage({
     <div className="container mx-auto py-8">
       {/* Header */}
       <JobHeader
-        extractableCount={extractableCount}
+        extractableCount={extractableSegments.length}
         filename={job.originalFilename}
         isExtracting={isExtracting}
         onExtractClips={handleExtractClips}
@@ -180,10 +185,9 @@ export default function ClippingWorkspacePage({
             <div className="space-y-4">
               <WaveformViewer
                 audioUrl={audioUrl}
-                onSegmentSelect={setSelectedSegmentId}
-                onSegmentUpdate={handleSegmentUpdate}
+                onSegmentSelect={setActiveSegmentId}
                 segments={segments}
-                selectedSegmentId={selectedSegmentId}
+                selectedSegmentId={activeSegmentId}
               />
 
               {/* File info */}
@@ -206,10 +210,14 @@ export default function ClippingWorkspacePage({
             {/* Segment list sidebar */}
             <div className="h-[600px] rounded-lg border p-4">
               <SegmentList
-                jobId={jobId}
-                onSegmentSelect={setSelectedSegmentId}
+                isCreatingCollection={isCreatingCollection}
+                onCreateCollection={createCollection}
+                onSegmentSelect={setActiveSegmentId}
+                onSetCollection={setSegmentCollection}
+                onToggleSelection={toggleSegmentSelection}
                 segments={segments}
-                selectedSegmentId={selectedSegmentId}
+                selectedSegmentId={activeSegmentId}
+                selections={selections}
               />
             </div>
           </div>

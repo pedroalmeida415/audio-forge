@@ -1,96 +1,33 @@
 import { api } from "~/trpc/react";
 
-type UseSegmentActionsParams = {
-  jobId: string;
-};
-
-export function useSegmentActions({ jobId }: UseSegmentActionsParams) {
+/**
+ * Hook for collection management in the clipping workspace.
+ * Since segments are now pure timestamp data (no DB status/collection assignment),
+ * this hook only handles collection creation for the selection workflow.
+ */
+export function useSegmentActions() {
   const utils = api.useUtils();
-
-  const assignCollectionMutation = api.segment.assignCollection.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate();
-      utils.segment.listByJob.invalidate({ jobId });
-    },
-  });
-
-  const setExcludedMutation = api.segment.setExcluded.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate();
-      utils.segment.listByJob.invalidate({ jobId });
-    },
-  });
-
-  const resetTimestampsMutation = api.segment.resetTimestamps.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate();
-      utils.segment.listByJob.invalidate({ jobId });
-    },
-  });
 
   const createCollectionMutation = api.collection.create.useMutation({
     onSuccess: () => {
-      // Invalidate global collection queries
       utils.collection.listAll.invalidate();
       utils.collection.searchGlobal.invalidate();
     },
   });
 
-  const assignToCollection = (
-    segmentId: string,
-    collectionId: string | null
-  ) => {
-    assignCollectionMutation.mutate({
-      segmentId,
-      collectionId,
+  /**
+   * Create a new collection and return its ID for assignment
+   */
+  const createCollection = async (name: string, projectId: string) => {
+    const result = await createCollectionMutation.mutateAsync({
+      projectId,
+      name,
     });
+    return result;
   };
-
-  const toggleExcluded = (segmentId: string, currentlyExcluded: boolean) => {
-    setExcludedMutation.mutate({
-      segmentId,
-      excluded: !currentlyExcluded,
-    });
-  };
-
-  const resetTimestamps = (segmentId: string) => {
-    resetTimestampsMutation.mutate({ segmentId });
-  };
-
-  const createAndAssign = (
-    segmentId: string,
-    collectionName: string,
-    projectId: string
-  ) => {
-    createCollectionMutation.mutate(
-      {
-        projectId,
-        name: collectionName,
-      },
-      {
-        onSuccess: (collection) => {
-          if (collection) {
-            assignCollectionMutation.mutate({
-              segmentId,
-              collectionId: collection.id,
-            });
-          }
-        },
-      }
-    );
-  };
-
-  const isPending =
-    assignCollectionMutation.isPending ||
-    setExcludedMutation.isPending ||
-    resetTimestampsMutation.isPending ||
-    createCollectionMutation.isPending;
 
   return {
-    assignToCollection,
-    toggleExcluded,
-    resetTimestamps,
-    createAndAssign,
-    isPending,
+    createCollection,
+    isCreatingCollection: createCollectionMutation.isPending,
   };
 }

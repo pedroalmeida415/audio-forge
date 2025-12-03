@@ -20,7 +20,7 @@ A web application for building high-quality voice datasets for TTS (Text-to-Spee
 - **Diarization**: [Pyannote API](https://www.pyannote.ai/)
 - **Audio Processing**: [FFmpeg](https://ffmpeg.org/)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com/)
-- **Linting**: [Biome](https://biomejs.dev/) via [Ultracite](https://github.com/noahgsolomon/ultracite)
+- **Linting**: [Biome](https://biomejs.dev/)
 
 ## Prerequisites
 

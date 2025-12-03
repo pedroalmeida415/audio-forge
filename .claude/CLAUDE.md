@@ -13,7 +13,7 @@ A full-stack web application for creating TTS (Text-to-Speech) training datasets
 | **Storage** | MinIO (S3-compatible) |
 | **AI/Processing** | Pyannote API (diarization), FFmpeg (audio) |
 | **Styling** | Tailwind CSS 4, shadcn/ui |
-| **Code Quality** | Biome via Ultracite preset |
+| **Code Quality** | Biome |
 | **Package Manager** | Bun |
 
 ## Quick Commands

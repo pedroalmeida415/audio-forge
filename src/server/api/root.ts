@@ -3,7 +3,6 @@ import { collectionRouter } from "~/server/api/routers/collection";
 import { diarizationRouter } from "~/server/api/routers/diarization";
 import { processingRouter } from "~/server/api/routers/processing";
 import { projectRouter } from "~/server/api/routers/project";
-import { segmentRouter } from "~/server/api/routers/segment";
 import { transcriptionRouter } from "~/server/api/routers/transcription";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
@@ -16,7 +15,6 @@ export const appRouter = createTRPCRouter({
   project: projectRouter,
   collection: collectionRouter,
   diarization: diarizationRouter,
-  segment: segmentRouter,
   clip: clipRouter,
   processing: processingRouter,
   transcription: transcriptionRouter,

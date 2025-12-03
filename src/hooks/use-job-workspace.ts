@@ -1,34 +1,45 @@
 import { useCallback, useMemo, useState } from "react";
-import type { Segment } from "~/server/db/schema";
+import type { DiarizationSegment } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
+/**
+ * Segment selection state - managed client-side
+ */
+type SegmentSelection = {
+  selected: boolean;
+  collectionId: string | null;
+  projectId: string | null;
+};
+
 type UseJobWorkspaceReturn = {
-  job: JobWithRelations | undefined;
+  job: JobData | undefined;
   isLoading: boolean;
-  selectedSegmentId: string | null;
-  setSelectedSegmentId: (id: string | null) => void;
-  segments: SegmentWithCollection[];
+  activeSegmentId: string | null;
+  setActiveSegmentId: (id: string | null) => void;
+  segments: DiarizationSegment[];
   audioUrl: string | null;
-  handleSegmentUpdate: (
+
+  // Selection state (client-side)
+  selections: Map<string, SegmentSelection>;
+  toggleSegmentSelection: (segmentId: string) => void;
+  setSegmentCollection: (
     segmentId: string,
-    startTime: number,
-    endTime: number
+    collectionId: string | null,
+    projectId: string | null
   ) => void;
-  handleExtractClips: () => void;
+  selectAllBySpeaker: (speaker: string) => void;
+  deselectAllBySpeaker: (speaker: string) => void;
+  clearSelection: () => void;
+
+  // Extraction
+  handleExtractClips: (format?: "mp3" | "wav" | "flac") => void;
   isExtracting: boolean;
-  extractableCount: number;
+  extractableSegments: DiarizationSegment[];
+
   refetch: () => void;
 };
 
-type SegmentWithCollection = Segment & {
-  collection: {
-    id: string;
-    name: string;
-    project?: { id: string; name: string };
-  } | null;
-};
-
-type JobWithRelations = {
+type JobData = {
   id: string;
   status: string;
   errorMessage: string | null;
@@ -38,12 +49,13 @@ type JobWithRelations = {
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  segments: SegmentWithCollection[];
+  segments: DiarizationSegment[];
 };
 
 export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
-    null
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
+  const [selections, setSelections] = useState<Map<string, SegmentSelection>>(
+    new Map()
   );
 
   const utils = api.useUtils();
@@ -78,67 +90,154 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
   const extractClips = api.clip.extractClips.useMutation({
     onSuccess: () => {
       utils.diarization.getJob.invalidate({ id: jobId });
+      // Clear selection after successful extraction
+      setSelections(new Map());
     },
   });
 
-  const updateSegmentTimestamps = api.segment.updateTimestamps.useMutation({
-    onSuccess: () => {
-      utils.diarization.getJob.invalidate({ id: jobId });
-    },
-  });
-
-  const segments = useMemo(() => job?.segments ?? [], [job?.segments]);
+  const segments = useMemo(
+    () => (job?.segments as DiarizationSegment[]) ?? [],
+    [job?.segments]
+  );
 
   const audioUrl = useMemo(
     () => audioUrlData?.url ?? null,
     [audioUrlData?.url]
   );
 
-  const handleSegmentUpdate = useCallback(
-    (segmentId: string, startTime: number, endTime: number) => {
-      updateSegmentTimestamps.mutate({
-        segmentId,
-        editedStartTime: startTime,
-        editedEndTime: endTime,
+  // Selection management
+  const toggleSegmentSelection = useCallback((segmentId: string) => {
+    setSelections((prev) => {
+      const next = new Map(prev);
+      const current = next.get(segmentId);
+      if (current?.selected) {
+        next.delete(segmentId);
+      } else {
+        next.set(segmentId, {
+          selected: true,
+          collectionId: current?.collectionId ?? null,
+          projectId: current?.projectId ?? null,
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  const setSegmentCollection = useCallback(
+    (
+      segmentId: string,
+      collectionId: string | null,
+      projectId: string | null
+    ) => {
+      setSelections((prev) => {
+        const next = new Map(prev);
+        const current = next.get(segmentId);
+        next.set(segmentId, {
+          selected: current?.selected ?? true,
+          collectionId,
+          projectId,
+        });
+        return next;
       });
     },
-    [updateSegmentTimestamps]
+    []
   );
 
-  const extractableCount = useMemo(
-    () =>
-      segments.filter((s) => s.status === "approved" && s.collectionId).length,
+  const selectAllBySpeaker = useCallback(
+    (speaker: string) => {
+      setSelections((prev) => {
+        const next = new Map(prev);
+        for (const segment of segments) {
+          if (segment.speaker === speaker) {
+            const current = next.get(segment.id);
+            next.set(segment.id, {
+              selected: true,
+              collectionId: current?.collectionId ?? null,
+              projectId: current?.projectId ?? null,
+            });
+          }
+        }
+        return next;
+      });
+    },
     [segments]
   );
 
-  const handleExtractClips = useCallback(() => {
-    // Get segments that are approved and have collections assigned
-    const extractableSegments = segments.filter(
-      (s) => s.status === "approved" && s.collectionId
-    );
+  const deselectAllBySpeaker = useCallback(
+    (speaker: string) => {
+      setSelections((prev) => {
+        const next = new Map(prev);
+        for (const segment of segments) {
+          if (segment.speaker === speaker) {
+            next.delete(segment.id);
+          }
+        }
+        return next;
+      });
+    },
+    [segments]
+  );
 
-    if (extractableSegments.length === 0) {
-      return;
-    }
+  const clearSelection = useCallback(() => {
+    setSelections(new Map());
+  }, []);
 
-    extractClips.mutate({
-      jobId,
-      segmentIds: extractableSegments.map((s) => s.id),
-      format: "mp3",
-    });
-  }, [jobId, segments, extractClips]);
+  // Get segments that are ready to extract (selected + have collection)
+  const extractableSegments = useMemo(
+    () =>
+      segments.filter((s) => {
+        const selection = selections.get(s.id);
+        return (
+          selection?.selected && selection.collectionId && selection.projectId
+        );
+      }),
+    [segments, selections]
+  );
+
+  const handleExtractClips = useCallback(
+    (format: "mp3" | "wav" | "flac" = "mp3") => {
+      if (extractableSegments.length === 0) {
+        return;
+      }
+
+      // Build segment data for extraction
+      const segmentsToExtract = extractableSegments.map((segment) => {
+        const selection = selections.get(segment.id)!;
+        return {
+          segmentId: segment.id,
+          collectionId: selection.collectionId!,
+          projectId: selection.projectId!,
+          startTime: segment.start,
+          endTime: segment.end,
+          speakerLabel: segment.speaker,
+        };
+      });
+
+      extractClips.mutate({
+        jobId,
+        segments: segmentsToExtract,
+        format,
+      });
+    },
+    [jobId, extractableSegments, selections, extractClips]
+  );
 
   return {
-    job,
+    job: job as JobData | undefined,
     isLoading,
-    selectedSegmentId,
-    setSelectedSegmentId,
+    activeSegmentId,
+    setActiveSegmentId,
     segments,
     audioUrl,
-    handleSegmentUpdate,
+    selections,
+    toggleSegmentSelection,
+    setSegmentCollection,
+    selectAllBySpeaker,
+    deselectAllBySpeaker,
+    clearSelection,
     handleExtractClips,
     isExtracting: extractClips.isPending,
-    extractableCount,
+    extractableSegments,
     refetch,
   };
 }

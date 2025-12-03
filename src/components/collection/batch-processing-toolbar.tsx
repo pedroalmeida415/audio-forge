@@ -19,7 +19,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { cn } from "~/lib/utils";
@@ -76,7 +75,7 @@ const BATCH_PROCESSING_OPTIONS: Array<{
     type: "upsample",
     label: "Upsample to 48kHz",
     icon: TrendingUp,
-    defaultParams: { targetSampleRate: 48000 },
+    defaultParams: { targetSampleRate: 48_000 },
   },
 ];
 
@@ -164,7 +163,9 @@ export function BatchProcessingToolbar({
               return (
                 <DropdownMenuItem
                   key={option.type}
-                  onClick={() => onBatchProcess(option.type, option.defaultParams)}
+                  onClick={() =>
+                    onBatchProcess(option.type, option.defaultParams)
+                  }
                 >
                   <Icon className="mr-2 h-4 w-4" />
                   {option.label}

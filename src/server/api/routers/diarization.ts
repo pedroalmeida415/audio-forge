@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { diarizationJobs, segments } from "~/server/db/schema";
+import { type DiarizationSegment, diarizationJobs } from "~/server/db/schema";
 import {
   BUCKET_NAME,
   deleteObject,
@@ -189,31 +189,23 @@ export const diarizationRouter = createTRPCRouter({
           const pyannoteStatus = await getPyannoteJobStatus(job.pyannoteJobId);
 
           if (pyannoteStatus.status === "succeeded") {
-            // Save segments to database
-            if (pyannoteStatus.output?.diarization) {
-              const segmentsToInsert = pyannoteStatus.output.diarization.map(
-                (seg) => ({
-                  jobId: job.id,
-                  pyannoteSpeakerLabel: seg.speaker,
-                  originalStartTime: seg.start,
-                  originalEndTime: seg.end,
-                  editedStartTime: seg.start,
-                  editedEndTime: seg.end,
-                  status: "pending" as const,
-                })
-              );
+            // Convert diarization results to JSONB segments
+            const segments: DiarizationSegment[] =
+              pyannoteStatus.output?.diarization?.map((seg, index) => ({
+                id: crypto.randomUUID(),
+                speaker: seg.speaker,
+                start: seg.start,
+                end: seg.end,
+                confidence: seg.confidence,
+              })) ?? [];
 
-              if (segmentsToInsert.length > 0) {
-                await ctx.db.insert(segments).values(segmentsToInsert);
-              }
-            }
-
-            // Mark job as completed
+            // Update job with segments in JSONB and mark as completed
             await ctx.db
               .update(diarizationJobs)
               .set({
                 status: "completed",
                 completedAt: new Date(),
+                segments,
               })
               .where(eq(diarizationJobs.id, job.id));
 
@@ -255,7 +247,7 @@ export const diarizationRouter = createTRPCRouter({
     }),
 
   /**
-   * Get a single job with all details including segments
+   * Get a single job with all details (segments are in JSONB)
    * Also polls Pyannote and syncs results when job is processing
    */
   getJob: publicProcedure
@@ -264,27 +256,6 @@ export const diarizationRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const job = await ctx.db.query.diarizationJobs.findFirst({
         where: eq(diarizationJobs.id, input.id),
-        with: {
-          segments: {
-            orderBy: (segs, { asc }) => [asc(segs.editedStartTime)],
-            with: {
-              collection: {
-                columns: {
-                  id: true,
-                  name: true,
-                },
-                with: {
-                  project: {
-                    columns: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
       });
 
       if (!job) {
@@ -297,58 +268,29 @@ export const diarizationRouter = createTRPCRouter({
           const pyannoteStatus = await getPyannoteJobStatus(job.pyannoteJobId);
 
           if (pyannoteStatus.status === "succeeded") {
-            // Save segments to database
-            if (pyannoteStatus.output?.diarization) {
-              const segmentsToInsert = pyannoteStatus.output.diarization.map(
-                (seg) => ({
-                  jobId: job.id,
-                  pyannoteSpeakerLabel: seg.speaker,
-                  originalStartTime: seg.start,
-                  originalEndTime: seg.end,
-                  editedStartTime: seg.start,
-                  editedEndTime: seg.end,
-                  status: "pending" as const,
-                })
-              );
+            // Convert diarization results to JSONB segments
+            const segments: DiarizationSegment[] =
+              pyannoteStatus.output?.diarization?.map((seg) => ({
+                id: crypto.randomUUID(),
+                speaker: seg.speaker,
+                start: seg.start,
+                end: seg.end,
+                confidence: seg.confidence,
+              })) ?? [];
 
-              if (segmentsToInsert.length > 0) {
-                await ctx.db.insert(segments).values(segmentsToInsert);
-              }
-            }
-
-            // Mark job as completed
+            // Update job with segments in JSONB and mark as completed
             await ctx.db
               .update(diarizationJobs)
               .set({
                 status: "completed",
                 completedAt: new Date(),
+                segments,
               })
               .where(eq(diarizationJobs.id, job.id));
 
-            // Re-fetch and return updated job with segments
+            // Re-fetch and return updated job
             return ctx.db.query.diarizationJobs.findFirst({
               where: eq(diarizationJobs.id, input.id),
-              with: {
-                segments: {
-                  orderBy: (segs, { asc }) => [asc(segs.editedStartTime)],
-                  with: {
-                    collection: {
-                      columns: {
-                        id: true,
-                        name: true,
-                      },
-                      with: {
-                        project: {
-                          columns: {
-                            id: true,
-                            name: true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
             });
           }
 
@@ -408,21 +350,18 @@ export const diarizationRouter = createTRPCRouter({
             eq(diarizationJobs.status, "failed")
           );
 
-      return ctx.db.query.diarizationJobs.findMany({
+      const jobs = await ctx.db.query.diarizationJobs.findMany({
         where: whereClause,
         limit: input?.limit ?? 20,
         offset: input?.offset ?? 0,
         orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
-        with: {
-          segments: {
-            columns: {
-              id: true,
-              status: true,
-              collectionId: true,
-            },
-          },
-        },
       });
+
+      // Return jobs with segment count derived from JSONB array
+      return jobs.map((job) => ({
+        ...job,
+        segmentCount: (job.segments ?? []).length,
+      }));
     }),
 
   /**
@@ -478,7 +417,7 @@ export const diarizationRouter = createTRPCRouter({
         }
       }
 
-      // Delete from database (cascade will delete segments)
+      // Delete from database
       const [deleted] = await ctx.db
         .delete(diarizationJobs)
         .where(eq(diarizationJobs.id, input.id))
