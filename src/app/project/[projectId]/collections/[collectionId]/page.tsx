@@ -183,7 +183,7 @@ export default function CollectionDetailPage({
     return (
       <div className="container mx-auto py-8">
         <p className="text-muted-foreground">Collection not found</p>
-        <Link href={`/projects/${projectId}`}>
+        <Link href={`/project/${projectId}`}>
           <Button className="mt-4" variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Project
@@ -199,7 +199,7 @@ export default function CollectionDetailPage({
       <div className="mb-8">
         <Link
           className="mb-4 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
-          href={`/projects/${projectId}`}
+          href={`/project/${projectId}`}
         >
           <ArrowLeft className="mr-1 h-4 w-4" />
           Back to {collection.project.name}

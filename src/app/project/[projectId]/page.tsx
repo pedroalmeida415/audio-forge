@@ -32,7 +32,7 @@ export default function ProjectDetailPage({
     return (
       <div className="container mx-auto py-8">
         <p className="text-muted-foreground">Project not found</p>
-        <Link href="/projects">
+        <Link href="/">
           <Button className="mt-4" variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Projects
@@ -48,7 +48,7 @@ export default function ProjectDetailPage({
       <div className="mb-8">
         <Link
           className="mb-4 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
-          href="/projects"
+          href="/"
         >
           <ArrowLeft className="mr-1 h-4 w-4" />
           Back to Projects
@@ -98,7 +98,7 @@ export default function ProjectDetailPage({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {project.collections.map((collection) => (
               <Link
-                href={`/projects/${projectId}/collections/${collection.id}`}
+                href={`/project/${projectId}/collections/${collection.id}`}
                 key={collection.id}
               >
                 <Card className="h-full transition-colors hover:bg-muted/50">

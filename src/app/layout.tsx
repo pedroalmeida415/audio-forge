@@ -34,7 +34,8 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
   return (
     <html className={`${syne.variable} ${ibmPlexSans.variable}`} lang="en">
-      <body className="bg-gradient-mesh bg-studio-grid">
+      <body className="bg-background bg-studio-grid">
+        <div className="pointer-events-none fixed inset-0 bg-gradient-mesh" />
         <TRPCReactProvider>
           <main className="flex min-h-screen flex-1 flex-col pb-24">{children}</main>
           <FloatingNav />

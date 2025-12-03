@@ -6,17 +6,17 @@ import { FloatingDock } from "~/components/ui/floating-dock";
 const navItems = [
   {
     title: "Home",
-    icon: <Home className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
+    icon: <Home className="h-full w-full text-muted-foreground" />,
     href: "/",
   },
   {
     title: "Diarization",
-    icon: <Users className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
+    icon: <Users className="h-full w-full text-muted-foreground" />,
     href: "/diarization",
   },
   {
     title: "Clipping",
-    icon: <Scissors className="h-full w-full text-neutral-500 dark:text-neutral-300" />,
+    icon: <Scissors className="h-full w-full text-muted-foreground" />,
     href: "/clipping",
   },
 ];
