@@ -118,6 +118,9 @@ export const collectionRouter = createTRPCRouter({
                   },
                 },
               },
+              processedClips: {
+                orderBy: (processed, { desc }) => [desc(processed.createdAt)],
+              },
             },
           },
         },
