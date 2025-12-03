@@ -34,18 +34,17 @@ export function SiteHeader() {
   });
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-      <div className="flex items-center gap-2 px-4">
-        <SidebarTrigger className="-ml-1" />
-        <Separator
-          className="mr-2 data-[orientation=vertical]:h-4"
-          orientation="vertical"
-        />
+    <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-border/30 border-b bg-background/80 backdrop-blur-xl transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+      <div className="flex items-center gap-3 px-4">
+        <SidebarTrigger className="-ml-1 text-muted-foreground transition-colors hover:text-foreground" />
+        <Separator className="mr-2 h-5 bg-border/50" orientation="vertical" />
         <Breadcrumb>
-          <BreadcrumbList>
+          <BreadcrumbList className="text-sm">
             {breadcrumbItems.length === 0 ? (
               <BreadcrumbItem>
-                <BreadcrumbPage>Home</BreadcrumbPage>
+                <BreadcrumbPage className="font-medium text-foreground">
+                  Home
+                </BreadcrumbPage>
               </BreadcrumbItem>
             ) : (
               breadcrumbItems.map((item, index) => (
@@ -56,13 +55,18 @@ export function SiteHeader() {
                   key={item.segment}
                 >
                   {item.isLast ? (
-                    <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                    <BreadcrumbPage className="font-medium text-foreground">
+                      {item.label}
+                    </BreadcrumbPage>
                   ) : (
                     <>
-                      <BreadcrumbLink href={item.href}>
+                      <BreadcrumbLink
+                        className="text-muted-foreground transition-colors hover:text-primary"
+                        href={item.href}
+                      >
                         {item.label}
                       </BreadcrumbLink>
-                      <BreadcrumbSeparator className="hidden md:block" />
+                      <BreadcrumbSeparator className="hidden text-border md:block" />
                     </>
                   )}
                 </BreadcrumbItem>

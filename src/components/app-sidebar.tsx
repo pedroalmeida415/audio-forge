@@ -93,21 +93,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg">
-              <a href="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <AudioWaveform className="size-4" />
+            <SidebarMenuButton asChild className="group/logo" size="lg">
+              <a className="relative" href="/">
+                {/* Logo container with glow effect */}
+                <div className="relative flex aspect-square size-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-[0_0_20px_rgba(245,166,35,0.3)] transition-all duration-300 group-hover/logo:shadow-[0_0_30px_rgba(245,166,35,0.5)]">
+                  <AudioWaveform className="size-5" />
+                  {/* Subtle pulse ring */}
+                  <div
+                    className="absolute inset-0 animate-ping rounded-lg bg-primary/20 opacity-0 group-hover/logo:opacity-100"
+                    style={{ animationDuration: "2s" }}
+                  />
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">Voice Dataset</span>
-                  <span className="truncate text-xs">Builder</span>
+                <div className="grid flex-1 text-left leading-tight">
+                  <span className="truncate font-bold font-display text-base tracking-tight">
+                    Voice Dataset
+                  </span>
+                  <span className="truncate text-muted-foreground text-xs">
+                    Builder
+                  </span>
                 </div>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="px-2">
         <NavMain items={data.navMain} />
         <NavSecondary className="mt-auto" items={data.navSecondary} />
       </SidebarContent>

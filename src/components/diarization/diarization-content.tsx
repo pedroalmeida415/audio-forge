@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Loader2, Upload } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  CloudUpload,
+  FileAudio,
+  Loader2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
@@ -168,94 +174,113 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
       <div
         {...getRootProps()}
         className={cn(
-          "cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors",
+          "group relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed p-10 text-center transition-all duration-300",
           isDragActive
-            ? "border-primary bg-primary/5"
-            : "border-muted-foreground/25 hover:border-primary/50",
+            ? "border-primary bg-primary/5 shadow-[0_0_30px_rgba(245,166,35,0.15)]"
+            : "border-border/50 hover:border-primary/50 hover:bg-secondary/30",
           isProcessing && "pointer-events-none opacity-50"
         )}
       >
         <input {...getInputProps()} disabled={isProcessing} />
-        <Upload className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
-        {isDragActive ? (
-          <p className="text-muted-foreground">Drop the audio file here...</p>
-        ) : (
-          <>
-            <p className="mb-1 text-muted-foreground">
-              Drag and drop an audio file, or click to browse
+
+        {/* Background decoration */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+        <div className="relative">
+          <div
+            className={cn(
+              "mx-auto mb-5 flex size-16 items-center justify-center rounded-2xl transition-all duration-300",
+              isDragActive
+                ? "bg-primary/20 text-primary"
+                : "bg-secondary text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
+            )}
+          >
+            <CloudUpload className="size-8" />
+          </div>
+
+          {isDragActive ? (
+            <p className="font-medium text-primary">
+              Drop the audio file here...
             </p>
-            <p className="text-muted-foreground text-xs">
-              Supported: MP3, WAV, FLAC, OGG, WebM, M4A
-            </p>
-          </>
-        )}
+          ) : (
+            <>
+              <p className="mb-2 font-medium text-foreground">
+                Drag and drop an audio file, or click to browse
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Supported: MP3, WAV, FLAC, OGG, WebM, M4A
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Selected file info */}
       {selectedFile && uploadState.status === "idle" && (
-        <div className="rounded-lg border bg-muted/50 p-4">
-          <p className="font-medium text-sm">{selectedFile.name}</p>
-          <p className="text-muted-foreground text-xs">
-            {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
-          </p>
+        <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-card p-4">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <FileAudio className="size-6 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{selectedFile.name}</p>
+            <p className="text-muted-foreground text-sm">
+              {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+            </p>
+          </div>
         </div>
       )}
 
       {/* Progress states */}
       {uploadState.status === "creating" && (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <StatusMessage icon={Loader2} spinning>
           Creating job...
-        </div>
+        </StatusMessage>
       )}
 
       {uploadState.status === "uploading" && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Uploading...</span>
-            <span>{uploadState.progress}%</span>
+            <span className="font-medium text-primary">
+              {uploadState.progress}%
+            </span>
           </div>
           <Progress value={uploadState.progress} />
         </div>
       )}
 
       {uploadState.status === "confirming" && (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <StatusMessage icon={Loader2} spinning>
           Confirming upload...
-        </div>
+        </StatusMessage>
       )}
 
       {uploadState.status === "transferring" && (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <StatusMessage icon={Loader2} spinning>
           Transferring to diarization service...
-        </div>
+        </StatusMessage>
       )}
 
       {uploadState.status === "starting" && (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <StatusMessage icon={Loader2} spinning>
           Starting diarization...
-        </div>
+        </StatusMessage>
       )}
 
       {uploadState.status === "success" && (
-        <div className="flex items-center gap-2 text-green-600 text-sm">
-          <CheckCircle2 className="h-4 w-4" />
+        <StatusMessage icon={CheckCircle2} variant="success">
           Job started! Redirecting to workspace...
-        </div>
+        </StatusMessage>
       )}
 
       {uploadState.status === "error" && (
-        <div className="flex items-center gap-2 text-destructive text-sm">
-          <AlertCircle className="h-4 w-4" />
+        <StatusMessage icon={AlertCircle} variant="error">
           {uploadState.message}
-        </div>
+        </StatusMessage>
       )}
 
       {/* Actions */}
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-3">
         {uploadState.status === "error" && (
           <Button
             onClick={() => setUploadState({ status: "idle" })}
@@ -267,10 +292,11 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
         <Button
           disabled={!selectedFile || isProcessing}
           onClick={handleStartUpload}
+          size="lg"
         >
           {isProcessing ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 size-5 animate-spin" />
               Processing...
             </>
           ) : (
@@ -278,6 +304,34 @@ export function DiarizationContent({ onSuccess }: DiarizationContentProps) {
           )}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function StatusMessage({
+  children,
+  icon: Icon,
+  spinning,
+  variant = "default",
+}: {
+  children: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
+  spinning?: boolean;
+  variant?: "default" | "success" | "error";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-lg border p-4 text-sm",
+        variant === "default" &&
+          "border-border/50 bg-secondary/30 text-muted-foreground",
+        variant === "success" && "border-success/30 bg-success/10 text-success",
+        variant === "error" &&
+          "border-destructive/30 bg-destructive/10 text-destructive"
+      )}
+    >
+      <Icon className={cn("size-5 shrink-0", spinning && "animate-spin")} />
+      <span className="font-medium">{children}</span>
     </div>
   );
 }

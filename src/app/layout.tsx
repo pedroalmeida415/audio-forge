@@ -1,7 +1,7 @@
 import "~/styles/globals.css";
 
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { IBM_Plex_Sans, Syne } from "next/font/google";
 
 import { AppSidebar } from "~/components/app-sidebar";
 import { SiteHeader } from "~/components/site-header";
@@ -14,9 +14,20 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
-const geist = Geist({
+// Syne - Bold, geometric display font for headings
+const syne = Syne({
   subsets: ["latin"],
-  variable: "--font-geist-sans",
+  variable: "--font-heading",
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+});
+
+// IBM Plex Sans - Technical precision for body text
+const ibmPlexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  variable: "--font-body",
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 export default function RootLayout({
@@ -24,16 +35,14 @@ export default function RootLayout({
   modal,
 }: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
   return (
-    <html className={`${geist.variable}`} lang="en">
-      <body>
+    <html className={`${syne.variable} ${ibmPlexSans.variable}`} lang="en">
+      <body className="bg-gradient-mesh bg-studio-grid">
         <TRPCReactProvider>
           <SidebarProvider>
             <AppSidebar />
             <SidebarInset>
               <SiteHeader />
-              <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-                {children}
-              </div>
+              <main className="flex flex-1 flex-col">{children}</main>
             </SidebarInset>
             {modal}
           </SidebarProvider>
