@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import React from "react";
 
 import {
   Breadcrumb,
@@ -48,28 +49,31 @@ export function SiteHeader() {
               </BreadcrumbItem>
             ) : (
               breadcrumbItems.map((item, index) => (
-                <BreadcrumbItem
-                  className={
-                    index < breadcrumbItems.length - 1 ? "hidden md:block" : ""
-                  }
-                  key={item.segment}
-                >
-                  {item.isLast ? (
-                    <BreadcrumbPage className="font-medium text-foreground">
-                      {item.label}
-                    </BreadcrumbPage>
-                  ) : (
-                    <>
+                <React.Fragment key={item.segment}>
+                  <BreadcrumbItem
+                    className={
+                      index < breadcrumbItems.length - 1
+                        ? "hidden md:block"
+                        : ""
+                    }
+                  >
+                    {item.isLast ? (
+                      <BreadcrumbPage className="font-medium text-foreground">
+                        {item.label}
+                      </BreadcrumbPage>
+                    ) : (
                       <BreadcrumbLink
                         className="text-muted-foreground transition-colors hover:text-primary"
                         href={item.href}
                       >
                         {item.label}
                       </BreadcrumbLink>
-                      <BreadcrumbSeparator className="hidden text-border md:block" />
-                    </>
+                    )}
+                  </BreadcrumbItem>
+                  {!item.isLast && (
+                    <BreadcrumbSeparator className="hidden text-border md:block" />
                   )}
-                </BreadcrumbItem>
+                </React.Fragment>
               ))
             )}
           </BreadcrumbList>
