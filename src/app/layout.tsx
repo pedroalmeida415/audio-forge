@@ -3,9 +3,7 @@ import "~/styles/globals.css";
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, Syne } from "next/font/google";
 
-import { AppSidebar } from "~/components/app-sidebar";
-import { SiteHeader } from "~/components/site-header";
-import { SidebarInset, SidebarProvider } from "~/components/ui/sidebar";
+import { FloatingNav } from "~/components/floating-nav";
 import { TRPCReactProvider } from "~/trpc/react";
 
 export const metadata: Metadata = {
@@ -38,14 +36,9 @@ export default function RootLayout({
     <html className={`${syne.variable} ${ibmPlexSans.variable}`} lang="en">
       <body className="bg-gradient-mesh bg-studio-grid">
         <TRPCReactProvider>
-          <SidebarProvider>
-            <AppSidebar />
-            <SidebarInset>
-              <SiteHeader />
-              <main className="flex flex-1 flex-col">{children}</main>
-            </SidebarInset>
-            {modal}
-          </SidebarProvider>
+          <main className="flex min-h-screen flex-1 flex-col pb-24">{children}</main>
+          <FloatingNav />
+          {modal}
         </TRPCReactProvider>
       </body>
     </html>
