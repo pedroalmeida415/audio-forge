@@ -21,26 +21,34 @@ import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { CreateCollectionModal } from "./create-collection-modal";
 
-type CollectionWithProject = {
+type CollectionInfo = {
   id: string;
   name: string;
-  project: {
-    id: string;
-    name: string;
-  };
+  projectId: string;
+  projectName: string;
 };
 
-interface CollectionComboboxProps {
-  selectedCollection: CollectionWithProject | null;
-  onSelect: (collectionId: string | null, projectId: string | null) => void;
-  onCreateAndAssign: (name: string, projectId: string) => void;
+type CollectionComboboxProps = {
+  /** ID of currently selected collection */
+  selectedCollectionId: string | null;
+  /** Callback when collection is selected or unassigned */
+  onSelect: (collection: CollectionInfo | null) => void;
+  /** Callback to create a new collection */
+  onCreateCollection: (name: string, projectId: string) => Promise<void>;
+  /** Whether creation is in progress */
+  isCreatingCollection?: boolean;
+  /** Compact mode for inline display */
+  compact?: boolean;
+  /** Disabled state */
   disabled?: boolean;
-}
+};
 
 export function CollectionCombobox({
-  selectedCollection,
+  selectedCollectionId,
   onSelect,
-  onCreateAndAssign,
+  onCreateCollection,
+  isCreatingCollection,
+  compact,
   disabled,
 }: CollectionComboboxProps) {
   const [open, setOpen] = useState(false);
@@ -61,21 +69,24 @@ export function CollectionCombobox({
 
   const collections = searchQuery ? searchResults : allCollections;
 
-  // Resolve the selected collection's display info from loaded collections
-  // (when passed from parent with empty name/project name)
-  const resolvedSelectedCollection = selectedCollection
-    ? (collections.find((c) => c.id === selectedCollection.id) ??
-      selectedCollection)
+  // Find the selected collection from loaded data
+  const selectedCollection = selectedCollectionId
+    ? collections.find((c) => c.id === selectedCollectionId)
     : null;
 
-  function handleSelect(collection: CollectionWithProject) {
-    onSelect(collection.id, collection.project.id);
+  function handleSelect(collection: (typeof collections)[0]) {
+    onSelect({
+      id: collection.id,
+      name: collection.name,
+      projectId: collection.project.id,
+      projectName: collection.project.name,
+    });
     setOpen(false);
     setSearchQuery("");
   }
 
   function handleUnassign() {
-    onSelect(null, null);
+    onSelect(null);
     setOpen(false);
     setSearchQuery("");
   }
@@ -85,8 +96,8 @@ export function CollectionCombobox({
     setCreateModalOpen(true);
   }
 
-  function handleCreateCollection(name: string, projectId: string) {
-    onCreateAndAssign(name, projectId);
+  async function handleCreateCollection(name: string, projectId: string) {
+    await onCreateCollection(name, projectId);
     setCreateModalOpen(false);
     setSearchQuery("");
   }
@@ -97,22 +108,27 @@ export function CollectionCombobox({
         <PopoverTrigger asChild>
           <Button
             aria-expanded={open}
-            className="w-full justify-between"
-            disabled={disabled}
+            className={cn(
+              "justify-between",
+              compact ? "h-8 w-[160px] text-xs" : "w-full"
+            )}
+            disabled={disabled || isCreatingCollection}
             role="combobox"
             size="sm"
             variant="outline"
           >
-            {resolvedSelectedCollection ? (
+            {selectedCollection ? (
               <span className="truncate">
-                {resolvedSelectedCollection.name || "Loading..."}
-                <span className="ml-1 text-muted-foreground text-xs">
-                  ({resolvedSelectedCollection.project.name})
-                </span>
+                {selectedCollection.name}
+                {!compact && (
+                  <span className="ml-1 text-muted-foreground text-xs">
+                    ({selectedCollection.project.name})
+                  </span>
+                )}
               </span>
             ) : (
               <span className="text-muted-foreground">
-                Assign to collection...
+                {compact ? "Assign..." : "Assign to collection..."}
               </span>
             )}
             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
@@ -132,7 +148,7 @@ export function CollectionCombobox({
                 </div>
               </CommandEmpty>
               <CommandGroup>
-                {selectedCollection && (
+                {selectedCollectionId && (
                   <CommandItem onSelect={handleUnassign} value="__unassign__">
                     <X className="mr-2 h-3 w-3" />
                     Unassign
@@ -147,7 +163,7 @@ export function CollectionCombobox({
                     <Check
                       className={cn(
                         "mr-2 h-3 w-3",
-                        selectedCollection?.id === collection.id
+                        selectedCollectionId === collection.id
                           ? "opacity-100"
                           : "opacity-0"
                       )}

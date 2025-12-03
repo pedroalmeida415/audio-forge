@@ -386,6 +386,57 @@ export const diarizationRouter = createTRPCRouter({
     }),
 
   /**
+   * Reassign a segment to a different speaker
+   * Updates the segment's speaker field in the JSONB array
+   */
+  reassignSegmentSpeaker: publicProcedure
+    .input(
+      z.object({
+        jobId: z.string().uuid(),
+        segmentId: z.string().uuid(),
+        newSpeaker: z.string().min(1).max(50),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const job = await ctx.db.query.diarizationJobs.findFirst({
+        where: eq(diarizationJobs.id, input.jobId),
+      });
+
+      if (!job) {
+        throw new Error("Job not found");
+      }
+
+      if (job.status !== "completed") {
+        throw new Error("Can only modify segments of completed jobs");
+      }
+
+      const segments = (job.segments ?? []) as DiarizationSegment[];
+      const segmentIndex = segments.findIndex((s) => s.id === input.segmentId);
+
+      if (segmentIndex === -1) {
+        throw new Error("Segment not found");
+      }
+
+      // Create updated segments array with new speaker
+      const updatedSegments = [...segments];
+      updatedSegments[segmentIndex] = {
+        ...updatedSegments[segmentIndex]!,
+        speaker: input.newSpeaker,
+      };
+
+      // Persist to database
+      await ctx.db
+        .update(diarizationJobs)
+        .set({ segments: updatedSegments })
+        .where(eq(diarizationJobs.id, input.jobId));
+
+      return {
+        success: true,
+        segment: updatedSegments[segmentIndex],
+      };
+    }),
+
+  /**
    * Delete a job and its storage
    */
   deleteJob: publicProcedure

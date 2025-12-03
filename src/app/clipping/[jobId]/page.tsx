@@ -3,13 +3,13 @@
 import { ArrowLeft, Download, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { use } from "react";
-import { SegmentList } from "~/components/segments/segment-list";
+import { SpeakerWorkspace } from "~/components/clipping/speaker-workspace";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 import { WaveformViewer } from "~/components/waveform/waveform-viewer";
-import { useJobWorkspace } from "~/hooks/use-job-workspace";
 import { useSegmentActions } from "~/hooks/use-segment-actions";
+import { useSpeakerWorkspace } from "~/hooks/use-speaker-workspace";
 
 function getStatusVariant(status: string) {
   switch (status) {
@@ -49,7 +49,7 @@ type JobHeaderProps = {
   filename: string | null;
   status: string;
   isExtracting: boolean;
-  extractableCount: number;
+  extractableGroupCount: number;
   onRefetch: () => void;
   onExtractClips: () => void;
 };
@@ -58,7 +58,7 @@ function JobHeader({
   filename,
   status,
   isExtracting,
-  extractableCount,
+  extractableGroupCount,
   onRefetch,
   onExtractClips,
 }: JobHeaderProps) {
@@ -89,7 +89,7 @@ function JobHeader({
           )}
           {status === "completed" && (
             <Button
-              disabled={isExtracting || extractableCount === 0}
+              disabled={isExtracting || extractableGroupCount === 0}
               onClick={() => onExtractClips()}
             >
               {isExtracting ? (
@@ -97,7 +97,8 @@ function JobHeader({
               ) : (
                 <Download className="mr-2 h-4 w-4" />
               )}
-              Extract Clips ({extractableCount})
+              Extract Clips
+              {extractableGroupCount > 0 && ` (${extractableGroupCount} groups)`}
             </Button>
           )}
         </div>
@@ -113,23 +114,21 @@ export default function ClippingWorkspacePage({
 }) {
   const { jobId } = use(params);
 
+  const workspace = useSpeakerWorkspace(jobId);
+  const { createCollection, isCreatingCollection } = useSegmentActions();
+
   const {
     job,
     isLoading,
+    audioUrl,
+    visibleSegments,
     activeSegmentId,
     setActiveSegmentId,
-    segments,
-    audioUrl,
-    selections,
-    toggleSegmentSelection,
-    setSegmentCollection,
     handleExtractClips,
     isExtracting,
-    extractableSegments,
+    extractableGroupCount,
     refetch,
-  } = useJobWorkspace(jobId);
-
-  const { createCollection, isCreatingCollection } = useSegmentActions();
+  } = workspace;
 
   if (isLoading) {
     return (
@@ -158,7 +157,7 @@ export default function ClippingWorkspacePage({
     <div className="container mx-auto py-8">
       {/* Header */}
       <JobHeader
-        extractableCount={extractableSegments.length}
+        extractableGroupCount={extractableGroupCount}
         filename={job.originalFilename}
         isExtracting={isExtracting}
         onExtractClips={handleExtractClips}
@@ -180,13 +179,13 @@ export default function ClippingWorkspacePage({
       {job.status === "completed" && (
         <>
           {/* Workspace grid */}
-          <div className="grid gap-6 lg:grid-cols-[1fr,350px]">
+          <div className="grid gap-6 lg:grid-cols-[1fr,400px]">
             {/* Waveform section */}
             <div className="space-y-4">
               <WaveformViewer
                 audioUrl={audioUrl}
                 onSegmentSelect={setActiveSegmentId}
-                segments={segments}
+                segments={visibleSegments}
                 selectedSegmentId={activeSegmentId}
               />
 
@@ -202,22 +201,17 @@ export default function ClippingWorkspacePage({
                         .padStart(2, "0")}
                     </span>
                   )}
-                  <span>{segments.length} segments</span>
+                  <span>{visibleSegments.length} segments</span>
                 </div>
               )}
             </div>
 
-            {/* Segment list sidebar */}
+            {/* Speaker workspace sidebar */}
             <div className="h-[600px] rounded-lg border p-4">
-              <SegmentList
+              <SpeakerWorkspace
                 isCreatingCollection={isCreatingCollection}
                 onCreateCollection={createCollection}
-                onSegmentSelect={setActiveSegmentId}
-                onSetCollection={setSegmentCollection}
-                onToggleSelection={toggleSegmentSelection}
-                segments={segments}
-                selectedSegmentId={activeSegmentId}
-                selections={selections}
+                workspace={workspace}
               />
             </div>
           </div>

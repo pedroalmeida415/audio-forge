@@ -64,26 +64,10 @@ function SegmentItem({
 }) {
   const isSelected = selection?.selected ?? false;
 
-  function handleCollectionSelect(
-    collectionId: string | null,
-    projectId?: string | null
-  ) {
-    onSetCollection(collectionId, projectId ?? null);
-  }
-
-  async function handleCreateAndAssign(name: string, projectId: string) {
+  async function handleCreateCollection(name: string, projectId: string) {
     const result = await onCreateCollection(name, projectId);
     onSetCollection(result.id, projectId);
   }
-
-  // Build selectedCollection for the combobox if we have one
-  const selectedCollection = selection?.collectionId
-    ? {
-        id: selection.collectionId,
-        name: "", // Name will be resolved by combobox
-        project: { id: selection.projectId ?? "", name: "" },
-      }
-    : null;
 
   return (
     <div
@@ -129,9 +113,16 @@ function SegmentItem({
         >
           <CollectionCombobox
             disabled={isCreatingCollection}
-            onCreateAndAssign={handleCreateAndAssign}
-            onSelect={handleCollectionSelect}
-            selectedCollection={selectedCollection}
+            isCreatingCollection={isCreatingCollection}
+            onCreateCollection={handleCreateCollection}
+            onSelect={(collection) => {
+              if (collection) {
+                onSetCollection(collection.id, collection.projectId);
+              } else {
+                onSetCollection(null, null);
+              }
+            }}
+            selectedCollectionId={selection?.collectionId ?? null}
           />
         </div>
       )}

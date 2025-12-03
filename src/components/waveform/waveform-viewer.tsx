@@ -6,20 +6,13 @@ import { useDebouncedCallback } from "use-debounce";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
+import {
+  getSpeakerBgColor,
+  getSpeakerHighlightColor,
+  SPEAKER_COLORS,
+} from "~/lib/speaker-colors";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { useWaveSurfer } from "./use-wavesurfer";
-
-// Speaker colors for visual distinction
-const SPEAKER_COLORS = [
-  "rgba(239, 68, 68, 0.4)", // Red
-  "rgba(59, 130, 246, 0.4)", // Blue
-  "rgba(234, 179, 8, 0.4)", // Yellow
-  "rgba(34, 197, 94, 0.4)", // Green
-  "rgba(168, 85, 247, 0.4)", // Purple
-  "rgba(249, 115, 22, 0.4)", // Orange
-  "rgba(236, 72, 153, 0.4)", // Pink
-  "rgba(20, 184, 166, 0.4)", // Teal
-];
 
 type WaveformViewerProps = {
   audioUrl: string | null;
@@ -43,14 +36,13 @@ export function WaveformViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const speakerColorMap = useRef(new Map<string, number>());
 
-  const getSpeakerColor = useCallback((speakerLabel: string): string => {
+  const getSpeakerColorIndex = useCallback((speakerLabel: string): number => {
     let index = speakerColorMap.current.get(speakerLabel);
     if (index === undefined) {
       index = speakerColorMap.current.size;
       speakerColorMap.current.set(speakerLabel, index);
     }
-    const color = SPEAKER_COLORS[index % SPEAKER_COLORS.length];
-    return color ?? "rgba(128, 128, 128, 0.4)";
+    return index;
   }, []);
 
   const debouncedSegmentUpdate = useDebouncedCallback(
@@ -100,7 +92,8 @@ export function WaveformViewer({
     clearRegions();
 
     for (const segment of segments) {
-      const color = getSpeakerColor(segment.speaker);
+      const colorIndex = getSpeakerColorIndex(segment.speaker);
+      const color = getSpeakerBgColor(colorIndex);
       addRegion({
         id: segment.id,
         start: segment.start,
@@ -115,7 +108,7 @@ export function WaveformViewer({
     segments,
     clearRegions,
     addRegion,
-    getSpeakerColor,
+    getSpeakerColorIndex,
     onSegmentUpdate,
   ]);
 
@@ -128,14 +121,15 @@ export function WaveformViewer({
     // Update all regions to show/hide selection state
     for (const segment of segments) {
       const isSelected = segment.id === selectedSegmentId;
-      const baseColor = getSpeakerColor(segment.speaker);
-      const selectedColor = baseColor.replace("0.4", "0.7");
+      const colorIndex = getSpeakerColorIndex(segment.speaker);
+      const baseColor = getSpeakerBgColor(colorIndex);
+      const highlightColor = getSpeakerHighlightColor(colorIndex);
 
       updateRegion(segment.id, {
-        color: isSelected ? selectedColor : baseColor,
+        color: isSelected ? highlightColor : baseColor,
       });
     }
-  }, [isReady, selectedSegmentId, segments, updateRegion, getSpeakerColor]);
+  }, [isReady, selectedSegmentId, segments, updateRegion, getSpeakerColorIndex]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -212,20 +206,6 @@ export function WaveformViewer({
         </div>
       </div>
 
-      {/* Speaker legend */}
-      <div className="flex flex-wrap gap-2">
-        {[...speakerColorMap.current.entries()].map(([speaker, index]) => (
-          <div className="flex items-center gap-1.5" key={speaker}>
-            <div
-              className="h-3 w-3 rounded"
-              style={{
-                backgroundColor: SPEAKER_COLORS[index % SPEAKER_COLORS.length],
-              }}
-            />
-            <span className="text-muted-foreground text-xs">{speaker}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

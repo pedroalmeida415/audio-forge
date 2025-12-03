@@ -1,5 +1,12 @@
 import { api } from "~/trpc/react";
 
+export type CreateCollectionResult = {
+  id: string;
+  name: string;
+  projectId: string;
+  projectName: string;
+};
+
 /**
  * Hook for collection management in the clipping workspace.
  * Since segments are now pure timestamp data (no DB status/collection assignment),
@@ -15,15 +22,33 @@ export function useSegmentActions() {
     },
   });
 
+  // Get project list for name lookup
+  const { data: projects = [] } = api.project.list.useQuery({
+    limit: 100,
+    offset: 0,
+  });
+
   /**
-   * Create a new collection and return its ID for assignment
+   * Create a new collection and return its ID and related info for assignment
    */
-  const createCollection = async (name: string, projectId: string) => {
+  const createCollection = async (
+    name: string,
+    projectId: string
+  ): Promise<CreateCollectionResult> => {
     const result = await createCollectionMutation.mutateAsync({
       projectId,
       name,
     });
-    return result;
+
+    // Find project name
+    const project = projects.find((p) => p.id === projectId);
+
+    return {
+      id: result.id,
+      name: result.name,
+      projectId: result.projectId,
+      projectName: project?.name ?? "Unknown Project",
+    };
   };
 
   return {
