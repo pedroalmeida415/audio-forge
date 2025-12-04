@@ -9,6 +9,7 @@ import {
   Plus,
   Scissors,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -26,7 +27,7 @@ import { cn } from "~/lib/utils";
 import { formatTime, ZOOM_PRESETS } from "./timeline-styles";
 
 type TimelineToolbarProps = {
-  currentTime: number;
+  currentTimeRef: React.RefObject<number>;
   duration: number;
   isPlaying: boolean;
   zoomPercent: number;
@@ -45,7 +46,7 @@ type TimelineToolbarProps = {
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 export function TimelineToolbar({
-  currentTime,
+  currentTimeRef,
   duration,
   isPlaying,
   zoomPercent,
@@ -60,7 +61,35 @@ export function TimelineToolbar({
   onSpeedChange,
   onSplit,
 }: TimelineToolbarProps) {
-  const currentTimeFormatted = formatTime(currentTime);
+  // Refs for direct DOM updates of time display
+  const timeMainRef = useRef<HTMLSpanElement>(null);
+  const timeDecimalRef = useRef<HTMLSpanElement>(null);
+
+  // Update time display via RAF - bypasses React reconciliation
+  useEffect(() => {
+    let animationId: number;
+    let lastTime = -1;
+
+    const updateTimeDisplay = () => {
+      const currentTime = currentTimeRef.current ?? 0;
+      // Only update DOM if time actually changed (reduces reflows)
+      if (Math.abs(currentTime - lastTime) > 0.01) {
+        lastTime = currentTime;
+        const formatted = formatTime(currentTime);
+        if (timeMainRef.current) {
+          timeMainRef.current.textContent = formatted.main;
+        }
+        if (timeDecimalRef.current) {
+          timeDecimalRef.current.textContent = formatted.decimal;
+        }
+      }
+      animationId = requestAnimationFrame(updateTimeDisplay);
+    };
+
+    animationId = requestAnimationFrame(updateTimeDisplay);
+    return () => cancelAnimationFrame(animationId);
+  }, [currentTimeRef]);
+
   const durationFormatted = formatTime(duration);
 
   return (
@@ -99,13 +128,13 @@ export function TimelineToolbar({
             <TooltipContent side="bottom">Next segment</TooltipContent>
           </Tooltip>
 
-          {/* Time display */}
+          {/* Time display - updated via RAF */}
           <div className="flex items-center gap-0 px-2 tabular-nums font-mono text-sm">
-            <span className="text-foreground">
-              {currentTimeFormatted.main}
+            <span ref={timeMainRef} className="text-foreground">
+              0:00
             </span>
-            <span className="text-foreground">
-              {currentTimeFormatted.decimal}
+            <span ref={timeDecimalRef} className="text-foreground">
+              .00
             </span>
             <span className="text-muted-foreground mx-1.5">/</span>
             <span className="text-muted-foreground">

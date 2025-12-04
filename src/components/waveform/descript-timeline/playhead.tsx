@@ -1,50 +1,69 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { cn } from "~/lib/utils";
 
 type PlayheadProps = {
-  x: number;
+  currentTimeRef: React.RefObject<number>;
+  pxPerSec: number;
   height: number;
   isPlaying?: boolean;
   isFocused?: boolean;
 };
 
 export function Playhead({
-  x,
+  currentTimeRef,
+  pxPerSec,
   height,
   isPlaying = false,
   isFocused = true,
 }: PlayheadProps) {
+  const elementRef = useRef<HTMLDivElement>(null);
+
+  // Animate playhead position via RAF for smooth rendering at native refresh rate
+  useEffect(() => {
+    let animationId: number;
+
+    const updatePosition = () => {
+      if (elementRef.current && currentTimeRef.current !== undefined) {
+        const x = currentTimeRef.current * pxPerSec;
+        elementRef.current.style.transform = `translateX(${x}px) translateX(-50%)`;
+      }
+      animationId = requestAnimationFrame(updatePosition);
+    };
+
+    animationId = requestAnimationFrame(updatePosition);
+    return () => cancelAnimationFrame(animationId);
+  }, [currentTimeRef, pxPerSec]);
+
   return (
     <div
       className={cn(
-        "absolute top-0 pointer-events-none z-20 transition-colors",
+        "pointer-events-none absolute top-0 left-0 z-20 transition-colors",
         !isFocused && "opacity-50"
       )}
+      ref={elementRef}
       style={{
-        left: x,
         height,
-        transform: "translateX(-50%)",
+        willChange: "transform",
       }}
     >
       {/* Playhead line */}
       <div
-        className={cn(
-          "w-0.5 h-full",
-          isPlaying ? "bg-red-500" : "bg-primary"
-        )}
+        className={cn("h-full w-0.5", isPlaying ? "bg-red-500" : "bg-primary")}
       />
 
       {/* Playhead indicator (triangle at top) */}
       <svg
+        aria-hidden="true"
         className={cn(
-          "absolute -top-0.5 left-1/2 -translate-x-1/2",
+          "-top-0.5 -translate-x-1/2 absolute left-1/2",
           isPlaying ? "text-red-500" : "text-primary"
         )}
-        width="9"
+        fill="currentColor"
         height="12"
         viewBox="0 0 9 12"
-        fill="currentColor"
+        width="9"
       >
         <path d="M8 1v5L4.5 10 1 6V1h7z" fillRule="nonzero" />
       </svg>

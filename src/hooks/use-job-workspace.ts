@@ -67,6 +67,7 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
   } = api.diarization.getJob.useQuery(
     { id: jobId },
     {
+      refetchOnWindowFocus: false, // Prevent refetch on tab focus
       refetchInterval: (query) => {
         const data = query.state.data;
         // Poll every 3 seconds if still processing
@@ -84,7 +85,11 @@ export function useJobWorkspace(jobId: string): UseJobWorkspaceReturn {
 
   const { data: audioUrlData } = api.diarization.getAudioUrl.useQuery(
     { jobId },
-    { enabled: !!jobId && job?.status === "completed" }
+    {
+      enabled: !!jobId && job?.status === "completed",
+      refetchOnWindowFocus: false, // Prevent new URL generation on tab focus
+      staleTime: Infinity, // URL is valid for a while, no need to refetch
+    }
   );
 
   const extractClips = api.clip.extractClips.useMutation({

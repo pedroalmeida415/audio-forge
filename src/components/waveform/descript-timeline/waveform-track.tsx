@@ -13,8 +13,14 @@ type WaveformTrackProps = {
   onPlayingChange: (isPlaying: boolean) => void;
   onSeek: (time: number) => void;
   onReady: () => void;
-  wavesurferRef: React.MutableRefObject<WaveSurfer | null>;
+  wavesurferRef: React.RefObject<WaveSurfer | null>;
+  /** Ref that gets updated at full refresh rate for smooth playhead animation */
+  currentTimeRef: React.RefObject<number>;
 };
+
+// Throttle interval for React state updates (ms)
+// Visual updates (playhead) use refs and run at native refresh rate
+const STATE_UPDATE_THROTTLE_MS = 50;
 
 export function WaveformTrack({
   audioUrl,
@@ -26,9 +32,22 @@ export function WaveformTrack({
   onSeek,
   onReady,
   wavesurferRef,
+  currentTimeRef,
 }: WaveformTrackProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Track the actual loaded URL to prevent unnecessary re-initialization
+  const loadedUrlRef = useRef<string | null>(null);
+
+  // Refs for throttling state updates
+  const lastStateUpdateRef = useRef(0);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+
+  // Keep callback ref updated
+  useEffect(() => {
+    onTimeUpdateRef.current = onTimeUpdate;
+  }, [onTimeUpdate]);
 
   // Initialize WaveSurfer
   useEffect(() => {
@@ -36,13 +55,32 @@ export function WaveformTrack({
       return;
     }
 
-    // Cleanup existing instance
-    if (wavesurferRef.current) {
-      wavesurferRef.current.destroy();
-      wavesurferRef.current = null;
+    // Cast to mutable for assignments
+    const wsRef = wavesurferRef as React.MutableRefObject<WaveSurfer | null>;
+    const timeRef = currentTimeRef as React.MutableRefObject<number>;
+
+    // Skip re-initialization if the URL hasn't changed AND instance still exists
+    // This prevents tab focus / strict mode from causing a reset
+    if (loadedUrlRef.current === audioUrl && wsRef.current) {
+      // Instance already exists for this URL, nothing to do
+      return;
+    }
+
+    // Only destroy if URL actually changed (not on remount with same URL)
+    if (wsRef.current && loadedUrlRef.current !== audioUrl) {
+      wsRef.current.destroy();
+      wsRef.current = null;
+    }
+
+    // If instance was destroyed but URL is same (shouldn't happen normally),
+    // we still need to re-create
+    if (wsRef.current) {
+      // Instance exists and URL matches, skip
+      return;
     }
 
     setIsLoaded(false);
+    loadedUrlRef.current = audioUrl;
 
     const ws = WaveSurfer.create({
       container: containerRef.current,
@@ -63,7 +101,7 @@ export function WaveformTrack({
       barRadius: 1,
     });
 
-    wavesurferRef.current = ws;
+    wsRef.current = ws;
 
     ws.on("ready", () => {
       const dur = ws.getDuration();
@@ -72,13 +110,22 @@ export function WaveformTrack({
       onReady();
     });
 
+    // Update time ref at full rate for smooth playhead animation
+    // NO React state updates during playback - all visuals read from ref
     ws.on("timeupdate", (time) => {
-      onTimeUpdate(time);
+      timeRef.current = time;
     });
 
     ws.on("play", () => onPlayingChange(true));
-    ws.on("pause", () => onPlayingChange(false));
-    ws.on("finish", () => onPlayingChange(false));
+    // Sync React state when playback stops (for UI that needs it)
+    ws.on("pause", () => {
+      onTimeUpdateRef.current(timeRef.current);
+      onPlayingChange(false);
+    });
+    ws.on("finish", () => {
+      onTimeUpdateRef.current(timeRef.current);
+      onPlayingChange(false);
+    });
 
     ws.on("click", (relativeX) => {
       const duration = ws.getDuration();
@@ -88,11 +135,21 @@ export function WaveformTrack({
 
     ws.load(audioUrl);
 
-    return () => {
-      ws.destroy();
-      wavesurferRef.current = null;
-    };
+    // No cleanup here - we handle cleanup at the start of the effect when URL changes
+    // This prevents tab focus/blur from causing unnecessary re-initialization
   }, [audioUrl]);
+
+  // Cleanup on actual unmount (when component is removed from DOM)
+  useEffect(() => {
+    const wsRef = wavesurferRef as React.MutableRefObject<WaveSurfer | null>;
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.destroy();
+        wsRef.current = null;
+      }
+      loadedUrlRef.current = null;
+    };
+  }, [wavesurferRef]);
 
   // Update zoom level
   useEffect(() => {
@@ -117,7 +174,7 @@ export function WaveformTrack({
       {!isLoaded && audioUrl && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/20">
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
             Loading waveform...
           </div>
         </div>
@@ -132,8 +189,8 @@ export function WaveformTrack({
 
       {/* WaveSurfer container */}
       <div
-        ref={containerRef}
         className={isLoaded && audioUrl ? "" : "invisible"}
+        ref={containerRef}
       />
     </div>
   );

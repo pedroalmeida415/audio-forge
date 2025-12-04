@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRightLeft, Play, X } from "lucide-react";
+import { memo } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Tooltip,
@@ -19,6 +20,15 @@ type SegmentItemProps = {
   onPlayRegion?: () => void;
 };
 
+function arePropsEqual(prev: SegmentItemProps, next: SegmentItemProps) {
+  return (
+    prev.isActive === next.isActive &&
+    prev.segment.id === next.segment.id &&
+    prev.segment.start === next.segment.start &&
+    prev.segment.end === next.segment.end
+  );
+}
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -31,7 +41,7 @@ function formatDuration(start: number, end: number): string {
   return `${duration.toFixed(1)}s`;
 }
 
-export function SegmentItem({
+export const SegmentItem = memo(function SegmentItem({
   segment,
   isActive,
   onSelect,
@@ -131,4 +141,4 @@ export function SegmentItem({
       </div>
     </div>
   );
-}
+}, arePropsEqual);

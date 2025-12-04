@@ -1,26 +1,47 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 
 type ScrubberBarProps = {
-  currentTime: number;
+  currentTimeRef: React.RefObject<number>;
   duration: number;
   disabled?: boolean;
   onSeek: (time: number) => void;
 };
 
 export function ScrubberBar({
-  currentTime,
+  currentTimeRef,
   duration,
   disabled = false,
   onSeek,
 }: ScrubberBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLSpanElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // Animate progress bar via RAF for smooth updates without React re-renders
+  useEffect(() => {
+    let animationId: number;
+
+    const updateProgress = () => {
+      if (progressRef.current && handleRef.current && duration > 0) {
+        const currentTime = currentTimeRef.current ?? 0;
+        const progress = (currentTime / duration) * 100;
+        progressRef.current.style.width = `${progress}%`;
+        handleRef.current.style.left = `${progress}%`;
+      }
+      animationId = requestAnimationFrame(updateProgress);
+    };
+
+    animationId = requestAnimationFrame(updateProgress);
+    return () => cancelAnimationFrame(animationId);
+  }, [currentTimeRef, duration]);
+
+  // For aria attributes, we read from ref (updated on interaction)
+  const currentTime = currentTimeRef.current ?? 0;
 
   const getTimeFromEvent = useCallback(
     (e: React.MouseEvent | MouseEvent): number => {
@@ -91,10 +112,11 @@ export function ScrubberBar({
     >
       {/* Track background */}
       <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-1 bg-muted rounded-full overflow-hidden">
-        {/* Progress fill */}
+        {/* Progress fill - position updated via RAF */}
         <div
-          className="absolute top-0 left-0 h-full bg-primary transition-none"
-          style={{ width: `${progress}%` }}
+          ref={progressRef}
+          className="absolute top-0 left-0 h-full bg-primary"
+          style={{ willChange: "width" }}
         />
 
         {/* Hover indicator */}
@@ -106,8 +128,9 @@ export function ScrubberBar({
         )}
       </div>
 
-      {/* Handle */}
+      {/* Handle - position updated via RAF */}
       <span
+        ref={handleRef}
         className={cn(
           "absolute top-1/2 -translate-y-1/2 -translate-x-1/2",
           "h-3 w-3 rounded-full bg-primary",
@@ -115,7 +138,7 @@ export function ScrubberBar({
           "group-hover:scale-125",
           isDragging && "scale-125"
         )}
-        style={{ left: `${progress}%` }}
+        style={{ willChange: "left" }}
       />
     </div>
   );

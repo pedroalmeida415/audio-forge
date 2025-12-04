@@ -26,6 +26,9 @@
       "performance": {
         "noNamespaceImport": "off"
       },
+      "correctness": {
+        "useExhaustiveDependencies": "info"
+      },
       "recommended": true
     }
   },

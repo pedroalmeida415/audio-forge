@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type WaveSurfer from "wavesurfer.js";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { Playhead } from "./playhead";
@@ -46,6 +40,22 @@ export function DescriptTimeline({
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Refs for values needed in effects without triggering re-creation
+  const currentTimeRef = useRef(currentTime);
+  const durationRef = useRef(duration);
+  const isPlayingRef = useRef(isPlaying);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
   const timeline = useTimelineState();
 
   // Build speaker color map for consistent colors
@@ -64,9 +74,6 @@ export function DescriptTimeline({
   const audioWidth = timeline.getTotalWidth(duration);
   const totalWidth = Math.max(audioWidth, containerWidth);
 
-  // Calculate playhead position relative to scroll
-  const playheadX = currentTime * timeline.pxPerSec;
-
   // Content height for playhead
   const contentHeight =
     TIMELINE_CONSTANTS.TIMESTRIP_HEIGHT +
@@ -75,7 +82,9 @@ export function DescriptTimeline({
 
   // Measure container width
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current) {
+      return;
+    }
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -98,7 +107,9 @@ export function DescriptTimeline({
   // Ctrl+wheel zoom
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -113,57 +124,79 @@ export function DescriptTimeline({
   }, [timeline]);
 
   // Auto-scroll to follow playhead during playback
+  // Only runs RAF loop when playing to save resources
   useEffect(() => {
-    if (!isPlaying || !scrollContainerRef.current) return;
-
-    const container = scrollContainerRef.current;
-    const scrollLeft = container.scrollLeft;
-    const viewportWidth = container.clientWidth;
-
-    // Check if playhead is outside visible area
-    const margin = viewportWidth * 0.2;
-    if (playheadX > scrollLeft + viewportWidth - margin) {
-      container.scrollLeft = playheadX - margin;
-    } else if (playheadX < scrollLeft + margin) {
-      container.scrollLeft = Math.max(0, playheadX - margin);
+    if (!isPlaying) {
+      return;
     }
-  }, [currentTime, isPlaying, playheadX]);
+
+    let animationId: number;
+
+    const updateScroll = () => {
+      if (scrollContainerRef.current) {
+        const container = scrollContainerRef.current;
+        const currentPlayheadX = currentTimeRef.current * timeline.pxPerSec;
+        const scrollLeft = container.scrollLeft;
+        const viewportWidth = container.clientWidth;
+
+        // Check if playhead is outside visible area
+        const margin = viewportWidth * 0.2;
+        if (currentPlayheadX > scrollLeft + viewportWidth - margin) {
+          container.scrollLeft = currentPlayheadX - margin;
+        } else if (currentPlayheadX < scrollLeft + margin) {
+          container.scrollLeft = Math.max(0, currentPlayheadX - margin);
+        }
+      }
+      animationId = requestAnimationFrame(updateScroll);
+    };
+
+    animationId = requestAnimationFrame(updateScroll);
+    return () => cancelAnimationFrame(animationId);
+  }, [isPlaying, timeline.pxPerSec]);
 
   // Playback controls
   const handlePlayPause = useCallback(() => {
     wavesurferRef.current?.playPause();
   }, []);
 
-  const handleSeek = useCallback((time: number) => {
-    if (wavesurferRef.current && duration > 0) {
-      const clampedTime = Math.max(0, Math.min(time, duration));
-      wavesurferRef.current.seekTo(clampedTime / duration);
-      setCurrentTime(clampedTime);
-    }
-  }, [duration]);
+  const handleSeek = useCallback(
+    (time: number) => {
+      if (wavesurferRef.current && duration > 0) {
+        const clampedTime = Math.max(0, Math.min(time, duration));
+        wavesurferRef.current.seekTo(clampedTime / duration);
+        // Update ref immediately for smooth visual feedback
+        currentTimeRef.current = clampedTime;
+        // Also update state for any components that need it
+        setCurrentTime(clampedTime);
+      }
+    },
+    [duration]
+  );
 
-  // Navigate to prev/next segment
+  // Navigate to prev/next segment - read from ref to avoid recreating callbacks
   const handleSeekPrev = useCallback(() => {
     const sortedSegments = [...segments].sort((a, b) => a.start - b.start);
+    const time = currentTimeRef.current;
     const prevSegment = sortedSegments
-      .filter((s) => s.start < currentTime - 0.1)
+      .filter((s) => s.start < time - 0.1)
       .pop();
     if (prevSegment) {
       handleSeek(prevSegment.start);
       onSegmentSelect(prevSegment.id);
     }
-  }, [segments, currentTime, handleSeek, onSegmentSelect]);
+  }, [segments, handleSeek, onSegmentSelect]);
 
   const handleSeekNext = useCallback(() => {
     const sortedSegments = [...segments].sort((a, b) => a.start - b.start);
-    const nextSegment = sortedSegments.find((s) => s.start > currentTime + 0.1);
+    const time = currentTimeRef.current;
+    const nextSegment = sortedSegments.find((s) => s.start > time + 0.1);
     if (nextSegment) {
       handleSeek(nextSegment.start);
       onSegmentSelect(nextSegment.id);
     }
-  }, [segments, currentTime, handleSeek, onSegmentSelect]);
+  }, [segments, handleSeek, onSegmentSelect]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts - use refs to avoid recreation on every time update
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input
@@ -183,14 +216,16 @@ export function DescriptTimeline({
           if (e.metaKey || e.ctrlKey) {
             handleSeekPrev();
           } else {
-            handleSeek(Math.max(0, currentTime - 1));
+            handleSeek(Math.max(0, currentTimeRef.current - 1));
           }
           break;
         case "ArrowRight":
           if (e.metaKey || e.ctrlKey) {
             handleSeekNext();
           } else {
-            handleSeek(Math.min(duration, currentTime + 1));
+            handleSeek(
+              Math.min(durationRef.current, currentTimeRef.current + 1)
+            );
           }
           break;
       }
@@ -198,46 +233,52 @@ export function DescriptTimeline({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handlePlayPause, handleSeek, handleSeekPrev, handleSeekNext, currentTime, duration]);
+  }, [handlePlayPause, handleSeek, handleSeekPrev, handleSeekNext]);
 
   return (
-    <div ref={containerRef} className="flex flex-col bg-background rounded-lg border overflow-hidden">
+    <div
+      className="flex flex-col overflow-hidden rounded-lg border bg-background"
+      ref={containerRef}
+    >
       {/* Scrubber bar at top */}
-      <div className="px-3 py-2 border-b border-border/30 bg-muted/20">
+      <div className="border-border/30 border-b bg-muted/20 px-3 py-2">
         <ScrubberBar
-          currentTime={currentTime}
-          duration={duration}
+          currentTimeRef={currentTimeRef}
           disabled={!isReady}
+          duration={duration}
           onSeek={handleSeek}
         />
       </div>
 
       {/* Toolbar */}
       <TimelineToolbar
-        currentTime={currentTime}
+        currentTimeRef={currentTimeRef}
+        disabled={!isReady}
         duration={duration}
         isPlaying={isPlaying}
-        zoomPercent={timeline.zoomPercent}
-        playbackSpeed={timeline.playbackSpeed}
-        disabled={!isReady}
         onPlayPause={handlePlayPause}
-        onSeekPrev={handleSeekPrev}
         onSeekNext={handleSeekNext}
+        onSeekPrev={handleSeekPrev}
+        onSpeedChange={timeline.setPlaybackSpeed}
         onZoomIn={timeline.zoomIn}
         onZoomOut={timeline.zoomOut}
         onZoomPreset={timeline.setZoomPercent}
-        onSpeedChange={timeline.setPlaybackSpeed}
+        playbackSpeed={timeline.playbackSpeed}
+        zoomPercent={timeline.zoomPercent}
       />
 
       {/* Scrollable timeline content - always show scrollbar */}
       <div
-        ref={scrollContainerRef}
-        className="relative overflow-x-scroll overflow-y-hidden"
-        style={{ scrollbarGutter: "stable" }}
+        className="relative overflow-y-hidden overflow-x-scroll"
         onScroll={handleScroll}
+        ref={scrollContainerRef}
+        style={{ scrollbarGutter: "stable" }}
       >
         {/* Inner container with full width */}
-        <div className="relative" style={{ width: totalWidth, minWidth: "100%" }}>
+        <div
+          className="relative"
+          style={{ width: totalWidth, minWidth: "100%" }}
+        >
           {/* Timestrip - spans full width */}
           <Timestrip
             duration={duration}
@@ -247,32 +288,36 @@ export function DescriptTimeline({
 
           {/* Speaker bar */}
           <SpeakerBar
-            segments={segments}
-            speakerColorMap={speakerColorMap}
-            pxPerSec={timeline.pxPerSec}
-            selectedSegmentId={selectedSegmentId}
             onSegmentClick={onSegmentSelect}
+            pxPerSec={timeline.pxPerSec}
+            scrollLeft={timeline.scrollX}
+            segments={segments}
+            selectedSegmentId={selectedSegmentId}
+            speakerColorMap={speakerColorMap}
+            viewportWidth={containerWidth}
           />
 
           {/* Waveform track */}
           <WaveformTrack
             audioUrl={audioUrl}
-            pxPerSec={timeline.pxPerSec}
-            playbackSpeed={timeline.playbackSpeed}
-            onTimeUpdate={setCurrentTime}
+            currentTimeRef={currentTimeRef}
             onDurationChange={setDuration}
             onPlayingChange={setIsPlaying}
-            onSeek={handleSeek}
             onReady={() => setIsReady(true)}
+            onSeek={handleSeek}
+            onTimeUpdate={setCurrentTime}
+            playbackSpeed={timeline.playbackSpeed}
+            pxPerSec={timeline.pxPerSec}
             wavesurferRef={wavesurferRef}
           />
 
           {/* Playhead overlay - positioned absolutely within scroll container */}
           {isReady && (
             <Playhead
-              x={playheadX}
+              currentTimeRef={currentTimeRef}
               height={contentHeight}
               isPlaying={isPlaying}
+              pxPerSec={timeline.pxPerSec}
             />
           )}
         </div>

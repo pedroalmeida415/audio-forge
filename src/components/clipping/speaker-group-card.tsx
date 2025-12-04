@@ -1,7 +1,8 @@
 "use client";
 
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { CollectionCombobox } from "~/components/clipping/collection-combobox";
 import { SegmentItem } from "~/components/clipping/segment-item";
 import { Button } from "~/components/ui/button";
@@ -13,6 +14,9 @@ import {
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
+
+// Height of each segment item in pixels
+const SEGMENT_ITEM_HEIGHT = 44;
 
 type SpeakerGroupCardProps = {
   speaker: string;
@@ -72,11 +76,21 @@ export function SpeakerGroupCard({
   onCreateCollection,
   isCreatingCollection,
 }: SpeakerGroupCardProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   const color = useMemo(() => getSpeakerColor(speakerIndex), [speakerIndex]);
   const totalDuration = useMemo(
     () => formatTotalDuration(segments),
     [segments]
   );
+
+  // Virtualizer for segment list
+  const virtualizer = useVirtualizer({
+    count: segments.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => SEGMENT_ITEM_HEIGHT,
+    overscan: 3,
+  });
 
   // Display name: collection name if assigned, otherwise speaker ID
   const displayName = collectionName || speaker;
@@ -170,20 +184,47 @@ export function SpeakerGroupCard({
           </div>
         </div>
 
-        {/* Segment list */}
+        {/* Segment list (virtualized) */}
         <CollapsibleContent>
           <div className="border-t px-2 py-2">
-            <div className="max-h-[280px] space-y-0.5 overflow-y-auto">
-              {segments.map((segment) => (
-                <SegmentItem
-                  isActive={segment.id === activeSegmentId}
-                  key={segment.id}
-                  onExclude={() => onSegmentExclude(segment.id)}
-                  onReassign={() => onSegmentReassign(segment.id)}
-                  onSelect={() => onSegmentSelect(segment.id)}
-                  segment={segment}
-                />
-              ))}
+            <div
+              className="max-h-[280px] overflow-y-auto"
+              ref={scrollContainerRef}
+            >
+              <div
+                style={{
+                  height: virtualizer.getTotalSize(),
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const segment = segments[virtualRow.index];
+                  if (!segment) return null;
+
+                  return (
+                    <div
+                      key={segment.id}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: virtualRow.size,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <SegmentItem
+                        isActive={segment.id === activeSegmentId}
+                        onExclude={() => onSegmentExclude(segment.id)}
+                        onReassign={() => onSegmentReassign(segment.id)}
+                        onSelect={() => onSegmentSelect(segment.id)}
+                        segment={segment}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </CollapsibleContent>

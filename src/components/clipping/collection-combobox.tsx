@@ -58,13 +58,19 @@ export function CollectionCombobox({
   // Use global collection list when no search query
   const { data: allCollections = [] } = api.collection.listAll.useQuery(
     { limit: 20 },
-    { enabled: !searchQuery }
+    {
+      enabled: !searchQuery,
+      refetchOnWindowFocus: false,
+    }
   );
 
   // Use search when query exists
   const { data: searchResults = [] } = api.collection.searchGlobal.useQuery(
     { query: searchQuery, limit: 20 },
-    { enabled: searchQuery.length >= 1 }
+    {
+      enabled: searchQuery.length >= 1,
+      refetchOnWindowFocus: false,
+    }
   );
 
   const collections = searchQuery ? searchResults : allCollections;

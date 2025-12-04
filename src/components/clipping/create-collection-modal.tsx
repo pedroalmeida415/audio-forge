@@ -39,6 +39,7 @@ export function CreateCollectionModal({
 
   const { data: projects = [] } = api.project.list.useQuery(undefined, {
     enabled: open,
+    refetchOnWindowFocus: false,
   });
 
   function handleCreate() {
