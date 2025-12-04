@@ -23,7 +23,8 @@ bun dev              # Start dev server (with Turbopack)
 bun build            # Production build
 bun db:push          # Push schema changes to database
 bun db:studio        # Open Drizzle Studio
-bun biome:fix        # Format and fix lint issues
+bun biome:fix -- <file-path>        # Format and fix lint issues
+bun biome:check -- <file-path>        # Check lint issues
 ```
 
 ## Project Structure

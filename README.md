@@ -131,8 +131,8 @@ bun build         # Build for production
 bun start         # Start production server
 bun db:push       # Push schema changes to database
 bun db:studio     # Open Drizzle Studio
-bun biome:check   # Check for linting issues
-bun biome:fix     # Auto-fix linting issues
+bun biome:check -- <file-path>   # Check for linting issues
+bun biome:fix -- <file-path>     # Auto-fix linting issues
 ```
 
 ## Architecture
