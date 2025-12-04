@@ -484,6 +484,20 @@ function ClipListItemWrapper({
 }) {
   const { data: urlData } = api.clip.getClipUrl.useQuery({ clipId: clip.id });
 
+  // Find the latest completed processed clip
+  const completedProcessed = clip.processedClips.filter(
+    (p) => p.processingStatus === "completed"
+  );
+  const latestProcessed = completedProcessed.length > 0
+    ? completedProcessed[completedProcessed.length - 1]
+    : null;
+
+  // Fetch processed clip URL if available
+  const { data: processedUrlData } = api.processing.getProcessedClipUrl.useQuery(
+    { processedClipId: latestProcessed?.id ?? "" },
+    { enabled: !!latestProcessed?.id }
+  );
+
   const normalizedClip = {
     id: clip.id,
     durationSeconds: clip.durationSeconds ?? 0,
@@ -510,8 +524,10 @@ function ClipListItemWrapper({
       clip={normalizedClip}
       isActive={isActive}
       isSelected={isSelected}
+      latestProcessedId={latestProcessed?.id}
       onClick={onClick}
       onSelect={onSelect}
+      processedAudioUrl={processedUrlData?.url}
     />
   );
 }

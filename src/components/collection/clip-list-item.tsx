@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  AlertCircle,
-  ArrowRight,
   Check,
   Clock,
   Loader2,
@@ -65,6 +63,8 @@ function formatTimestamp(seconds: number): string {
 type ClipListItemProps = {
   clip: ClipData;
   audioUrl?: string;
+  processedAudioUrl?: string;
+  latestProcessedId?: string | null;
   isSelected?: boolean;
   onSelect?: (selected: boolean) => void;
   onClick?: () => void;
@@ -75,14 +75,18 @@ type ClipListItemProps = {
 export function ClipListItem({
   clip,
   audioUrl,
+  processedAudioUrl,
+  latestProcessedId,
   isSelected = false,
   onSelect,
   onClick,
   isActive = false,
   className,
 }: ClipListItemProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlayingOriginal, setIsPlayingOriginal] = useState(false);
+  const [isPlayingProcessed, setIsPlayingProcessed] = useState(false);
+  const originalAudioRef = useRef<HTMLAudioElement>(null);
+  const processedAudioRef = useRef<HTMLAudioElement>(null);
 
   const hasTranscript = clip.transcript && clip.transcript.trim().length > 0;
 
@@ -90,26 +94,48 @@ export function ClipListItem({
   const completedProcessed = clip.processedClips?.filter(
     (c) => c.processingStatus === "completed"
   ) ?? [];
-  const latestProcessed = completedProcessed.length > 0
-    ? completedProcessed.sort((a, b) =>
-        // Sort by most recent (assuming id or some ordering)
-        completedProcessed.indexOf(b) - completedProcessed.indexOf(a)
-      )[0]
-    : null;
+  const latestProcessed = latestProcessedId
+    ? completedProcessed.find((c) => c.id === latestProcessedId)
+    : completedProcessed.length > 0
+      ? completedProcessed[completedProcessed.length - 1]
+      : null;
 
   // Processing status counts
   const pendingCount = clip.processedClips?.filter(
     (c) => c.processingStatus === "pending" || c.processingStatus === "processing"
   ).length ?? 0;
 
-  function handlePlayPause(e: React.MouseEvent) {
+  function handlePlayPauseOriginal(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!audioRef.current) return;
+    if (!originalAudioRef.current) return;
 
-    if (isPlaying) {
-      audioRef.current.pause();
+    // Stop processed audio if playing
+    if (processedAudioRef.current && isPlayingProcessed) {
+      processedAudioRef.current.pause();
+      setIsPlayingProcessed(false);
+    }
+
+    if (isPlayingOriginal) {
+      originalAudioRef.current.pause();
     } else {
-      audioRef.current.play();
+      originalAudioRef.current.play();
+    }
+  }
+
+  function handlePlayPauseProcessed(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!processedAudioRef.current) return;
+
+    // Stop original audio if playing
+    if (originalAudioRef.current && isPlayingOriginal) {
+      originalAudioRef.current.pause();
+      setIsPlayingOriginal(false);
+    }
+
+    if (isPlayingProcessed) {
+      processedAudioRef.current.pause();
+    } else {
+      processedAudioRef.current.play();
     }
   }
 
@@ -190,15 +216,15 @@ export function ClipListItem({
           <button
             className={cn(
               "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors",
-              isPlaying
+              isPlayingOriginal
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border bg-background hover:border-primary hover:bg-primary/10"
             )}
             disabled={!audioUrl}
-            onClick={handlePlayPause}
+            onClick={handlePlayPauseOriginal}
             type="button"
           >
-            {isPlaying ? (
+            {isPlayingOriginal ? (
               <Pause className="h-4 w-4" />
             ) : (
               <Play className="h-4 w-4 ml-0.5" />
@@ -209,10 +235,10 @@ export function ClipListItem({
             // biome-ignore lint/a11y/useMediaCaption: Audio clips are speech samples
             <audio
               className="hidden"
-              onEnded={() => setIsPlaying(false)}
-              onPause={() => setIsPlaying(false)}
-              onPlay={() => setIsPlaying(true)}
-              ref={audioRef}
+              onEnded={() => setIsPlayingOriginal(false)}
+              onPause={() => setIsPlayingOriginal(false)}
+              onPlay={() => setIsPlayingOriginal(true)}
+              ref={originalAudioRef}
               src={audioUrl}
             />
           )}
@@ -237,9 +263,36 @@ export function ClipListItem({
         )}>
           {latestProcessed ? (
             <>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/30">
-                <Sparkles className="h-4 w-4 text-emerald-500" />
-              </div>
+              <button
+                className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors",
+                  isPlayingProcessed
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : "border-emerald-500/30 bg-emerald-500/10 hover:border-emerald-500 hover:bg-emerald-500/20 text-emerald-500"
+                )}
+                disabled={!processedAudioUrl}
+                onClick={handlePlayPauseProcessed}
+                type="button"
+              >
+                {isPlayingProcessed ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4 ml-0.5" />
+                )}
+              </button>
+
+              {processedAudioUrl && (
+                // biome-ignore lint/a11y/useMediaCaption: Audio clips are speech samples
+                <audio
+                  className="hidden"
+                  onEnded={() => setIsPlayingProcessed(false)}
+                  onPause={() => setIsPlayingProcessed(false)}
+                  onPlay={() => setIsPlayingProcessed(true)}
+                  ref={processedAudioRef}
+                  src={processedAudioUrl}
+                />
+              )}
+
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">
@@ -255,9 +308,15 @@ export function ClipListItem({
               </div>
             </>
           ) : (
-            <div className="flex-1 text-center py-1">
-              <p className="text-sm text-muted-foreground">No processed version</p>
-            </div>
+            <>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30">
+                <Sparkles className="h-4 w-4 text-muted-foreground/50" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-muted-foreground">No processed version</p>
+                <p className="text-xs text-muted-foreground/60 mt-0.5">Select to add processing</p>
+              </div>
+            </>
           )}
         </div>
       </div>
