@@ -242,8 +242,6 @@ export function DescriptTimeline({
           <Timestrip
             duration={duration}
             pxPerSec={timeline.pxPerSec}
-            scrollX={timeline.scrollX}
-            containerWidth={containerWidth}
             totalWidth={totalWidth}
           />
 
@@ -252,8 +250,6 @@ export function DescriptTimeline({
             segments={segments}
             speakerColorMap={speakerColorMap}
             pxPerSec={timeline.pxPerSec}
-            scrollX={timeline.scrollX}
-            containerWidth={containerWidth}
             selectedSegmentId={selectedSegmentId}
             onSegmentClick={onSegmentSelect}
           />

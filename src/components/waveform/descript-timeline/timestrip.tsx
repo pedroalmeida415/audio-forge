@@ -7,8 +7,6 @@ import { formatTimeSimple, TIMELINE_CONSTANTS } from "./timeline-styles";
 type TimestripProps = {
   duration: number;
   pxPerSec: number;
-  scrollX: number;
-  containerWidth: number;
   totalWidth: number;
 };
 
@@ -43,30 +41,20 @@ function getTickInterval(markerInterval: number): number {
 export function Timestrip({
   duration,
   pxPerSec,
-  scrollX,
-  containerWidth,
   totalWidth,
 }: TimestripProps) {
   const markerInterval = getMarkerInterval(pxPerSec);
   const tickInterval = getTickInterval(markerInterval);
 
-  // Calculate the maximum time to show markers for (extend beyond duration to fill container)
+  // Calculate the maximum time to show markers for
   const maxTime = totalWidth / pxPerSec;
 
   const { markers, ticks } = useMemo(() => {
-    const visibleStartTime = Math.max(0, scrollX / pxPerSec - 1);
-    const visibleEndTime = Math.min(
-      maxTime,
-      (scrollX + containerWidth) / pxPerSec + 1
-    );
-
     const markers: TimeMarker[] = [];
     const ticks: { x: number }[] = [];
 
-    // Generate markers - extend beyond duration
-    const startMarker = Math.floor(visibleStartTime / markerInterval) * markerInterval;
-    for (let time = startMarker; time <= visibleEndTime; time += markerInterval) {
-      if (time < 0) continue;
+    // Generate all markers up to maxTime
+    for (let time = 0; time <= maxTime; time += markerInterval) {
       const x = time * pxPerSec;
       markers.push({
         time,
@@ -77,9 +65,7 @@ export function Timestrip({
     }
 
     // Generate ticks (small dots)
-    const startTick = Math.floor(visibleStartTime / tickInterval) * tickInterval;
-    for (let time = startTick; time <= visibleEndTime; time += tickInterval) {
-      if (time < 0) continue;
+    for (let time = 0; time <= maxTime; time += tickInterval) {
       // Skip ticks that coincide with markers
       if (Math.abs(time % markerInterval) < 0.001) continue;
       const x = time * pxPerSec;
@@ -87,7 +73,7 @@ export function Timestrip({
     }
 
     return { markers, ticks };
-  }, [maxTime, pxPerSec, scrollX, containerWidth, markerInterval, tickInterval]);
+  }, [maxTime, pxPerSec, markerInterval, tickInterval]);
 
   return (
     <div

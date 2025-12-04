@@ -10,13 +10,11 @@ type SpeakerBarProps = {
   segments: DiarizationSegment[];
   speakerColorMap: Map<string, number>;
   pxPerSec: number;
-  scrollX: number;
-  containerWidth: number;
   selectedSegmentId: string | null;
   onSegmentClick: (segmentId: string) => void;
 };
 
-type VisibleSegment = DiarizationSegment & {
+type PositionedSegment = DiarizationSegment & {
   x: number;
   width: number;
   colorIndex: number;
@@ -26,31 +24,22 @@ export function SpeakerBar({
   segments,
   speakerColorMap,
   pxPerSec,
-  scrollX,
-  containerWidth,
   selectedSegmentId,
   onSegmentClick,
 }: SpeakerBarProps) {
-  const visibleSegments = useMemo((): VisibleSegment[] => {
-    const visibleStartTime = Math.max(0, (scrollX - 50) / pxPerSec);
-    const visibleEndTime = (scrollX + containerWidth + 50) / pxPerSec;
-
-    return segments
-      .filter(
-        (seg) =>
-          seg.end > visibleStartTime && seg.start < visibleEndTime
-      )
-      .map((seg) => {
-        const x = seg.start * pxPerSec - scrollX;
-        const width = (seg.end - seg.start) * pxPerSec;
-        const colorIndex = speakerColorMap.get(seg.speaker) ?? 0;
-        return { ...seg, x, width, colorIndex };
-      });
-  }, [segments, pxPerSec, scrollX, containerWidth, speakerColorMap]);
+  // Position all segments - parent container handles scrolling
+  const positionedSegments = useMemo((): PositionedSegment[] => {
+    return segments.map((seg) => {
+      const x = seg.start * pxPerSec;
+      const width = (seg.end - seg.start) * pxPerSec;
+      const colorIndex = speakerColorMap.get(seg.speaker) ?? 0;
+      return { ...seg, x, width, colorIndex };
+    });
+  }, [segments, pxPerSec, speakerColorMap]);
 
   // Calculate gaps between segments
   const gaps = useMemo(() => {
-    const sortedSegments = [...visibleSegments].sort((a, b) => a.start - b.start);
+    const sortedSegments = [...positionedSegments].sort((a, b) => a.start - b.start);
     const result: { x: number; width: number; duration: number }[] = [];
 
     for (let i = 0; i < sortedSegments.length - 1; i++) {
@@ -63,14 +52,14 @@ export function SpeakerBar({
       const gapDuration = gapEnd - gapStart;
 
       if (gapDuration > 0.05) {
-        const x = gapStart * pxPerSec - scrollX;
+        const x = gapStart * pxPerSec;
         const width = gapDuration * pxPerSec;
         result.push({ x, width, duration: gapDuration });
       }
     }
 
     return result;
-  }, [visibleSegments, pxPerSec, scrollX]);
+  }, [positionedSegments, pxPerSec]);
 
   return (
     <div
@@ -78,14 +67,14 @@ export function SpeakerBar({
       style={{ height: TIMELINE_CONSTANTS.SPEAKER_BAR_HEIGHT }}
     >
       {/* Background bar showing content area */}
-      {visibleSegments.length > 0 && (
+      {positionedSegments.length > 0 && (
         <div
           className="absolute top-1 bottom-1 bg-muted/40 rounded-sm"
           style={{
-            left: Math.min(...visibleSegments.map((s) => s.x)),
+            left: Math.min(...positionedSegments.map((s) => s.x)),
             width:
-              Math.max(...visibleSegments.map((s) => s.x + s.width)) -
-              Math.min(...visibleSegments.map((s) => s.x)),
+              Math.max(...positionedSegments.map((s) => s.x + s.width)) -
+              Math.min(...positionedSegments.map((s) => s.x)),
           }}
         />
       )}
@@ -106,7 +95,7 @@ export function SpeakerBar({
       ))}
 
       {/* Speaker segments */}
-      {visibleSegments.map((segment) => {
+      {positionedSegments.map((segment) => {
         const color = getSpeakerColor(segment.colorIndex);
         const isSelected = segment.id === selectedSegmentId;
 
@@ -138,24 +127,6 @@ export function SpeakerBar({
                 {segment.speaker}
               </span>
             )}
-
-            {/* Trim handles (visible on hover/selection) */}
-            <div
-              className={cn(
-                "absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity",
-                isSelected && "opacity-50"
-              )}
-              style={{ backgroundColor: color.border }}
-              onMouseDown={(e) => e.stopPropagation()}
-            />
-            <div
-              className={cn(
-                "absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity",
-                isSelected && "opacity-50"
-              )}
-              style={{ backgroundColor: color.border }}
-              onMouseDown={(e) => e.stopPropagation()}
-            />
           </button>
         );
       })}
