@@ -33,7 +33,10 @@ type SpeakerGroupCardProps = {
   onSegmentSelect: (segmentId: string) => void;
   onSegmentExclude: (segmentId: string) => void;
   onSegmentReassign: (segmentId: string) => void;
-  onCreateCollection: (name: string, projectId: string) => Promise<{
+  onCreateCollection: (
+    name: string,
+    projectId: string
+  ) => Promise<{
     id: string;
     name: string;
     projectId: string;

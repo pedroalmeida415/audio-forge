@@ -23,7 +23,7 @@ const navItems = [
 
 export function FloatingNav() {
   return (
-    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+    <div className="-translate-x-1/2 fixed bottom-6 left-1/2 z-50">
       <FloatingDock items={navItems} />
     </div>
   );

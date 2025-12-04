@@ -14,8 +14,8 @@ import {
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
-import type { DiarizationSegment } from "~/server/db/schema";
 import { cn } from "~/lib/utils";
+import type { DiarizationSegment } from "~/server/db/schema";
 
 type ReassignSpeakerDialogProps = {
   open: boolean;
@@ -46,9 +46,7 @@ export function ReassignSpeakerDialog({
   const [useNewSpeaker, setUseNewSpeaker] = useState(false);
 
   // Filter out current speaker from options
-  const otherSpeakers = existingSpeakers.filter(
-    (s) => s !== segment?.speaker
-  );
+  const otherSpeakers = existingSpeakers.filter((s) => s !== segment?.speaker);
 
   const handleReassign = async () => {
     if (!segment) return;
@@ -112,7 +110,9 @@ export function ReassignSpeakerDialog({
                     setSelectedSpeaker(value);
                   }
                 }}
-                value={useNewSpeaker ? "__new__" : selectedSpeaker ?? undefined}
+                value={
+                  useNewSpeaker ? "__new__" : (selectedSpeaker ?? undefined)
+                }
               >
                 {/* Existing speakers */}
                 {otherSpeakers.map((speaker) => (

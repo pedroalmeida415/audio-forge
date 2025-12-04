@@ -284,14 +284,16 @@ export function useSpeakerWorkspace(jobId: string): UseSpeakerWorkspaceReturn {
     setExcludedSegmentIds(new Set());
   }, []);
 
-  const getExcludedSegmentsList = useCallback((): ExcludedSegment[] => {
-    return allSegments
-      .filter((s) => excludedSegmentIds.has(s.id))
-      .map((segment) => ({
-        segment,
-        originalSpeaker: segment.speaker,
-      }));
-  }, [allSegments, excludedSegmentIds]);
+  const getExcludedSegmentsList = useCallback(
+    (): ExcludedSegment[] =>
+      allSegments
+        .filter((s) => excludedSegmentIds.has(s.id))
+        .map((segment) => ({
+          segment,
+          originalSpeaker: segment.speaker,
+        })),
+    [allSegments, excludedSegmentIds]
+  );
 
   // Count groups that have collections assigned (extractable)
   const extractableGroupCount = useMemo(() => {

@@ -12,7 +12,10 @@ import type { DiarizationSegment } from "~/server/db/schema";
 
 type SpeakerWorkspaceProps = {
   workspace: UseSpeakerWorkspaceReturn;
-  onCreateCollection: (name: string, projectId: string) => Promise<{
+  onCreateCollection: (
+    name: string,
+    projectId: string
+  ) => Promise<{
     id: string;
     name: string;
     projectId: string;
@@ -125,7 +128,12 @@ export function SpeakerWorkspace({
                 onSegmentExclude={excludeSegment}
                 onSegmentReassign={handleOpenReassignDialog}
                 onSegmentSelect={setActiveSegmentId}
-                onSetCollection={(collectionId, collectionName, projectId, projectName) =>
+                onSetCollection={(
+                  collectionId,
+                  collectionName,
+                  projectId,
+                  projectName
+                ) =>
                   setSpeakerCollection(
                     speaker,
                     collectionId,

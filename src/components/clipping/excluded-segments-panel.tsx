@@ -37,7 +37,7 @@ export function ExcludedSegmentsPanel({
 
   return (
     <Collapsible onOpenChange={setIsExpanded} open={isExpanded}>
-      <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20">
+      <div className="rounded-lg border border-muted-foreground/30 border-dashed bg-muted/20">
         {/* Header */}
         <div className="flex items-center justify-between p-3">
           <CollapsibleTrigger asChild>
@@ -72,7 +72,7 @@ export function ExcludedSegmentsPanel({
 
         {/* Excluded segment list */}
         <CollapsibleContent>
-          <div className="border-t border-dashed border-muted-foreground/30 px-3 py-2">
+          <div className="border-muted-foreground/30 border-t border-dashed px-3 py-2">
             <div className="max-h-[200px] space-y-1 overflow-y-auto">
               {excludedSegments.map(({ segment, originalSpeaker }) => (
                 <div

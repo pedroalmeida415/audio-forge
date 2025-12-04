@@ -37,7 +37,9 @@ export default function RootLayout({
       <body className="bg-background bg-studio-grid">
         <div className="pointer-events-none fixed inset-0 bg-gradient-mesh" />
         <TRPCReactProvider>
-          <main className="flex min-h-screen flex-1 flex-col pb-24">{children}</main>
+          <main className="flex min-h-screen flex-1 flex-col pb-24">
+            {children}
+          </main>
           <FloatingNav />
           {modal}
         </TRPCReactProvider>

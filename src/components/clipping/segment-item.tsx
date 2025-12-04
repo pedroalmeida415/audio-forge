@@ -7,8 +7,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import type { DiarizationSegment } from "~/server/db/schema";
 import { cn } from "~/lib/utils";
+import type { DiarizationSegment } from "~/server/db/schema";
 
 type SegmentItemProps = {
   segment: DiarizationSegment;
@@ -43,7 +43,7 @@ export function SegmentItem({
     <div
       className={cn(
         "group flex items-center justify-between rounded-md px-3 py-2 transition-all duration-150",
-        "hover:bg-accent/30 cursor-pointer",
+        "cursor-pointer hover:bg-accent/30",
         isActive && "bg-primary/10 ring-1 ring-primary/50"
       )}
       onClick={onSelect}
@@ -57,7 +57,7 @@ export function SegmentItem({
         <div
           className={cn(
             "h-1.5 w-1.5 rounded-full transition-all",
-            isActive ? "bg-primary scale-125" : "bg-muted-foreground/30"
+            isActive ? "scale-125 bg-primary" : "bg-muted-foreground/30"
           )}
         />
 

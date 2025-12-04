@@ -9,7 +9,6 @@ import { Skeleton } from "~/components/ui/skeleton";
 import {
   getSpeakerBgColor,
   getSpeakerHighlightColor,
-  SPEAKER_COLORS,
 } from "~/lib/speaker-colors";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { useWaveSurfer } from "./use-wavesurfer";
@@ -129,7 +128,13 @@ export function WaveformViewer({
         color: isSelected ? highlightColor : baseColor,
       });
     }
-  }, [isReady, selectedSegmentId, segments, updateRegion, getSpeakerColorIndex]);
+  }, [
+    isReady,
+    selectedSegmentId,
+    segments,
+    updateRegion,
+    getSpeakerColorIndex,
+  ]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -139,21 +144,7 @@ export function WaveformViewer({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Waveform container */}
-      <div className="rounded-lg border bg-muted/30 p-4">
-        {!audioUrl && (
-          <div className="flex h-32 items-center justify-center text-muted-foreground">
-            No audio loaded
-          </div>
-        )}
-        {audioUrl && !isReady && <Skeleton className="h-32 w-full" />}
-        <div
-          className={isReady && audioUrl ? "" : "hidden"}
-          ref={containerRef}
-        />
-      </div>
-
+    <div className="space-y-3">
       {/* Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -206,6 +197,19 @@ export function WaveformViewer({
         </div>
       </div>
 
+      {/* Waveform container */}
+      <div className="rounded-lg border bg-muted/30 p-4">
+        {!audioUrl && (
+          <div className="flex h-32 items-center justify-center text-muted-foreground">
+            No audio loaded
+          </div>
+        )}
+        {audioUrl && !isReady && <Skeleton className="h-32 w-full" />}
+        <div
+          className={isReady && audioUrl ? "" : "hidden"}
+          ref={containerRef}
+        />
+      </div>
     </div>
   );
 }
