@@ -9,6 +9,7 @@ type TimestripProps = {
   pxPerSec: number;
   scrollX: number;
   containerWidth: number;
+  totalWidth: number;
 };
 
 type TimeMarker = {
@@ -44,25 +45,29 @@ export function Timestrip({
   pxPerSec,
   scrollX,
   containerWidth,
+  totalWidth,
 }: TimestripProps) {
   const markerInterval = getMarkerInterval(pxPerSec);
   const tickInterval = getTickInterval(markerInterval);
 
+  // Calculate the maximum time to show markers for (extend beyond duration to fill container)
+  const maxTime = totalWidth / pxPerSec;
+
   const { markers, ticks } = useMemo(() => {
     const visibleStartTime = Math.max(0, scrollX / pxPerSec - 1);
     const visibleEndTime = Math.min(
-      duration,
+      maxTime,
       (scrollX + containerWidth) / pxPerSec + 1
     );
 
     const markers: TimeMarker[] = [];
     const ticks: { x: number }[] = [];
 
-    // Generate markers
+    // Generate markers - extend beyond duration
     const startMarker = Math.floor(visibleStartTime / markerInterval) * markerInterval;
     for (let time = startMarker; time <= visibleEndTime; time += markerInterval) {
       if (time < 0) continue;
-      const x = time * pxPerSec - scrollX;
+      const x = time * pxPerSec;
       markers.push({
         time,
         x,
@@ -77,12 +82,12 @@ export function Timestrip({
       if (time < 0) continue;
       // Skip ticks that coincide with markers
       if (Math.abs(time % markerInterval) < 0.001) continue;
-      const x = time * pxPerSec - scrollX;
+      const x = time * pxPerSec;
       ticks.push({ x });
     }
 
     return { markers, ticks };
-  }, [duration, pxPerSec, scrollX, containerWidth, markerInterval, tickInterval]);
+  }, [maxTime, pxPerSec, scrollX, containerWidth, markerInterval, tickInterval]);
 
   return (
     <div
@@ -110,13 +115,23 @@ export function Timestrip({
               "text-[11px] tabular-nums px-1 bg-background",
               marker.isZero
                 ? "text-foreground font-medium"
-                : "text-muted-foreground"
+                : marker.time > duration
+                  ? "text-muted-foreground/50"
+                  : "text-muted-foreground"
             )}
           >
             {marker.label}
           </span>
         </div>
       ))}
+
+      {/* Duration end indicator */}
+      {duration > 0 && (
+        <div
+          className="absolute top-0 h-full w-px bg-border/50"
+          style={{ left: duration * pxPerSec }}
+        />
+      )}
     </div>
   );
 }

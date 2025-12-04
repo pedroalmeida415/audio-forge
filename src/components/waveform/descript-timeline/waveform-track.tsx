@@ -1,54 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
-import type { Region, RegionParams } from "wavesurfer.js/dist/plugins/regions.js";
-import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
-import { getSpeakerBgColor, getSpeakerHighlightColor } from "~/lib/speaker-colors";
-import type { DiarizationSegment } from "~/server/db/schema";
 import { TIMELINE_CONSTANTS } from "./timeline-styles";
 
 type WaveformTrackProps = {
   audioUrl: string | null;
-  segments: DiarizationSegment[];
-  speakerColorMap: Map<string, number>;
-  selectedSegmentId: string | null;
   pxPerSec: number;
-  currentTime: number;
-  duration: number;
-  isPlaying: boolean;
+  playbackSpeed: number;
   onTimeUpdate: (time: number) => void;
   onDurationChange: (duration: number) => void;
   onPlayingChange: (isPlaying: boolean) => void;
-  onSegmentClick: (segmentId: string) => void;
-  onSegmentUpdate?: (segmentId: string, start: number, end: number) => void;
   onSeek: (time: number) => void;
   onReady: () => void;
   wavesurferRef: React.MutableRefObject<WaveSurfer | null>;
 };
 
-const SNAP_GRID = 0.1;
-
-function snapToGrid(time: number): number {
-  return Math.round(time / SNAP_GRID) * SNAP_GRID;
-}
-
 export function WaveformTrack({
   audioUrl,
-  segments,
-  speakerColorMap,
-  selectedSegmentId,
   pxPerSec,
+  playbackSpeed,
   onTimeUpdate,
   onDurationChange,
   onPlayingChange,
-  onSegmentClick,
-  onSegmentUpdate,
+  onSeek,
   onReady,
   wavesurferRef,
 }: WaveformTrackProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const regionsRef = useRef<RegionsPlugin | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Initialize WaveSurfer
@@ -61,7 +40,6 @@ export function WaveformTrack({
     if (wavesurferRef.current) {
       wavesurferRef.current.destroy();
       wavesurferRef.current = null;
-      regionsRef.current = null;
     }
 
     setIsLoaded(false);
@@ -70,12 +48,12 @@ export function WaveformTrack({
       container: containerRef.current,
       waveColor: "#64748b",
       progressColor: "#3b82f6",
-      cursorColor: "transparent", // We'll render our own playhead
+      cursorColor: "transparent", // We render our own playhead
       cursorWidth: 0,
       height: TIMELINE_CONSTANTS.TRACK_HEIGHT,
       normalize: true,
       minPxPerSec: pxPerSec,
-      fillParent: false, // Important: use actual width based on duration
+      fillParent: false, // Use actual width based on duration
       interact: true,
       dragToSeek: true,
       autoScroll: false,
@@ -85,10 +63,7 @@ export function WaveformTrack({
       barRadius: 1,
     });
 
-    const regions = ws.registerPlugin(RegionsPlugin.create());
-
     wavesurferRef.current = ws;
-    regionsRef.current = regions;
 
     ws.on("ready", () => {
       const dur = ws.getDuration();
@@ -108,28 +83,7 @@ export function WaveformTrack({
     ws.on("click", (relativeX) => {
       const duration = ws.getDuration();
       const time = relativeX * duration;
-      ws.seekTo(relativeX);
-      onTimeUpdate(time);
-    });
-
-    // Region events
-    regions.on("region-updated", (region) => {
-      const snappedStart = snapToGrid(region.start);
-      const snappedEnd = snapToGrid(region.end);
-
-      if (snappedStart !== region.start || snappedEnd !== region.end) {
-        region.setOptions({
-          start: snappedStart,
-          end: snappedEnd,
-        });
-      }
-
-      onSegmentUpdate?.(region.id, snappedStart, snappedEnd);
-    });
-
-    regions.on("region-clicked", (region, e) => {
-      e.stopPropagation();
-      onSegmentClick(region.id);
+      onSeek(time);
     });
 
     ws.load(audioUrl);
@@ -137,7 +91,6 @@ export function WaveformTrack({
     return () => {
       ws.destroy();
       wavesurferRef.current = null;
-      regionsRef.current = null;
     };
   }, [audioUrl]);
 
@@ -148,49 +101,16 @@ export function WaveformTrack({
     }
   }, [pxPerSec, isLoaded]);
 
-  // Sync segments to regions
+  // Update playback speed
   useEffect(() => {
-    if (!(isLoaded && regionsRef.current)) return;
-
-    regionsRef.current.clearRegions();
-
-    for (const segment of segments) {
-      const colorIndex = speakerColorMap.get(segment.speaker) ?? 0;
-      const color = getSpeakerBgColor(colorIndex);
-
-      regionsRef.current.addRegion({
-        id: segment.id,
-        start: snapToGrid(segment.start),
-        end: snapToGrid(segment.end),
-        color,
-        drag: !!onSegmentUpdate,
-        resize: !!onSegmentUpdate,
-      } as RegionParams);
+    if (wavesurferRef.current && isLoaded) {
+      wavesurferRef.current.setPlaybackRate(playbackSpeed);
     }
-  }, [isLoaded, segments, speakerColorMap, onSegmentUpdate]);
-
-  // Highlight selected segment
-  useEffect(() => {
-    if (!(isLoaded && regionsRef.current)) return;
-
-    const regions = regionsRef.current.getRegions();
-    for (const region of regions) {
-      const segment = segments.find((s) => s.id === region.id);
-      if (!segment) continue;
-
-      const isSelected = segment.id === selectedSegmentId;
-      const colorIndex = speakerColorMap.get(segment.speaker) ?? 0;
-      const color = isSelected
-        ? getSpeakerHighlightColor(colorIndex)
-        : getSpeakerBgColor(colorIndex);
-
-      region.setOptions({ color });
-    }
-  }, [isLoaded, selectedSegmentId, segments, speakerColorMap]);
+  }, [playbackSpeed, isLoaded]);
 
   return (
     <div
-      className="relative bg-card/50 overflow-hidden"
+      className="relative bg-card/50"
       style={{ height: TIMELINE_CONSTANTS.TRACK_HEIGHT }}
     >
       {/* Loading state */}

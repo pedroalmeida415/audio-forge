@@ -35,7 +35,6 @@ export function DescriptTimeline({
   segments,
   selectedSegmentId,
   onSegmentSelect,
-  onSegmentUpdate,
 }: DescriptTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -61,9 +60,12 @@ export function DescriptTimeline({
     return map;
   }, [segments]);
 
-  // Calculate total width and playhead position
-  const totalWidth = timeline.getTotalWidth(duration);
-  const playheadX = timeline.timeToX(currentTime);
+  // Calculate total width - extend beyond audio to fill container
+  const audioWidth = timeline.getTotalWidth(duration);
+  const totalWidth = Math.max(audioWidth, containerWidth);
+
+  // Calculate playhead position relative to scroll
+  const playheadX = currentTime * timeline.pxPerSec;
 
   // Content height for playhead
   const contentHeight =
@@ -86,30 +88,46 @@ export function DescriptTimeline({
     return () => observer.disconnect();
   }, []);
 
-  // Sync scroll position
+  // Sync scroll position to timeline state
   const handleScroll = useCallback(() => {
     if (scrollContainerRef.current) {
       timeline.setScrollX(scrollContainerRef.current.scrollLeft);
     }
-  }, [timeline.setScrollX]);
+  }, [timeline]);
+
+  // Ctrl+wheel zoom
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -10 : 10;
+        timeline.setZoomPercent(timeline.zoomPercent + delta);
+      }
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [timeline]);
 
   // Auto-scroll to follow playhead during playback
   useEffect(() => {
     if (!isPlaying || !scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
-    const playheadAbsoluteX = currentTime * timeline.pxPerSec;
     const scrollLeft = container.scrollLeft;
     const viewportWidth = container.clientWidth;
 
     // Check if playhead is outside visible area
-    const margin = viewportWidth * 0.2; // 20% margin
-    if (playheadAbsoluteX > scrollLeft + viewportWidth - margin) {
-      container.scrollLeft = playheadAbsoluteX - margin;
-    } else if (playheadAbsoluteX < scrollLeft + margin) {
-      container.scrollLeft = Math.max(0, playheadAbsoluteX - margin);
+    const margin = viewportWidth * 0.2;
+    if (playheadX > scrollLeft + viewportWidth - margin) {
+      container.scrollLeft = playheadX - margin;
+    } else if (playheadX < scrollLeft + margin) {
+      container.scrollLeft = Math.max(0, playheadX - margin);
     }
-  }, [currentTime, isPlaying, timeline.pxPerSec]);
+  }, [currentTime, isPlaying, playheadX]);
 
   // Playback controls
   const handlePlayPause = useCallback(() => {
@@ -118,8 +136,9 @@ export function DescriptTimeline({
 
   const handleSeek = useCallback((time: number) => {
     if (wavesurferRef.current && duration > 0) {
-      wavesurferRef.current.seekTo(time / duration);
-      setCurrentTime(time);
+      const clampedTime = Math.max(0, Math.min(time, duration));
+      wavesurferRef.current.seekTo(clampedTime / duration);
+      setCurrentTime(clampedTime);
     }
   }, [duration]);
 
@@ -210,23 +229,25 @@ export function DescriptTimeline({
         onSpeedChange={timeline.setPlaybackSpeed}
       />
 
-      {/* Scrollable timeline content */}
+      {/* Scrollable timeline content - always show scrollbar */}
       <div
         ref={scrollContainerRef}
-        className="relative overflow-x-auto overflow-y-hidden"
+        className="relative overflow-x-scroll overflow-y-hidden"
+        style={{ scrollbarGutter: "stable" }}
         onScroll={handleScroll}
       >
         {/* Inner container with full width */}
-        <div style={{ width: Math.max(totalWidth, containerWidth), minWidth: "100%" }}>
-          {/* Timestrip */}
+        <div className="relative" style={{ width: totalWidth, minWidth: "100%" }}>
+          {/* Timestrip - spans full width */}
           <Timestrip
             duration={duration}
             pxPerSec={timeline.pxPerSec}
             scrollX={timeline.scrollX}
             containerWidth={containerWidth}
+            totalWidth={totalWidth}
           />
 
-          {/* Speaker bar (Wordbar equivalent) */}
+          {/* Speaker bar */}
           <SpeakerBar
             segments={segments}
             speakerColorMap={speakerColorMap}
@@ -240,32 +261,25 @@ export function DescriptTimeline({
           {/* Waveform track */}
           <WaveformTrack
             audioUrl={audioUrl}
-            segments={segments}
-            speakerColorMap={speakerColorMap}
-            selectedSegmentId={selectedSegmentId}
             pxPerSec={timeline.pxPerSec}
-            currentTime={currentTime}
-            duration={duration}
-            isPlaying={isPlaying}
+            playbackSpeed={timeline.playbackSpeed}
             onTimeUpdate={setCurrentTime}
             onDurationChange={setDuration}
             onPlayingChange={setIsPlaying}
-            onSegmentClick={onSegmentSelect}
-            onSegmentUpdate={onSegmentUpdate}
             onSeek={handleSeek}
             onReady={() => setIsReady(true)}
             wavesurferRef={wavesurferRef}
           />
-        </div>
 
-        {/* Playhead overlay */}
-        {isReady && playheadX >= 0 && (
-          <Playhead
-            x={playheadX}
-            height={contentHeight}
-            isPlaying={isPlaying}
-          />
-        )}
+          {/* Playhead overlay - positioned absolutely within scroll container */}
+          {isReady && (
+            <Playhead
+              x={playheadX}
+              height={contentHeight}
+              isPlaying={isPlaying}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
