@@ -205,6 +205,7 @@ type ClipEditorSidebarProps = {
   selectedClips: ClipData[];
   audioUrl?: string;
   getProcessedClipUrl?: (processedClipId: string) => string | undefined;
+  hasClips?: boolean;
   onClose: () => void;
   onDelete: (clipId: string) => void;
   onProcess: (clipId: string, processingType: ProcessingType, params: Record<string, number>) => void;
@@ -234,6 +235,7 @@ export function ClipEditorSidebar({
   selectedClips,
   audioUrl,
   getProcessedClipUrl,
+  hasClips = false,
   onClose,
   onDelete,
   onProcess,
@@ -373,6 +375,7 @@ export function ClipEditorSidebar({
   const isAnyProcessing = isProcessing || isBatchProcessing;
   const isAnyTranscribing = isTranscribing || isBatchTranscribing;
   const isAnyCalculatingMOS = isCalculatingMOS || isBatchCalculatingMOS;
+  const hasSelection = selectedClips.length > 0;
 
   return (
     <div
@@ -390,12 +393,32 @@ export function ClipEditorSidebar({
               : singleClip?.sourceSpeakerLabel ?? "Clip Editor"}
           </h2>
         </div>
-        <Button onClick={onClose} size="icon-sm" variant="ghost">
-          <X className="h-4 w-4" />
-        </Button>
+        {hasSelection && (
+          <Button onClick={onClose} size="icon-sm" variant="ghost">
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <ScrollArea className="flex-1">
+        {/* Empty state when no clips selected */}
+        {!hasSelection && (
+          <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <Mic className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="mb-2 font-medium">
+              {hasClips ? "Select a clip to edit" : "No clips yet"}
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-[250px]">
+              {hasClips
+                ? "Click on a clip from the list to view and edit its details, transcription, and processing options."
+                : "Extract clips from diarization segments in the clipping workspace to get started."}
+            </p>
+          </div>
+        )}
+
+        {hasSelection && (
         <div className="space-y-6 p-4">
           {/* Single clip details */}
           {singleClip && (
@@ -935,6 +958,7 @@ export function ClipEditorSidebar({
             </div>
           </section>
         </div>
+        )}
       </ScrollArea>
     </div>
   );

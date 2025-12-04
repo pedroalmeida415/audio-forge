@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  ArrowRight,
   Check,
   Clock,
   Loader2,
@@ -41,6 +42,14 @@ type ClipData = {
   processedClips?: ProcessedClipInfo[];
 };
 
+const PROCESSING_TYPE_LABELS: Record<ProcessingType, string> = {
+  denoise: "Denoised",
+  remove_bg_music: "BG Removed",
+  remove_overlap: "Overlap Removed",
+  normalize: "Normalized",
+  upsample: "Upsampled",
+};
+
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -76,17 +85,21 @@ export function ClipListItem({
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const hasTranscript = clip.transcript && clip.transcript.trim().length > 0;
-  const hasMOS = clip.mosScore !== null && clip.mosScore !== undefined;
 
-  // Processing status indicators
+  // Get latest completed processed clip
+  const completedProcessed = clip.processedClips?.filter(
+    (c) => c.processingStatus === "completed"
+  ) ?? [];
+  const latestProcessed = completedProcessed.length > 0
+    ? completedProcessed.sort((a, b) =>
+        // Sort by most recent (assuming id or some ordering)
+        completedProcessed.indexOf(b) - completedProcessed.indexOf(a)
+      )[0]
+    : null;
+
+  // Processing status counts
   const pendingCount = clip.processedClips?.filter(
     (c) => c.processingStatus === "pending" || c.processingStatus === "processing"
-  ).length ?? 0;
-  const completedCount = clip.processedClips?.filter(
-    (c) => c.processingStatus === "completed"
-  ).length ?? 0;
-  const failedCount = clip.processedClips?.filter(
-    (c) => c.processingStatus === "failed"
   ).length ?? 0;
 
   function handlePlayPause(e: React.MouseEvent) {
@@ -110,15 +123,15 @@ export function ClipListItem({
 
   // Truncate transcript for preview
   const transcriptPreview = clip.transcript
-    ? clip.transcript.length > 80
-      ? `${clip.transcript.slice(0, 80)}...`
+    ? clip.transcript.length > 120
+      ? `${clip.transcript.slice(0, 120)}...`
       : clip.transcript
     : null;
 
   return (
     <div
       className={cn(
-        "group flex items-start gap-3 rounded-lg border p-3 transition-all cursor-pointer",
+        "group rounded-lg border p-4 transition-all cursor-pointer",
         isActive
           ? "border-primary bg-primary/5"
           : "border-border/50 bg-background hover:border-border hover:bg-muted/30",
@@ -127,119 +140,139 @@ export function ClipListItem({
       )}
       onClick={handleRowClick}
     >
-      {/* Selection checkbox */}
-      {onSelect && (
-        <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            checked={isSelected}
-            onCheckedChange={handleCheckboxChange}
-          />
-        </div>
-      )}
-
-      {/* Play button */}
-      <button
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors",
-          isPlaying
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-muted/50 hover:border-primary hover:bg-primary/10"
+      {/* Top row: checkbox, speaker info, timestamps */}
+      <div className="flex items-center gap-3 mb-3">
+        {/* Selection checkbox */}
+        {onSelect && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={handleCheckboxChange}
+            />
+          </div>
         )}
-        disabled={!audioUrl}
-        onClick={handlePlayPause}
-        type="button"
-      >
-        {isPlaying ? (
-          <Pause className="h-4 w-4" />
-        ) : (
-          <Play className="h-4 w-4 ml-0.5" />
-        )}
-      </button>
 
-      {audioUrl && (
-        // biome-ignore lint/a11y/useMediaCaption: Audio clips are speech samples
-        <audio
-          className="hidden"
-          onEnded={() => setIsPlaying(false)}
-          onPause={() => setIsPlaying(false)}
-          onPlay={() => setIsPlaying(true)}
-          ref={audioRef}
-          src={audioUrl}
-        />
-      )}
-
-      {/* Main content */}
-      <div className="min-w-0 flex-1 space-y-1">
-        {/* Top row: speaker, duration, format */}
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="font-medium truncate">
             {clip.sourceSpeakerLabel ?? "Unknown Speaker"}
           </span>
-          <span className="text-muted-foreground">•</span>
-          <span className="text-muted-foreground shrink-0">
-            {formatDuration(clip.durationSeconds)}
-          </span>
-          <span className="text-muted-foreground uppercase text-xs shrink-0">
-            {clip.format}
-          </span>
-        </div>
-
-        {/* Second row: timestamps */}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          <span>
+          <span className="text-muted-foreground text-sm">•</span>
+          <span className="text-muted-foreground text-sm flex items-center gap-1 shrink-0">
+            <Clock className="h-3 w-3" />
             {formatTimestamp(clip.extractedStartTime)} - {formatTimestamp(clip.extractedEndTime)}
           </span>
+          <span className="text-muted-foreground text-sm">•</span>
+          <span className="text-muted-foreground text-sm shrink-0">
+            {formatDuration(clip.durationSeconds)}
+          </span>
         </div>
 
-        {/* Transcript preview */}
-        {transcriptPreview ? (
-          <p className="text-sm text-muted-foreground line-clamp-2" title={clip.transcript ?? undefined}>
-            "{transcriptPreview}"
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground/60 italic">
-            No transcription
-          </p>
-        )}
-      </div>
-
-      {/* Right side: status indicators */}
-      <div className="flex flex-col items-end gap-2 shrink-0">
-        {/* MOS score */}
-        <MOSBadge score={clip.mosScore} size="sm" />
-
-        {/* Processing status badges */}
-        <div className="flex items-center gap-1.5">
+        {/* Status indicators */}
+        <div className="flex items-center gap-2 shrink-0">
           {pendingCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-primary">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {pendingCount}
-            </span>
-          )}
-          {completedCount > 0 && (
-            <span className="flex items-center gap-1 text-xs text-emerald-500">
-              <Sparkles className="h-3 w-3" />
-              {completedCount}
-            </span>
-          )}
-          {failedCount > 0 && (
-            <span className="flex items-center gap-1 text-xs text-destructive">
-              <AlertCircle className="h-3 w-3" />
-              {failedCount}
-            </span>
-          )}
-          {!hasTranscript && (
-            <span className="text-xs text-muted-foreground/50" title="No transcription">
-              T
+              Processing
             </span>
           )}
           {hasTranscript && (
-            <span className="text-xs text-emerald-500" title="Has transcription">
+            <span className="flex items-center gap-1 text-xs text-emerald-500" title="Has transcription">
               <Check className="h-3 w-3" />
             </span>
           )}
         </div>
+      </div>
+
+      {/* Audio comparison row: Original | Processed */}
+      <div className="grid grid-cols-2 gap-4 mb-3">
+        {/* Original audio */}
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
+          <button
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors",
+              isPlaying
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background hover:border-primary hover:bg-primary/10"
+            )}
+            disabled={!audioUrl}
+            onClick={handlePlayPause}
+            type="button"
+          >
+            {isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4 ml-0.5" />
+            )}
+          </button>
+
+          {audioUrl && (
+            // biome-ignore lint/a11y/useMediaCaption: Audio clips are speech samples
+            <audio
+              className="hidden"
+              onEnded={() => setIsPlaying(false)}
+              onPause={() => setIsPlaying(false)}
+              onPlay={() => setIsPlaying(true)}
+              ref={audioRef}
+              src={audioUrl}
+            />
+          )}
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">Original</span>
+              <MOSBadge score={clip.mosScore} size="sm" />
+            </div>
+            <p className="text-xs text-muted-foreground uppercase mt-0.5">
+              {clip.format}
+            </p>
+          </div>
+        </div>
+
+        {/* Processed audio (or empty state) */}
+        <div className={cn(
+          "flex items-center gap-3 rounded-lg border p-3",
+          latestProcessed
+            ? "bg-emerald-500/5 border-emerald-500/20"
+            : "bg-muted/10 border-dashed"
+        )}>
+          {latestProcessed ? (
+            <>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/30">
+                <Sparkles className="h-4 w-4 text-emerald-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    {PROCESSING_TYPE_LABELS[latestProcessed.processingType]}
+                  </span>
+                  <MOSBadge score={latestProcessed.mosScore} size="sm" />
+                </div>
+                {completedProcessed.length > 1 && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    +{completedProcessed.length - 1} more version{completedProcessed.length > 2 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 text-center py-1">
+              <p className="text-sm text-muted-foreground">No processed version</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Transcription row */}
+      <div className="rounded-lg border bg-muted/10 px-3 py-2">
+        {transcriptPreview ? (
+          <p className="text-sm text-foreground/80 line-clamp-2" title={clip.transcript ?? undefined}>
+            "{transcriptPreview}"
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground/60 italic">
+            No transcription yet
+          </p>
+        )}
       </div>
     </div>
   );

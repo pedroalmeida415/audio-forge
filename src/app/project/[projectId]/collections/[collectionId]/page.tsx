@@ -358,21 +358,6 @@ export default function CollectionDetailPage({
               </span>
             </div>
 
-            {hasSelection && !activeClipId && (
-              <Button
-                onClick={() => {
-                  // Open sidebar with first selected clip
-                  const firstSelected = Array.from(selectedClipIds)[0];
-                  if (firstSelected) {
-                    setActiveClipId(firstSelected);
-                  }
-                }}
-                size="sm"
-                variant="default"
-              >
-                Edit Selection
-              </Button>
-            )}
           </div>
         )}
 
@@ -413,73 +398,72 @@ export default function CollectionDetailPage({
       </div>
 
       {/* Right sidebar - editor */}
-      {hasSelection && activeClipId && (
-        <div className="w-[400px] shrink-0">
-          <ClipEditorSidebar
-            audioUrl={activeClipUrlData?.url}
-            getProcessedClipUrl={getProcessedClipUrl}
-            isBatchCalculatingMOS={batchCalculateMOSMutation.isPending}
-            isBatchProcessing={batchProcessMutation.isPending}
-            isBatchTranscribing={batchTranscribeMutation.isPending}
-            isCalculatingMOS={
-              calculateMOSMutation.isPending &&
-              calculateMOSMutation.variables?.clipId === activeClipId
-            }
-            isDeleting={
-              deleteClipMutation.isPending &&
-              deleteClipMutation.variables?.clipId === activeClipId
-            }
-            isDeletingProcessed={
-              deleteProcessedClipMutation.isPending
-                ? (deleteProcessedClipMutation.variables?.processedClipId ?? null)
-                : null
-            }
-            isProcessing={
-              processClipMutation.isPending &&
-              processClipMutation.variables?.clipId === activeClipId
-            }
-            isSavingTranscript={
-              updateTranscriptMutation.isPending &&
-              updateTranscriptMutation.variables?.clipId === activeClipId
-            }
-            isTranscribing={
-              autoTranscribeMutation.isPending &&
-              autoTranscribeMutation.variables?.clipId === activeClipId
-            }
-            onAutoTranscribe={(clipId) =>
-              autoTranscribeMutation.mutate({ clipId })
-            }
-            onBatchCalculateMOS={handleBatchCalculateMOS}
-            onBatchProcess={handleBatchProcess}
-            onBatchTranscribe={handleBatchTranscribe}
-            onCalculateMOS={(clipId) =>
-              calculateMOSMutation.mutate({ clipId })
-            }
-            onClearTranscript={(clipId) =>
-              clearTranscriptMutation.mutate({ clipId })
-            }
-            onClose={handleCloseSidebar}
-            onDelete={(clipId) => deleteClipMutation.mutate({ clipId })}
-            onDeleteProcessed={(processedClipId) =>
-              deleteProcessedClipMutation.mutate({ processedClipId })
-            }
-            onProcess={(clipId, processingType, params) =>
-              processClipMutation.mutate({
-                clipId,
-                processingType,
-                params,
-              })
-            }
-            onSaveTranscript={(clipId, transcript) =>
-              updateTranscriptMutation.mutate({
-                clipId,
-                transcript,
-              })
-            }
-            selectedClips={selectedClipsData.map(normalizeClip)}
-          />
-        </div>
-      )}
+      <div className="w-[400px] shrink-0">
+        <ClipEditorSidebar
+          audioUrl={activeClipUrlData?.url}
+          getProcessedClipUrl={getProcessedClipUrl}
+          hasClips={collection.audioClips.length > 0}
+          isBatchCalculatingMOS={batchCalculateMOSMutation.isPending}
+          isBatchProcessing={batchProcessMutation.isPending}
+          isBatchTranscribing={batchTranscribeMutation.isPending}
+          isCalculatingMOS={
+            calculateMOSMutation.isPending &&
+            calculateMOSMutation.variables?.clipId === activeClipId
+          }
+          isDeleting={
+            deleteClipMutation.isPending &&
+            deleteClipMutation.variables?.clipId === activeClipId
+          }
+          isDeletingProcessed={
+            deleteProcessedClipMutation.isPending
+              ? (deleteProcessedClipMutation.variables?.processedClipId ?? null)
+              : null
+          }
+          isProcessing={
+            processClipMutation.isPending &&
+            processClipMutation.variables?.clipId === activeClipId
+          }
+          isSavingTranscript={
+            updateTranscriptMutation.isPending &&
+            updateTranscriptMutation.variables?.clipId === activeClipId
+          }
+          isTranscribing={
+            autoTranscribeMutation.isPending &&
+            autoTranscribeMutation.variables?.clipId === activeClipId
+          }
+          onAutoTranscribe={(clipId) =>
+            autoTranscribeMutation.mutate({ clipId })
+          }
+          onBatchCalculateMOS={handleBatchCalculateMOS}
+          onBatchProcess={handleBatchProcess}
+          onBatchTranscribe={handleBatchTranscribe}
+          onCalculateMOS={(clipId) =>
+            calculateMOSMutation.mutate({ clipId })
+          }
+          onClearTranscript={(clipId) =>
+            clearTranscriptMutation.mutate({ clipId })
+          }
+          onClose={handleCloseSidebar}
+          onDelete={(clipId) => deleteClipMutation.mutate({ clipId })}
+          onDeleteProcessed={(processedClipId) =>
+            deleteProcessedClipMutation.mutate({ processedClipId })
+          }
+          onProcess={(clipId, processingType, params) =>
+            processClipMutation.mutate({
+              clipId,
+              processingType,
+              params,
+            })
+          }
+          onSaveTranscript={(clipId, transcript) =>
+            updateTranscriptMutation.mutate({
+              clipId,
+              transcript,
+            })
+          }
+          selectedClips={selectedClipsData.map(normalizeClip)}
+        />
+      </div>
     </div>
   );
 }
