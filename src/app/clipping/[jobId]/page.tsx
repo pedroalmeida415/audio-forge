@@ -7,7 +7,7 @@ import { SpeakerWorkspace } from "~/components/clipping/speaker-workspace";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
-import { WaveformViewer } from "~/components/waveform/waveform-viewer";
+import { DescriptTimeline } from "~/components/waveform/descript-timeline";
 import { useSegmentActions } from "~/hooks/use-segment-actions";
 import { useSpeakerWorkspace } from "~/hooks/use-speaker-workspace";
 
@@ -289,14 +289,14 @@ export default function ClippingWorkspacePage({
             </div>
           </div>
 
-          {/* Waveform - bottom dock */}
-          <div className="shrink-0 border-t bg-card/50">
-            <div className="mx-auto max-w-[1800px] px-6 py-3">
-              <WaveformViewer
+          {/* Timeline - bottom dock (Descript-style) */}
+          <div className="shrink-0 border-t bg-card/30">
+            <div className="mx-auto max-w-[1800px] px-4 py-3">
+              <DescriptTimeline
                 audioUrl={audioUrl}
-                onSegmentSelect={setActiveSegmentId}
                 segments={visibleSegments}
                 selectedSegmentId={activeSegmentId}
+                onSegmentSelect={setActiveSegmentId}
               />
             </div>
           </div>
