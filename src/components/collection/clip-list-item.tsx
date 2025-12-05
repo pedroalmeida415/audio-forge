@@ -6,7 +6,6 @@ import {
   Loader2,
   Pause,
   Play,
-  Sparkles,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { MOSBadge } from "~/components/collection/mos-badge";
@@ -256,10 +255,10 @@ export function ClipListItem({
 
         {/* Processed audio (or empty state) */}
         <div className={cn(
-          "flex items-center gap-3 rounded-lg border p-3",
+          "flex items-center rounded-lg border p-3",
           latestProcessed
-            ? "bg-emerald-500/5 border-emerald-500/20"
-            : "bg-muted/10 border-dashed"
+            ? "gap-3 bg-emerald-500/5 border-emerald-500/20"
+            : "justify-center bg-muted/5 border-dashed border-muted-foreground/20"
         )}>
           {latestProcessed ? (
             <>
@@ -308,15 +307,7 @@ export function ClipListItem({
               </div>
             </>
           ) : (
-            <>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30">
-                <Sparkles className="h-4 w-4 text-muted-foreground/50" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-muted-foreground">No processed version</p>
-                <p className="text-xs text-muted-foreground/60 mt-0.5">Select to add processing</p>
-              </div>
-            </>
+            <p className="text-sm text-muted-foreground/50 py-2">Not processed</p>
           )}
         </div>
       </div>
