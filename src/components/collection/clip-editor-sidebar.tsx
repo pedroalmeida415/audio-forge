@@ -9,6 +9,7 @@ import {
   Loader2,
   Mic,
   Music,
+  Package,
   Pause,
   Play,
   Save,
@@ -57,6 +58,8 @@ type ClipData = {
   extractedStartTime: number;
   extractedEndTime: number;
   format: string;
+  sampleRate?: number | null;
+  fileSizeBytes?: number | null;
   transcript?: string | null;
   transcriptMetadata?: {
     language?: string;
@@ -67,6 +70,7 @@ type ClipData = {
   createdAt: Date;
   sourceSpeakerLabel: string | null;
   sourceFilename: string | null;
+  readyForExport?: boolean;
   processedClips?: ProcessedClipInfo[];
 };
 
@@ -208,6 +212,9 @@ type ClipEditorSidebarProps = {
   hasClips?: boolean;
   onClose: () => void;
   onDelete: (clipId: string) => void;
+  onBatchDelete?: () => void;
+  onMarkReady?: (clipId: string, ready: boolean) => void;
+  onBatchMarkReady?: (ready: boolean) => void;
   onProcess: (clipId: string, processingType: ProcessingType, params: Record<string, number>) => void;
   onBatchProcess: (processingType: ProcessingType, params: Record<string, number>) => void;
   onSaveTranscript: (clipId: string, transcript: string) => void;
@@ -238,6 +245,9 @@ export function ClipEditorSidebar({
   hasClips = false,
   onClose,
   onDelete,
+  onBatchDelete,
+  onMarkReady,
+  onBatchMarkReady,
   onProcess,
   onBatchProcess,
   onSaveTranscript,
@@ -938,6 +948,30 @@ export function ClipEditorSidebar({
                 </Button>
               )}
 
+              {/* Export ready toggle */}
+              {singleClip && onMarkReady && (
+                <Button
+                  onClick={() => onMarkReady(singleClip.id, !singleClip.readyForExport)}
+                  size="sm"
+                  variant={singleClip.readyForExport ? "default" : "outline"}
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  {singleClip.readyForExport ? "Marked Ready for Export" : "Mark Ready for Export"}
+                </Button>
+              )}
+
+              {/* Batch export ready */}
+              {isMultiSelect && onBatchMarkReady && (
+                <Button
+                  onClick={() => onBatchMarkReady(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  Mark {selectedClips.length} clips Ready
+                </Button>
+              )}
+
               {/* Delete */}
               {singleClip && (
                 <Button
@@ -953,6 +987,19 @@ export function ClipEditorSidebar({
                     <Trash2 className="mr-2 h-4 w-4" />
                   )}
                   Delete Clip
+                </Button>
+              )}
+
+              {/* Batch delete */}
+              {isMultiSelect && onBatchDelete && (
+                <Button
+                  className="text-destructive hover:text-destructive"
+                  onClick={onBatchDelete}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete {selectedClips.length} clips
                 </Button>
               )}
             </div>

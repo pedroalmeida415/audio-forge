@@ -4,6 +4,23 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { clips } from "~/server/db/schema";
 import { getObjectStream } from "~/server/services/minio";
+import { getDefaultTranscriptionProviderSync } from "~/server/services/providers";
+
+/**
+ * Helper to download audio from storage
+ */
+async function downloadAudioBuffer(storageKey: string): Promise<Buffer> {
+  const audioStream = await getObjectStream(storageKey);
+  if (!audioStream) {
+    throw new Error("Could not retrieve audio file from storage");
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of audioStream as AsyncIterable<Buffer>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 export const transcriptionRouter = createTRPCRouter({
   /**
@@ -40,7 +57,6 @@ export const transcriptionRouter = createTRPCRouter({
 
   /**
    * Auto-transcribe a clip using speech recognition
-   * Note: This is a placeholder - actual implementation would use Whisper API or similar
    */
   autoTranscribe: publicProcedure
     .input(
@@ -63,35 +79,29 @@ export const transcriptionRouter = createTRPCRouter({
       }
 
       // Download clip for transcription
-      const audioStream = await getObjectStream(clip.storageKey);
-      if (!audioStream) {
-        throw new Error("Could not retrieve audio file");
-      }
+      const audioBuffer = await downloadAudioBuffer(clip.storageKey);
 
-      // Convert stream to buffer (for API call)
-      const chunks: Buffer[] = [];
-      for await (const chunk of audioStream as AsyncIterable<Buffer>) {
-        chunks.push(chunk);
-      }
-      const audioBuffer = Buffer.concat(chunks);
+      // Get the transcription provider
+      const transcriptionProvider = getDefaultTranscriptionProviderSync();
+      const result = await transcriptionProvider.transcribe(audioBuffer, {
+        language: input.language,
+        includeWordTimestamps: true,
+      });
 
-      // Placeholder: In production, this would call Whisper API or similar
-      // For now, we'll return a placeholder indicating the feature
-      const transcript = await performTranscription(
-        audioBuffer,
-        input.language
-      );
+      if (!result.success) {
+        throw new Error(result.error);
+      }
 
       // Update the clip with transcription
       const [updated] = await ctx.db
         .update(clips)
         .set({
-          transcript: transcript.text,
+          transcript: result.data.text,
           transcriptMetadata: {
-            language: input.language,
-            provider: "whisper",
-            confidence: transcript.confidence,
-            wordTimestamps: transcript.words,
+            language: result.data.language,
+            provider: transcriptionProvider.config.id,
+            confidence: result.data.confidence,
+            wordTimestamps: result.data.wordTimestamps,
           },
         })
         .where(eq(clips.id, input.clipId))
@@ -118,6 +128,9 @@ export const transcriptionRouter = createTRPCRouter({
         error?: string;
       }> = [];
 
+      // Get provider (reuse for all clips)
+      const transcriptionProvider = getDefaultTranscriptionProviderSync();
+
       for (const clipId of input.clipIds) {
         try {
           const clip = await ctx.db.query.clips.findFirst({
@@ -133,36 +146,30 @@ export const transcriptionRouter = createTRPCRouter({
             continue;
           }
 
-          const audioStream = await getObjectStream(clip.storageKey);
-          if (!audioStream) {
+          const audioBuffer = await downloadAudioBuffer(clip.storageKey);
+          const result = await transcriptionProvider.transcribe(audioBuffer, {
+            language: input.language,
+            includeWordTimestamps: true,
+          });
+
+          if (!result.success) {
             results.push({
               clipId,
               success: false,
-              error: "Could not retrieve audio",
+              error: result.error,
             });
             continue;
           }
 
-          const chunks: Buffer[] = [];
-          for await (const chunk of audioStream as AsyncIterable<Buffer>) {
-            chunks.push(chunk);
-          }
-          const audioBuffer = Buffer.concat(chunks);
-
-          const transcript = await performTranscription(
-            audioBuffer,
-            input.language
-          );
-
           await ctx.db
             .update(clips)
             .set({
-              transcript: transcript.text,
+              transcript: result.data.text,
               transcriptMetadata: {
-                language: input.language,
-                provider: "whisper",
-                confidence: transcript.confidence,
-                wordTimestamps: transcript.words,
+                language: result.data.language,
+                provider: transcriptionProvider.config.id,
+                confidence: result.data.confidence,
+                wordTimestamps: result.data.wordTimestamps,
               },
             })
             .where(eq(clips.id, clipId));
@@ -170,7 +177,7 @@ export const transcriptionRouter = createTRPCRouter({
           results.push({
             clipId,
             success: true,
-            transcript: transcript.text,
+            transcript: result.data.text,
           });
         } catch (error) {
           results.push({
@@ -210,25 +217,3 @@ export const transcriptionRouter = createTRPCRouter({
       return { success: true };
     }),
 });
-
-/**
- * Placeholder transcription function
- * In production, this would integrate with Whisper API, Google Speech-to-Text, etc.
- */
-async function performTranscription(
-  _audioBuffer: Buffer,
-  _language: string
-): Promise<{
-  text: string;
-  confidence: number;
-  words?: Array<{ word: string; start: number; end: number }>;
-}> {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
-  // Return placeholder - in production, call actual transcription API
-  return {
-    text: "[Transcription pending - configure Whisper API]",
-    confidence: 0,
-  };
-}

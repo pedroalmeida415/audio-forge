@@ -1,10 +1,16 @@
 "use client";
 
-import { ArrowLeft, Check, Scissors, X } from "lucide-react";
+import { ArrowLeft, Check, HardDrive, Package, Scissors, Timer, X } from "lucide-react";
 import Link from "next/link";
 import { use, useCallback, useMemo, useState } from "react";
 import { ClipEditorSidebar } from "~/components/collection/clip-editor-sidebar";
+import {
+  ClipFiltersBar,
+  type ClipFilters,
+  type ClipSort,
+} from "~/components/collection/clip-filters";
 import { ClipListItem } from "~/components/collection/clip-list-item";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -17,6 +23,8 @@ type ClipData = {
   extractedStartTime: number | null;
   extractedEndTime: number | null;
   format: string | null;
+  sampleRate: number | null;
+  fileSizeBytes: number | null;
   transcript: string | null;
   transcriptMetadata: {
     language?: string;
@@ -27,6 +35,7 @@ type ClipData = {
   createdAt: Date;
   sourceSpeakerLabel: string | null;
   sourceFilename: string | null;
+  readyForExport: boolean;
   processedClips: Array<{
     id: string;
     processingType:
@@ -40,11 +49,35 @@ type ClipData = {
     mosScore: number | null;
     durationSeconds: number | null;
     sampleRate: number | null;
+    fileSizeBytes: number | null;
     format: string | null;
     processingErrorMessage: string | null;
     createdAt: Date;
   }>;
 };
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hours > 0) {
+    return `${hours}h ${mins}m`;
+  }
+  return `${mins}m ${secs}s`;
+}
 
 export default function CollectionDetailPage({
   params,
@@ -53,6 +86,10 @@ export default function CollectionDetailPage({
 }) {
   const { projectId, collectionId } = use(params);
   const utils = api.useUtils();
+
+  // Filter and sort state
+  const [filters, setFilters] = useState<ClipFilters>({});
+  const [sort, setSort] = useState<ClipSort>({ field: "createdAt", order: "desc" });
 
   // Selection state
   const [selectedClipIds, setSelectedClipIds] = useState<Set<string>>(
@@ -71,6 +108,11 @@ export default function CollectionDetailPage({
     id: collectionId,
   });
 
+  // Collection stats query
+  const { data: stats } = api.clip.getCollectionStats.useQuery({
+    collectionId,
+  });
+
   // Get audio URL for active clip
   const activeClip = useMemo(() => {
     if (!activeClipId || !collection) return null;
@@ -86,6 +128,7 @@ export default function CollectionDetailPage({
   const deleteClipMutation = api.clip.delete.useMutation({
     onSuccess: () => {
       utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
       // Clear selection if deleted clip was selected
       setSelectedClipIds((prev) => {
         const next = new Set(prev);
@@ -100,15 +143,40 @@ export default function CollectionDetailPage({
     },
   });
 
+  const batchDeleteMutation = api.clip.batchDelete.useMutation({
+    onSuccess: () => {
+      utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
+      setSelectedClipIds(new Set());
+      setActiveClipId(null);
+    },
+  });
+
+  const markReadyForExportMutation = api.clip.markReadyForExport.useMutation({
+    onSuccess: () => {
+      utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
+    },
+  });
+
+  const batchMarkReadyMutation = api.clip.batchMarkReadyForExport.useMutation({
+    onSuccess: () => {
+      utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
+    },
+  });
+
   const processClipMutation = api.processing.processClip.useMutation({
     onSuccess: () => {
       utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
     },
   });
 
   const batchProcessMutation = api.processing.batchProcess.useMutation({
     onSuccess: () => {
       utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
     },
   });
 
@@ -116,12 +184,14 @@ export default function CollectionDetailPage({
     api.processing.deleteProcessedClip.useMutation({
       onSuccess: () => {
         utils.collection.getById.invalidate({ id: collectionId });
+        utils.clip.getCollectionStats.invalidate({ collectionId });
       },
     });
 
   const calculateMOSMutation = api.processing.calculateMOS.useMutation({
     onSuccess: () => {
       utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
     },
   });
 
@@ -129,6 +199,7 @@ export default function CollectionDetailPage({
     api.processing.batchCalculateMOS.useMutation({
       onSuccess: () => {
         utils.collection.getById.invalidate({ id: collectionId });
+        utils.clip.getCollectionStats.invalidate({ collectionId });
       },
     });
 
@@ -136,12 +207,14 @@ export default function CollectionDetailPage({
     api.transcription.updateTranscript.useMutation({
       onSuccess: () => {
         utils.collection.getById.invalidate({ id: collectionId });
+        utils.clip.getCollectionStats.invalidate({ collectionId });
       },
     });
 
   const autoTranscribeMutation = api.transcription.autoTranscribe.useMutation({
     onSuccess: () => {
       utils.collection.getById.invalidate({ id: collectionId });
+      utils.clip.getCollectionStats.invalidate({ collectionId });
     },
   });
 
@@ -149,6 +222,7 @@ export default function CollectionDetailPage({
     {
       onSuccess: () => {
         utils.collection.getById.invalidate({ id: collectionId });
+        utils.clip.getCollectionStats.invalidate({ collectionId });
       },
     }
   );
@@ -157,9 +231,116 @@ export default function CollectionDetailPage({
     {
       onSuccess: () => {
         utils.collection.getById.invalidate({ id: collectionId });
+        utils.clip.getCollectionStats.invalidate({ collectionId });
       },
     }
   );
+
+  // Get available sample rates for filter dropdown
+  const availableSampleRates = useMemo(() => {
+    if (!stats?.sampleRateDistribution) return [];
+    return Object.keys(stats.sampleRateDistribution)
+      .map(Number)
+      .sort((a, b) => a - b);
+  }, [stats]);
+
+  // Apply client-side filtering (for now, since we're using collection.getById)
+  const filteredClips = useMemo(() => {
+    if (!collection) return [];
+
+    let clips = [...collection.audioClips];
+
+    // Apply filters
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      clips = clips.filter(
+        (c) =>
+          c.transcript?.toLowerCase().includes(searchLower) ||
+          c.sourceSpeakerLabel?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (filters.mosMin !== undefined) {
+      clips = clips.filter((c) => c.mosScore !== null && c.mosScore >= filters.mosMin!);
+    }
+    if (filters.mosMax !== undefined) {
+      clips = clips.filter((c) => c.mosScore !== null && c.mosScore <= filters.mosMax!);
+    }
+
+    if (filters.durationMin !== undefined) {
+      clips = clips.filter(
+        (c) => c.durationSeconds !== null && c.durationSeconds >= filters.durationMin!
+      );
+    }
+    if (filters.durationMax !== undefined) {
+      clips = clips.filter(
+        (c) => c.durationSeconds !== null && c.durationSeconds <= filters.durationMax!
+      );
+    }
+
+    if (filters.sampleRate !== undefined) {
+      clips = clips.filter((c) => c.sampleRate === filters.sampleRate);
+    }
+
+    if (filters.hasTranscript === true) {
+      clips = clips.filter((c) => c.transcript && c.transcript.trim().length > 0);
+    } else if (filters.hasTranscript === false) {
+      clips = clips.filter((c) => !c.transcript || c.transcript.trim().length === 0);
+    }
+
+    if (filters.hasProcessed === true) {
+      clips = clips.filter((c) =>
+        c.processedClips.some((p) => p.processingStatus === "completed")
+      );
+    } else if (filters.hasProcessed === false) {
+      clips = clips.filter(
+        (c) => !c.processedClips.some((p) => p.processingStatus === "completed")
+      );
+    }
+
+    if (filters.readyForExport !== undefined) {
+      clips = clips.filter((c) => c.readyForExport === filters.readyForExport);
+    }
+
+    // Apply sorting
+    clips.sort((a, b) => {
+      let aValue: number | string | null = null;
+      let bValue: number | string | null = null;
+
+      switch (sort.field) {
+        case "mosScore":
+          aValue = a.mosScore;
+          bValue = b.mosScore;
+          break;
+        case "durationSeconds":
+          aValue = a.durationSeconds;
+          bValue = b.durationSeconds;
+          break;
+        case "sampleRate":
+          aValue = a.sampleRate;
+          bValue = b.sampleRate;
+          break;
+        case "transcript":
+          aValue = a.transcript?.length ?? 0;
+          bValue = b.transcript?.length ?? 0;
+          break;
+        default:
+          aValue = a.createdAt.getTime();
+          bValue = b.createdAt.getTime();
+      }
+
+      if (aValue === null && bValue === null) return 0;
+      if (aValue === null) return sort.order === "asc" ? 1 : -1;
+      if (bValue === null) return sort.order === "asc" ? -1 : 1;
+
+      if (sort.order === "asc") {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      }
+      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+    });
+
+    return clips;
+  }, [collection, filters, sort]);
 
   // Selection handlers
   const handleSelectClip = useCallback((clipId: string, selected: boolean) => {
@@ -185,10 +366,8 @@ export default function CollectionDetailPage({
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    if (collection) {
-      setSelectedClipIds(new Set(collection.audioClips.map((c) => c.id)));
-    }
-  }, [collection]);
+    setSelectedClipIds(new Set(filteredClips.map((c) => c.id)));
+  }, [filteredClips]);
 
   const handleDeselectAll = useCallback(() => {
     setSelectedClipIds(new Set());
@@ -213,12 +392,15 @@ export default function CollectionDetailPage({
     extractedStartTime: clip.extractedStartTime ?? 0,
     extractedEndTime: clip.extractedEndTime ?? 0,
     format: clip.format ?? "wav",
+    sampleRate: clip.sampleRate,
+    fileSizeBytes: clip.fileSizeBytes,
     transcript: clip.transcript,
     transcriptMetadata: clip.transcriptMetadata,
     mosScore: clip.mosScore,
     createdAt: clip.createdAt,
     sourceSpeakerLabel: clip.sourceSpeakerLabel,
     sourceFilename: clip.sourceFilename,
+    readyForExport: clip.readyForExport,
     processedClips: clip.processedClips.map((p) => ({
       id: p.id,
       processingType: p.processingType,
@@ -227,6 +409,7 @@ export default function CollectionDetailPage({
       mosScore: p.mosScore,
       durationSeconds: p.durationSeconds,
       sampleRate: p.sampleRate,
+      fileSizeBytes: p.fileSizeBytes,
       format: p.format,
       errorMessage: p.processingErrorMessage,
       createdAt: p.createdAt,
@@ -262,16 +445,31 @@ export default function CollectionDetailPage({
     batchCalculateMOSMutation.mutate({ clipIds });
   }, [selectedClipIds, batchCalculateMOSMutation]);
 
+  const handleBatchMarkReady = useCallback(
+    (ready: boolean) => {
+      const clipIds = Array.from(selectedClipIds);
+      if (clipIds.length === 0) return;
+
+      batchMarkReadyMutation.mutate({ clipIds, ready });
+    },
+    [selectedClipIds, batchMarkReadyMutation]
+  );
+
+  const handleBatchDelete = useCallback(() => {
+    const clipIds = Array.from(selectedClipIds);
+    if (clipIds.length === 0) return;
+
+    batchDeleteMutation.mutate({ clipIds });
+  }, [selectedClipIds, batchDeleteMutation]);
+
   const getProcessedClipUrl = useCallback(
     (processedClipId: string) => processedUrlsCache[processedClipId],
     [processedUrlsCache]
   );
 
-  const hasSelection = selectedClipIds.size > 0;
   const allSelected =
-    collection &&
-    selectedClipIds.size === collection.audioClips.length &&
-    collection.audioClips.length > 0;
+    filteredClips.length > 0 &&
+    selectedClipIds.size === filteredClips.length;
 
   if (isLoading) {
     return (
@@ -324,40 +522,92 @@ export default function CollectionDetailPage({
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{collection.audioClips.length} clips</span>
+            {/* Collection Stats */}
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="font-medium text-foreground">{collection.audioClips.length}</span>
+                clips
+              </div>
+              {stats && (
+                <>
+                  <div className="flex items-center gap-1.5 text-muted-foreground" title="Total Duration">
+                    <Timer className="h-4 w-4" />
+                    {formatDuration(stats.totalDuration)}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground" title="Total Size">
+                    <HardDrive className="h-4 w-4" />
+                    {formatFileSize(stats.totalSize)}
+                  </div>
+                  {stats.clipsReadyForExport > 0 && (
+                    <Badge className="gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20" variant="outline">
+                      <Package className="h-3 w-3" />
+                      {stats.clipsReadyForExport} ready
+                    </Badge>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Selection toolbar */}
+        {/* Filters and Selection Toolbar */}
         {collection.audioClips.length > 0 && (
-          <div className="flex items-center justify-between border-b bg-muted/30 px-6 py-2">
-            <div className="flex items-center gap-3">
-              <Button
-                className="gap-1.5"
-                onClick={allSelected ? handleDeselectAll : handleSelectAll}
-                size="sm"
-                variant="outline"
-              >
-                {allSelected ? (
-                  <>
-                    <X className="h-3.5 w-3.5" />
-                    Deselect All
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-3.5 w-3.5" />
-                    Select All
-                  </>
-                )}
-              </Button>
+          <div className="flex flex-col gap-3 border-b bg-muted/30 px-6 py-3">
+            {/* Filters */}
+            <ClipFiltersBar
+              filters={filters}
+              onFiltersChange={setFilters}
+              onSortChange={setSort}
+              sampleRates={availableSampleRates}
+              sort={sort}
+            />
 
-              <span className="text-muted-foreground text-sm">
-                {selectedClipIds.size} of {collection.audioClips.length} selected
-              </span>
+            {/* Selection controls */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Button
+                  className="gap-1.5"
+                  onClick={allSelected ? handleDeselectAll : handleSelectAll}
+                  size="sm"
+                  variant="outline"
+                >
+                  {allSelected ? (
+                    <>
+                      <X className="h-3.5 w-3.5" />
+                      Deselect All
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      Select All
+                    </>
+                  )}
+                </Button>
+
+                <span className="text-muted-foreground text-sm">
+                  {selectedClipIds.size} of {filteredClips.length} selected
+                  {filteredClips.length !== collection.audioClips.length && (
+                    <span className="ml-1">
+                      ({collection.audioClips.length} total)
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {/* Quick batch actions */}
+              {selectedClipIds.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => handleBatchMarkReady(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Package className="mr-1.5 h-3.5 w-3.5" />
+                    Mark Ready
+                  </Button>
+                </div>
+              )}
             </div>
-
           </div>
         )}
 
@@ -379,9 +629,16 @@ export default function CollectionDetailPage({
                   </Button>
                 </Link>
               </div>
+            ) : filteredClips.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
+                <p className="mb-2 text-muted-foreground">No clips match your filters</p>
+                <Button onClick={() => setFilters({})} variant="outline">
+                  Clear Filters
+                </Button>
+              </div>
             ) : (
               <div className="space-y-2">
-                {collection.audioClips.map((clip) => (
+                {filteredClips.map((clip) => (
                   <ClipListItemWrapper
                     clip={clip}
                     isActive={activeClipId === clip.id}
@@ -435,6 +692,8 @@ export default function CollectionDetailPage({
             autoTranscribeMutation.mutate({ clipId })
           }
           onBatchCalculateMOS={handleBatchCalculateMOS}
+          onBatchDelete={handleBatchDelete}
+          onBatchMarkReady={handleBatchMarkReady}
           onBatchProcess={handleBatchProcess}
           onBatchTranscribe={handleBatchTranscribe}
           onCalculateMOS={(clipId) =>
@@ -447,6 +706,9 @@ export default function CollectionDetailPage({
           onDelete={(clipId) => deleteClipMutation.mutate({ clipId })}
           onDeleteProcessed={(processedClipId) =>
             deleteProcessedClipMutation.mutate({ processedClipId })
+          }
+          onMarkReady={(clipId, ready) =>
+            markReadyForExportMutation.mutate({ clipId, ready })
           }
           onProcess={(clipId, processingType, params) =>
             processClipMutation.mutate({
@@ -504,12 +766,15 @@ function ClipListItemWrapper({
     extractedStartTime: clip.extractedStartTime ?? 0,
     extractedEndTime: clip.extractedEndTime ?? 0,
     format: clip.format ?? "wav",
+    sampleRate: clip.sampleRate,
+    fileSizeBytes: clip.fileSizeBytes,
     transcript: clip.transcript,
     transcriptMetadata: clip.transcriptMetadata,
     mosScore: clip.mosScore,
     createdAt: clip.createdAt,
     sourceSpeakerLabel: clip.sourceSpeakerLabel,
     sourceFilename: clip.sourceFilename,
+    readyForExport: clip.readyForExport,
     processedClips: clip.processedClips.map((p) => ({
       id: p.id,
       processingType: p.processingType,

@@ -3,12 +3,16 @@
 import {
   Check,
   Clock,
+  FileAudio,
+  HardDrive,
   Loader2,
+  Package,
   Pause,
   Play,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { MOSBadge } from "~/components/collection/mos-badge";
+import { Badge } from "~/components/ui/badge";
 import { Checkbox } from "~/components/ui/checkbox";
 import { cn } from "~/lib/utils";
 import type { ProcessingStatus, ProcessingType } from "~/server/db/schema";
@@ -26,6 +30,8 @@ type ClipData = {
   extractedStartTime: number;
   extractedEndTime: number;
   format: string;
+  sampleRate?: number | null;
+  fileSizeBytes?: number | null;
   transcript?: string | null;
   transcriptMetadata?: {
     language?: string;
@@ -36,6 +42,7 @@ type ClipData = {
   createdAt: Date;
   sourceSpeakerLabel: string | null;
   sourceFilename: string | null;
+  readyForExport?: boolean;
   processedClips?: ProcessedClipInfo[];
 };
 
@@ -57,6 +64,23 @@ function formatTimestamp(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function formatSampleRate(rate: number): string {
+  if (rate >= 1000) {
+    return `${(rate / 1000).toFixed(rate % 1000 === 0 ? 0 : 1)} kHz`;
+  }
+  return `${rate} Hz`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 type ClipListItemProps = {
@@ -165,7 +189,7 @@ export function ClipListItem({
       )}
       onClick={handleRowClick}
     >
-      {/* Top row: checkbox, speaker info, timestamps */}
+      {/* Top row: checkbox, speaker info, timestamps, metadata */}
       <div className="flex items-center gap-3 mb-3">
         {/* Selection checkbox */}
         {onSelect && (
@@ -190,10 +214,36 @@ export function ClipListItem({
           <span className="text-muted-foreground text-sm shrink-0">
             {formatDuration(clip.durationSeconds)}
           </span>
+          {/* Sample Rate */}
+          {clip.sampleRate && (
+            <>
+              <span className="text-muted-foreground text-sm">•</span>
+              <span className="text-muted-foreground text-sm flex items-center gap-1 shrink-0" title="Sample Rate">
+                <FileAudio className="h-3 w-3" />
+                {formatSampleRate(clip.sampleRate)}
+              </span>
+            </>
+          )}
+          {/* File Size */}
+          {clip.fileSizeBytes && (
+            <>
+              <span className="text-muted-foreground text-sm">•</span>
+              <span className="text-muted-foreground text-sm flex items-center gap-1 shrink-0" title="File Size">
+                <HardDrive className="h-3 w-3" />
+                {formatFileSize(clip.fileSizeBytes)}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Status indicators */}
         <div className="flex items-center gap-2 shrink-0">
+          {clip.readyForExport && (
+            <Badge className="gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20 hover:bg-blue-500/20" variant="outline">
+              <Package className="h-3 w-3" />
+              Export Ready
+            </Badge>
+          )}
           {pendingCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-primary">
               <Loader2 className="h-3 w-3 animate-spin" />

@@ -2,12 +2,14 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { clips, type ProcessingType } from "~/server/db/schema";
+import { clips } from "~/server/db/schema";
 import {
-  estimateMOS,
-  type ProcessingParams,
-  processAudio,
-} from "~/server/services/audio-processing";
+  getDefaultAudioProcessingProvider,
+  getDefaultMOSProvider,
+  type AudioProcessingParams,
+  type AudioProcessingType,
+  type AudioFormat,
+} from "~/server/services/providers";
 import {
   BUCKET_NAME,
   deleteObject,
@@ -44,6 +46,22 @@ function generateProcessedClipKey(
 ): string {
   const timestamp = Date.now();
   return `processed/${originalClipId}/${processingType}-${timestamp}.${format}`;
+}
+
+/**
+ * Helper to download audio from storage
+ */
+async function downloadAudioBuffer(storageKey: string): Promise<Buffer> {
+  const audioStream = await getObjectStream(storageKey);
+  if (!audioStream) {
+    throw new Error("Could not retrieve audio file from storage");
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of audioStream as AsyncIterable<Buffer>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 export const processingRouter = createTRPCRouter({
@@ -83,7 +101,7 @@ export const processingRouter = createTRPCRouter({
           originalClipId: input.clipId,
           processingType: input.processingType,
           processingStatus: "processing",
-          processingParams: input.params as ProcessingParams,
+          processingParams: input.params as AudioProcessingParams,
           format: input.format,
         })
         .returning();
@@ -94,28 +112,29 @@ export const processingRouter = createTRPCRouter({
 
       try {
         // Download original clip from MinIO
-        const audioStream = await getObjectStream(originalClip.storageKey);
-        if (!audioStream) {
-          throw new Error("Could not retrieve audio file from storage");
-        }
+        const audioBuffer = await downloadAudioBuffer(originalClip.storageKey);
 
-        // Convert stream to buffer
-        const chunks: Buffer[] = [];
-        for await (const chunk of audioStream as AsyncIterable<Buffer>) {
-          chunks.push(chunk);
-        }
-        const audioBuffer = Buffer.concat(chunks);
+        // Get providers
+        const audioProvider = getDefaultAudioProcessingProvider();
+        const mosProvider = getDefaultMOSProvider();
 
-        // Process the audio
-        const result = await processAudio(
+        // Process the audio using the provider
+        const processResult = await audioProvider.process(
           audioBuffer,
-          input.processingType as ProcessingType,
-          input.params,
-          input.format
+          input.processingType as AudioProcessingType,
+          {
+            outputFormat: input.format as AudioFormat,
+            params: input.params,
+          }
         );
 
-        // Estimate MOS for the processed audio
-        const mosScore = await estimateMOS(result.buffer);
+        if (!processResult.success) {
+          throw new Error(processResult.error);
+        }
+
+        // Estimate MOS for the processed audio using the provider
+        const mosResult = await mosProvider.calculateMOS(processResult.data.buffer);
+        const mosScore = mosResult.success ? mosResult.data.score : null;
 
         // Generate storage key and upload
         const storageKey = generateProcessedClipKey(
@@ -124,7 +143,7 @@ export const processingRouter = createTRPCRouter({
           input.format
         );
 
-        await uploadObject(storageKey, result.buffer, `audio/${input.format}`);
+        await uploadObject(storageKey, processResult.data.buffer, `audio/${input.format}`);
 
         // Update the processed clip record
         const [updatedClip] = await ctx.db
@@ -133,9 +152,9 @@ export const processingRouter = createTRPCRouter({
             processingStatus: "completed",
             storageBucket: BUCKET_NAME,
             storageKey,
-            durationSeconds: result.durationSeconds,
-            fileSizeBytes: result.buffer.length,
-            sampleRate: result.sampleRate,
+            durationSeconds: processResult.data.metadata.durationSeconds,
+            fileSizeBytes: processResult.data.metadata.fileSizeBytes,
+            sampleRate: processResult.data.metadata.sampleRate,
             mosScore,
           })
           .where(eq(clips.id, pendingClip.id))
@@ -178,6 +197,10 @@ export const processingRouter = createTRPCRouter({
         error?: string;
       }> = [];
 
+      // Get providers (reuse for all clips)
+      const audioProvider = getDefaultAudioProcessingProvider();
+      const mosProvider = getDefaultMOSProvider();
+
       // Process each clip
       for (const clipId of input.clipIds) {
         try {
@@ -215,7 +238,7 @@ export const processingRouter = createTRPCRouter({
               originalClipId: clipId,
               processingType: input.processingType,
               processingStatus: "processing",
-              processingParams: input.params as ProcessingParams,
+              processingParams: input.params as AudioProcessingParams,
               format: input.format,
             })
             .returning();
@@ -231,8 +254,10 @@ export const processingRouter = createTRPCRouter({
           }
 
           // Download and process
-          const audioStream = await getObjectStream(originalClip.storageKey);
-          if (!audioStream) {
+          let audioBuffer: Buffer;
+          try {
+            audioBuffer = await downloadAudioBuffer(originalClip.storageKey);
+          } catch {
             await ctx.db
               .update(clips)
               .set({
@@ -250,20 +275,35 @@ export const processingRouter = createTRPCRouter({
             continue;
           }
 
-          const chunks: Buffer[] = [];
-          for await (const chunk of audioStream as AsyncIterable<Buffer>) {
-            chunks.push(chunk);
-          }
-          const audioBuffer = Buffer.concat(chunks);
-
-          const result = await processAudio(
+          const processResult = await audioProvider.process(
             audioBuffer,
-            input.processingType as ProcessingType,
-            input.params,
-            input.format
+            input.processingType as AudioProcessingType,
+            {
+              outputFormat: input.format as AudioFormat,
+              params: input.params,
+            }
           );
 
-          const mosScore = await estimateMOS(result.buffer);
+          if (!processResult.success) {
+            await ctx.db
+              .update(clips)
+              .set({
+                processingStatus: "failed",
+                processingErrorMessage: processResult.error,
+              })
+              .where(eq(clips.id, pendingClip.id));
+
+            results.push({
+              clipId,
+              processedClipId: pendingClip.id,
+              success: false,
+              error: processResult.error,
+            });
+            continue;
+          }
+
+          const mosResult = await mosProvider.calculateMOS(processResult.data.buffer);
+          const mosScore = mosResult.success ? mosResult.data.score : null;
 
           const storageKey = generateProcessedClipKey(
             clipId,
@@ -273,7 +313,7 @@ export const processingRouter = createTRPCRouter({
 
           await uploadObject(
             storageKey,
-            result.buffer,
+            processResult.data.buffer,
             `audio/${input.format}`
           );
 
@@ -283,9 +323,9 @@ export const processingRouter = createTRPCRouter({
               processingStatus: "completed",
               storageBucket: BUCKET_NAME,
               storageKey,
-              durationSeconds: result.durationSeconds,
-              fileSizeBytes: result.buffer.length,
-              sampleRate: result.sampleRate,
+              durationSeconds: processResult.data.metadata.durationSeconds,
+              fileSizeBytes: processResult.data.metadata.fileSizeBytes,
+              sampleRate: processResult.data.metadata.sampleRate,
               mosScore,
             })
             .where(eq(clips.id, pendingClip.id));
@@ -410,19 +450,17 @@ export const processingRouter = createTRPCRouter({
       }
 
       // Download clip
-      const audioStream = await getObjectStream(clip.storageKey);
-      if (!audioStream) {
-        throw new Error("Could not retrieve audio file");
+      const audioBuffer = await downloadAudioBuffer(clip.storageKey);
+
+      // Calculate MOS using the provider
+      const mosProvider = getDefaultMOSProvider();
+      const mosResult = await mosProvider.calculateMOS(audioBuffer);
+
+      if (!mosResult.success) {
+        throw new Error(mosResult.error);
       }
 
-      const chunks: Buffer[] = [];
-      for await (const chunk of audioStream as AsyncIterable<Buffer>) {
-        chunks.push(chunk);
-      }
-      const audioBuffer = Buffer.concat(chunks);
-
-      // Calculate MOS
-      const mosScore = await estimateMOS(audioBuffer);
+      const mosScore = mosResult.data.score;
 
       // Update clip with MOS score
       await ctx.db
@@ -445,6 +483,9 @@ export const processingRouter = createTRPCRouter({
         success: boolean;
       }> = [];
 
+      // Get provider (reuse for all clips)
+      const mosProvider = getDefaultMOSProvider();
+
       for (const clipId of input.clipIds) {
         try {
           const clip = await ctx.db.query.clips.findFirst({
@@ -456,19 +497,15 @@ export const processingRouter = createTRPCRouter({
             continue;
           }
 
-          const audioStream = await getObjectStream(clip.storageKey);
-          if (!audioStream) {
+          const audioBuffer = await downloadAudioBuffer(clip.storageKey);
+          const mosResult = await mosProvider.calculateMOS(audioBuffer);
+
+          if (!mosResult.success) {
             results.push({ clipId, mosScore: null, success: false });
             continue;
           }
 
-          const chunks: Buffer[] = [];
-          for await (const chunk of audioStream as AsyncIterable<Buffer>) {
-            chunks.push(chunk);
-          }
-          const audioBuffer = Buffer.concat(chunks);
-
-          const mosScore = await estimateMOS(audioBuffer);
+          const mosScore = mosResult.data.score;
 
           await ctx.db
             .update(clips)
