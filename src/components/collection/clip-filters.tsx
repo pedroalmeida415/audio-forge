@@ -5,6 +5,7 @@ import {
   ArrowUpAZ,
   Check,
   Filter,
+  Package,
   Search,
   SlidersHorizontal,
   X,
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { Slider } from "~/components/ui/slider";
+import { useClipReadiness } from "~/hooks/use-clip-readiness";
 import { cn } from "~/lib/utils";
 
 export type ClipFilters = {
@@ -35,6 +37,7 @@ export type ClipFilters = {
   sampleRate?: number;
   hasTranscript?: boolean;
   hasProcessed?: boolean;
+  /** Client-side only filter - filters clips marked ready in localStorage */
   readyForExport?: boolean;
   search?: string;
 };
@@ -77,6 +80,7 @@ export function ClipFiltersBar({
 }: ClipFiltersProps) {
   const [searchValue, setSearchValue] = useState(filters.search ?? "");
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const { readyCount } = useClipReadiness();
 
   const hasActiveFilters =
     filters.mosMin !== undefined ||
@@ -317,7 +321,7 @@ export function ClipFiltersBar({
                 />
                 <FilterToggle
                   active={filters.readyForExport === true}
-                  label="Ready for Export"
+                  label={`Ready for Export${readyCount > 0 ? ` (${readyCount})` : ""}`}
                   onClick={() =>
                     onFiltersChange({
                       ...filters,
@@ -325,6 +329,7 @@ export function ClipFiltersBar({
                         filters.readyForExport === true ? undefined : true,
                     })
                   }
+                  icon={<Package className="h-3 w-3" />}
                 />
               </div>
             </div>
@@ -371,10 +376,12 @@ function FilterToggle({
   label,
   active,
   onClick,
+  icon,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  icon?: React.ReactNode;
 }) {
   return (
     <button
@@ -387,7 +394,7 @@ function FilterToggle({
       onClick={onClick}
       type="button"
     >
-      {active && <Check className="h-3 w-3" />}
+      {active ? <Check className="h-3 w-3" /> : icon}
       {label}
     </button>
   );

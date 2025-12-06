@@ -1,10 +1,11 @@
+import { Effect } from "effect";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { clips } from "~/server/db/schema";
 import { getObjectStream } from "~/server/services/minio";
-import { getDefaultTranscriptionProviderSync } from "~/server/services/providers";
+import { TranscriptionService, MainLayer, type LanguageCode } from "~/core";
 
 /**
  * Helper to download audio from storage
@@ -81,27 +82,38 @@ export const transcriptionRouter = createTRPCRouter({
       // Download clip for transcription
       const audioBuffer = await downloadAudioBuffer(clip.storageKey);
 
-      // Get the transcription provider
-      const transcriptionProvider = getDefaultTranscriptionProviderSync();
-      const result = await transcriptionProvider.transcribe(audioBuffer, {
-        language: input.language,
-        includeWordTimestamps: true,
+      // Transcribe using Effect-based service
+      const transcriptionProgram = Effect.gen(function* () {
+        const transcriptionService = yield* TranscriptionService;
+        const providerInfo = yield* transcriptionService.getProviderInfo();
+
+        const result = yield* transcriptionService.transcribe({
+          audioSource: audioBuffer,
+          language: input.language as LanguageCode,
+          includeWordTimestamps: true,
+        });
+
+        return { result, providerId: providerInfo.id };
       });
 
-      if (!result.success) {
-        throw new Error(result.error);
-      }
+      const { result, providerId } = await Effect.runPromise(
+        Effect.provide(transcriptionProgram, MainLayer)
+      );
 
       // Update the clip with transcription
       const [updated] = await ctx.db
         .update(clips)
         .set({
-          transcript: result.data.text,
+          transcript: result.text,
           transcriptMetadata: {
-            language: result.data.language,
-            provider: transcriptionProvider.config.id,
-            confidence: result.data.confidence,
-            wordTimestamps: result.data.wordTimestamps,
+            language: result.language,
+            provider: providerId,
+            confidence: result.confidence,
+            wordTimestamps: result.wordTimestamps?.map((w) => ({
+              word: w.word,
+              start: w.start,
+              end: w.end,
+            })),
           },
         })
         .where(eq(clips.id, input.clipId))
@@ -128,9 +140,6 @@ export const transcriptionRouter = createTRPCRouter({
         error?: string;
       }> = [];
 
-      // Get provider (reuse for all clips)
-      const transcriptionProvider = getDefaultTranscriptionProviderSync();
-
       for (const clipId of input.clipIds) {
         try {
           const clip = await ctx.db.query.clips.findFirst({
@@ -147,29 +156,38 @@ export const transcriptionRouter = createTRPCRouter({
           }
 
           const audioBuffer = await downloadAudioBuffer(clip.storageKey);
-          const result = await transcriptionProvider.transcribe(audioBuffer, {
-            language: input.language,
-            includeWordTimestamps: true,
+
+          // Transcribe using Effect-based service
+          const transcriptionProgram = Effect.gen(function* () {
+            const transcriptionService = yield* TranscriptionService;
+            const providerInfo = yield* transcriptionService.getProviderInfo();
+
+            const result = yield* transcriptionService.transcribe({
+              audioSource: audioBuffer,
+              language: input.language as LanguageCode,
+              includeWordTimestamps: true,
+            });
+
+            return { result, providerId: providerInfo.id };
           });
 
-          if (!result.success) {
-            results.push({
-              clipId,
-              success: false,
-              error: result.error,
-            });
-            continue;
-          }
+          const { result, providerId } = await Effect.runPromise(
+            Effect.provide(transcriptionProgram, MainLayer)
+          );
 
           await ctx.db
             .update(clips)
             .set({
-              transcript: result.data.text,
+              transcript: result.text,
               transcriptMetadata: {
-                language: result.data.language,
-                provider: transcriptionProvider.config.id,
-                confidence: result.data.confidence,
-                wordTimestamps: result.data.wordTimestamps,
+                language: result.language,
+                provider: providerId,
+                confidence: result.confidence,
+                wordTimestamps: result.wordTimestamps?.map((w) => ({
+                  word: w.word,
+                  start: w.start,
+                  end: w.end,
+                })),
               },
             })
             .where(eq(clips.id, clipId));
@@ -177,7 +195,7 @@ export const transcriptionRouter = createTRPCRouter({
           results.push({
             clipId,
             success: true,
-            transcript: result.data.text,
+            transcript: result.text,
           });
         } catch (error) {
           results.push({

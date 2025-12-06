@@ -1,15 +1,17 @@
+import { Effect } from "effect";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { clips } from "~/server/db/schema";
 import {
-  getDefaultAudioProcessingProvider,
-  getDefaultMOSProvider,
-  type AudioProcessingParams,
-  type AudioProcessingType,
+  MOSService,
+  AudioProcessingService,
+  MainLayer,
+  type ProcessingType,
   type AudioFormat,
-} from "~/server/services/providers";
+  type ProcessingParams,
+} from "~/core";
 import {
   BUCKET_NAME,
   deleteObject,
@@ -101,7 +103,7 @@ export const processingRouter = createTRPCRouter({
           originalClipId: input.clipId,
           processingType: input.processingType,
           processingStatus: "processing",
-          processingParams: input.params as AudioProcessingParams,
+          processingParams: input.params as ProcessingParams,
           format: input.format,
         })
         .returning();
@@ -114,27 +116,38 @@ export const processingRouter = createTRPCRouter({
         // Download original clip from MinIO
         const audioBuffer = await downloadAudioBuffer(originalClip.storageKey);
 
-        // Get providers
-        const audioProvider = getDefaultAudioProcessingProvider();
-        const mosProvider = getDefaultMOSProvider();
+        // Process audio and calculate MOS using Effect-based services
+        const processingProgram = Effect.gen(function* () {
+          const audioService = yield* AudioProcessingService;
+          const mosService = yield* MOSService;
 
-        // Process the audio using the provider
-        const processResult = await audioProvider.process(
-          audioBuffer,
-          input.processingType as AudioProcessingType,
-          {
-            outputFormat: input.format as AudioFormat,
+          // Process the audio
+          const processResult = yield* audioService.process({
+            audioSource: audioBuffer,
+            processingType: input.processingType as ProcessingType,
             params: input.params,
-          }
+            outputFormat: input.format as AudioFormat,
+          });
+
+          // Calculate MOS for processed audio
+          const outputBuffer = processResult.output instanceof Buffer
+            ? processResult.output
+            : Buffer.from(processResult.output);
+
+          const mosResult = yield* Effect.either(
+            mosService.calculateMOS({ audioSource: outputBuffer })
+          );
+
+          return {
+            processResult,
+            outputBuffer,
+            mosScore: mosResult._tag === "Right" ? mosResult.right.score : null,
+          };
+        });
+
+        const { processResult, outputBuffer, mosScore } = await Effect.runPromise(
+          Effect.provide(processingProgram, MainLayer)
         );
-
-        if (!processResult.success) {
-          throw new Error(processResult.error);
-        }
-
-        // Estimate MOS for the processed audio using the provider
-        const mosResult = await mosProvider.calculateMOS(processResult.data.buffer);
-        const mosScore = mosResult.success ? mosResult.data.score : null;
 
         // Generate storage key and upload
         const storageKey = generateProcessedClipKey(
@@ -143,7 +156,7 @@ export const processingRouter = createTRPCRouter({
           input.format
         );
 
-        await uploadObject(storageKey, processResult.data.buffer, `audio/${input.format}`);
+        await uploadObject(storageKey, outputBuffer, `audio/${input.format}`);
 
         // Update the processed clip record
         const [updatedClip] = await ctx.db
@@ -152,9 +165,9 @@ export const processingRouter = createTRPCRouter({
             processingStatus: "completed",
             storageBucket: BUCKET_NAME,
             storageKey,
-            durationSeconds: processResult.data.metadata.durationSeconds,
-            fileSizeBytes: processResult.data.metadata.fileSizeBytes,
-            sampleRate: processResult.data.metadata.sampleRate,
+            durationSeconds: processResult.metadata.durationSeconds,
+            fileSizeBytes: processResult.metadata.fileSizeBytes,
+            sampleRate: processResult.metadata.sampleRate,
             mosScore,
           })
           .where(eq(clips.id, pendingClip.id))
@@ -197,10 +210,6 @@ export const processingRouter = createTRPCRouter({
         error?: string;
       }> = [];
 
-      // Get providers (reuse for all clips)
-      const audioProvider = getDefaultAudioProcessingProvider();
-      const mosProvider = getDefaultMOSProvider();
-
       // Process each clip
       for (const clipId of input.clipIds) {
         try {
@@ -238,7 +247,7 @@ export const processingRouter = createTRPCRouter({
               originalClipId: clipId,
               processingType: input.processingType,
               processingStatus: "processing",
-              processingParams: input.params as AudioProcessingParams,
+              processingParams: input.params as ProcessingParams,
               format: input.format,
             })
             .returning();
@@ -275,35 +284,38 @@ export const processingRouter = createTRPCRouter({
             continue;
           }
 
-          const processResult = await audioProvider.process(
-            audioBuffer,
-            input.processingType as AudioProcessingType,
-            {
-              outputFormat: input.format as AudioFormat,
+          // Process audio and calculate MOS using Effect-based services
+          const processingProgram = Effect.gen(function* () {
+            const audioService = yield* AudioProcessingService;
+            const mosService = yield* MOSService;
+
+            // Process the audio
+            const processResult = yield* audioService.process({
+              audioSource: audioBuffer,
+              processingType: input.processingType as ProcessingType,
               params: input.params,
-            }
-          );
-
-          if (!processResult.success) {
-            await ctx.db
-              .update(clips)
-              .set({
-                processingStatus: "failed",
-                processingErrorMessage: processResult.error,
-              })
-              .where(eq(clips.id, pendingClip.id));
-
-            results.push({
-              clipId,
-              processedClipId: pendingClip.id,
-              success: false,
-              error: processResult.error,
+              outputFormat: input.format as AudioFormat,
             });
-            continue;
-          }
 
-          const mosResult = await mosProvider.calculateMOS(processResult.data.buffer);
-          const mosScore = mosResult.success ? mosResult.data.score : null;
+            // Calculate MOS for processed audio
+            const outputBuffer = processResult.output instanceof Buffer
+              ? processResult.output
+              : Buffer.from(processResult.output);
+
+            const mosResult = yield* Effect.either(
+              mosService.calculateMOS({ audioSource: outputBuffer })
+            );
+
+            return {
+              processResult,
+              outputBuffer,
+              mosScore: mosResult._tag === "Right" ? mosResult.right.score : null,
+            };
+          });
+
+          const { processResult, outputBuffer, mosScore } = await Effect.runPromise(
+            Effect.provide(processingProgram, MainLayer)
+          );
 
           const storageKey = generateProcessedClipKey(
             clipId,
@@ -313,7 +325,7 @@ export const processingRouter = createTRPCRouter({
 
           await uploadObject(
             storageKey,
-            processResult.data.buffer,
+            outputBuffer,
             `audio/${input.format}`
           );
 
@@ -323,9 +335,9 @@ export const processingRouter = createTRPCRouter({
               processingStatus: "completed",
               storageBucket: BUCKET_NAME,
               storageKey,
-              durationSeconds: processResult.data.metadata.durationSeconds,
-              fileSizeBytes: processResult.data.metadata.fileSizeBytes,
-              sampleRate: processResult.data.metadata.sampleRate,
+              durationSeconds: processResult.metadata.durationSeconds,
+              fileSizeBytes: processResult.metadata.fileSizeBytes,
+              sampleRate: processResult.metadata.sampleRate,
               mosScore,
             })
             .where(eq(clips.id, pendingClip.id));
@@ -452,15 +464,17 @@ export const processingRouter = createTRPCRouter({
       // Download clip
       const audioBuffer = await downloadAudioBuffer(clip.storageKey);
 
-      // Calculate MOS using the provider
-      const mosProvider = getDefaultMOSProvider();
-      const mosResult = await mosProvider.calculateMOS(audioBuffer);
+      // Calculate MOS using Effect-based service
+      const mosProgram = Effect.gen(function* () {
+        const mosService = yield* MOSService;
+        return yield* mosService.calculateMOS({ audioSource: audioBuffer });
+      });
 
-      if (!mosResult.success) {
-        throw new Error(mosResult.error);
-      }
+      const mosResult = await Effect.runPromise(
+        Effect.provide(mosProgram, MainLayer)
+      );
 
-      const mosScore = mosResult.data.score;
+      const mosScore = mosResult.score;
 
       // Update clip with MOS score
       await ctx.db
@@ -483,9 +497,6 @@ export const processingRouter = createTRPCRouter({
         success: boolean;
       }> = [];
 
-      // Get provider (reuse for all clips)
-      const mosProvider = getDefaultMOSProvider();
-
       for (const clipId of input.clipIds) {
         try {
           const clip = await ctx.db.query.clips.findFirst({
@@ -498,14 +509,18 @@ export const processingRouter = createTRPCRouter({
           }
 
           const audioBuffer = await downloadAudioBuffer(clip.storageKey);
-          const mosResult = await mosProvider.calculateMOS(audioBuffer);
 
-          if (!mosResult.success) {
-            results.push({ clipId, mosScore: null, success: false });
-            continue;
-          }
+          // Calculate MOS using Effect-based service
+          const mosProgram = Effect.gen(function* () {
+            const mosService = yield* MOSService;
+            return yield* mosService.calculateMOS({ audioSource: audioBuffer });
+          });
 
-          const mosScore = mosResult.data.score;
+          const mosResult = await Effect.runPromise(
+            Effect.provide(mosProgram, MainLayer)
+          );
+
+          const mosScore = mosResult.score;
 
           await ctx.db
             .update(clips)

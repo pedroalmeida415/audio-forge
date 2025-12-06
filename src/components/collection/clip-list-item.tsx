@@ -14,6 +14,7 @@ import { useRef, useState } from "react";
 import { MOSBadge } from "~/components/collection/mos-badge";
 import { Badge } from "~/components/ui/badge";
 import { Checkbox } from "~/components/ui/checkbox";
+import { useClipReadinessItem } from "~/hooks/use-clip-readiness";
 import { cn } from "~/lib/utils";
 import type { ProcessingStatus, ProcessingType } from "~/server/db/schema";
 
@@ -42,7 +43,6 @@ type ClipData = {
   createdAt: Date;
   sourceSpeakerLabel: string | null;
   sourceFilename: string | null;
-  readyForExport?: boolean;
   processedClips?: ProcessedClipInfo[];
 };
 
@@ -110,6 +110,9 @@ export function ClipListItem({
   const [isPlayingProcessed, setIsPlayingProcessed] = useState(false);
   const originalAudioRef = useRef<HTMLAudioElement>(null);
   const processedAudioRef = useRef<HTMLAudioElement>(null);
+
+  // Use localStorage-based readiness tracking
+  const { isReady: isReadyForExport, toggle: toggleReadyForExport } = useClipReadinessItem(clip.id);
 
   const hasTranscript = clip.transcript && clip.transcript.trim().length > 0;
 
@@ -238,12 +241,24 @@ export function ClipListItem({
 
         {/* Status indicators */}
         <div className="flex items-center gap-2 shrink-0">
-          {clip.readyForExport && (
-            <Badge className="gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20 hover:bg-blue-500/20" variant="outline">
-              <Package className="h-3 w-3" />
-              Export Ready
-            </Badge>
-          )}
+          {/* Export readiness toggle (localStorage-based) */}
+          <button
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors border",
+              isReadyForExport
+                ? "bg-blue-500/10 text-blue-600 border-blue-500/20 hover:bg-blue-500/20"
+                : "bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/50 hover:text-foreground"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleReadyForExport();
+            }}
+            title={isReadyForExport ? "Remove from export" : "Mark ready for export"}
+            type="button"
+          >
+            <Package className="h-3 w-3" />
+            {isReadyForExport ? "Export Ready" : "Mark Ready"}
+          </button>
           {pendingCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-primary">
               <Loader2 className="h-3 w-3 animate-spin" />

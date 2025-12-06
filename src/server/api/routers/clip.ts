@@ -29,7 +29,6 @@ const clipFiltersSchema = z
     // Content filters
     hasTranscript: z.boolean().optional(),
     hasProcessed: z.boolean().optional(),
-    readyForExport: z.boolean().optional(),
     // Text search on transcript
     search: z.string().optional(),
   })
@@ -248,11 +247,6 @@ export const clipRouter = createTRPCRouter({
           conditions.push(isNotNull(clips.transcript));
         } else if (input.filters.hasTranscript === false) {
           conditions.push(isNull(clips.transcript));
-        }
-
-        // Ready for export
-        if (input.filters.readyForExport !== undefined) {
-          conditions.push(eq(clips.readyForExport, input.filters.readyForExport));
         }
 
         // Search in transcript
@@ -495,9 +489,6 @@ export const clipRouter = createTRPCRouter({
         } else if (input.filters.hasTranscript === false) {
           conditions.push(isNull(clips.transcript));
         }
-        if (input.filters.readyForExport !== undefined) {
-          conditions.push(eq(clips.readyForExport, input.filters.readyForExport));
-        }
         if (input.filters.search) {
           conditions.push(
             or(
@@ -514,67 +505,6 @@ export const clipRouter = createTRPCRouter({
       });
 
       return { count: clipList.length };
-    }),
-
-  /**
-   * Mark a clip as ready for export
-   */
-  markReadyForExport: publicProcedure
-    .input(
-      z.object({
-        clipId: z.string().uuid(),
-        ready: z.boolean(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const [updated] = await ctx.db
-        .update(clips)
-        .set({ readyForExport: input.ready })
-        .where(and(eq(clips.id, input.clipId), eq(clips.clipType, "original")))
-        .returning();
-
-      if (!updated) {
-        throw new Error("Clip not found");
-      }
-
-      return updated;
-    }),
-
-  /**
-   * Batch mark clips as ready for export
-   */
-  batchMarkReadyForExport: publicProcedure
-    .input(
-      z.object({
-        clipIds: z.array(z.string().uuid()),
-        ready: z.boolean(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const results: Array<{
-        clipId: string;
-        success: boolean;
-      }> = [];
-
-      for (const clipId of input.clipIds) {
-        try {
-          const [updated] = await ctx.db
-            .update(clips)
-            .set({ readyForExport: input.ready })
-            .where(and(eq(clips.id, clipId), eq(clips.clipType, "original")))
-            .returning();
-
-          results.push({ clipId, success: !!updated });
-        } catch {
-          results.push({ clipId, success: false });
-        }
-      }
-
-      return {
-        totalUpdated: results.filter((r) => r.success).length,
-        totalFailed: results.filter((r) => !r.success).length,
-        results,
-      };
     }),
 
   /**
@@ -595,7 +525,6 @@ export const clipRouter = createTRPCRouter({
           durationSeconds: true,
           mosScore: true,
           transcript: true,
-          readyForExport: true,
           sampleRate: true,
         },
         with: {
@@ -637,7 +566,6 @@ export const clipRouter = createTRPCRouter({
         (c) => c.transcript && c.transcript.trim().length > 0
       ).length;
       const clipsWithMOS = originalClips.filter((c) => c.mosScore !== null).length;
-      const clipsReadyForExport = originalClips.filter((c) => c.readyForExport).length;
 
       // MOS statistics
       const mosScores = originalClips
@@ -671,7 +599,6 @@ export const clipRouter = createTRPCRouter({
         totalDuration: totalOriginalDuration,
         clipsWithTranscript,
         clipsWithMOS,
-        clipsReadyForExport,
         mosStats: {
           average: avgMOS ? Math.round(avgMOS * 10) / 10 : null,
           min: minMOS,

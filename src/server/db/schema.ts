@@ -1,7 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
   bigint,
-  boolean,
   doublePrecision,
   index,
   integer,
@@ -234,9 +233,6 @@ export const clips = createTable(
       }>;
     }>(),
 
-    // Export status (only for clipType = 'original')
-    readyForExport: boolean("ready_for_export").default(false).notNull(),
-
     // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -251,7 +247,6 @@ export const clips = createTable(
     index("clip_original_clip_id_idx").on(table.originalClipId),
     index("clip_type_idx").on(table.clipType),
     index("clip_processing_status_idx").on(table.processingStatus),
-    index("clip_ready_for_export_idx").on(table.readyForExport),
   ]
 );
 
