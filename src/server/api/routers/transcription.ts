@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { clips } from "~/server/db/schema";
 import { getObjectStream } from "~/server/services/minio";
-import { TranscriptionService, MainLayer, type LanguageCode } from "~/core";
+import { TranscriptionService, ProcessingLayer } from "~/services";
 
 /**
  * Helper to download audio from storage
@@ -84,20 +84,19 @@ export const transcriptionRouter = createTRPCRouter({
 
       // Transcribe using Effect-based service
       const transcriptionProgram = Effect.gen(function* () {
-        const transcriptionService = yield* TranscriptionService;
-        const providerInfo = yield* transcriptionService.getProviderInfo();
+        const service = yield* TranscriptionService;
 
-        const result = yield* transcriptionService.transcribe({
+        const result = yield* service.transcribe({
           audioSource: audioBuffer,
-          language: input.language as LanguageCode,
-          includeWordTimestamps: true,
+          language: input.language,
+          includeTimestamps: true,
         });
 
-        return { result, providerId: providerInfo.id };
+        return { result, providerId: service.getProviderId() };
       });
 
       const { result, providerId } = await Effect.runPromise(
-        Effect.provide(transcriptionProgram, MainLayer)
+        Effect.provide(transcriptionProgram, ProcessingLayer)
       );
 
       // Update the clip with transcription
@@ -159,20 +158,19 @@ export const transcriptionRouter = createTRPCRouter({
 
           // Transcribe using Effect-based service
           const transcriptionProgram = Effect.gen(function* () {
-            const transcriptionService = yield* TranscriptionService;
-            const providerInfo = yield* transcriptionService.getProviderInfo();
+            const service = yield* TranscriptionService;
 
-            const result = yield* transcriptionService.transcribe({
+            const result = yield* service.transcribe({
               audioSource: audioBuffer,
-              language: input.language as LanguageCode,
-              includeWordTimestamps: true,
+              language: input.language,
+              includeTimestamps: true,
             });
 
-            return { result, providerId: providerInfo.id };
+            return { result, providerId: service.getProviderId() };
           });
 
           const { result, providerId } = await Effect.runPromise(
-            Effect.provide(transcriptionProgram, MainLayer)
+            Effect.provide(transcriptionProgram, ProcessingLayer)
           );
 
           await ctx.db

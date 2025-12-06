@@ -7,11 +7,11 @@ import { clips } from "~/server/db/schema";
 import {
   MOSService,
   AudioProcessingService,
-  MainLayer,
+  ProcessingLayer,
   type ProcessingType,
   type AudioFormat,
   type ProcessingParams,
-} from "~/core";
+} from "~/services";
 import {
   BUCKET_NAME,
   deleteObject,
@@ -130,23 +130,18 @@ export const processingRouter = createTRPCRouter({
           });
 
           // Calculate MOS for processed audio
-          const outputBuffer = processResult.output instanceof Buffer
-            ? processResult.output
-            : Buffer.from(processResult.output);
-
           const mosResult = yield* Effect.either(
-            mosService.calculateMOS({ audioSource: outputBuffer })
+            mosService.calculate({ audioSource: processResult.output })
           );
 
           return {
             processResult,
-            outputBuffer,
             mosScore: mosResult._tag === "Right" ? mosResult.right.score : null,
           };
         });
 
-        const { processResult, outputBuffer, mosScore } = await Effect.runPromise(
-          Effect.provide(processingProgram, MainLayer)
+        const { processResult, mosScore } = await Effect.runPromise(
+          Effect.provide(processingProgram, ProcessingLayer)
         );
 
         // Generate storage key and upload
@@ -156,7 +151,7 @@ export const processingRouter = createTRPCRouter({
           input.format
         );
 
-        await uploadObject(storageKey, outputBuffer, `audio/${input.format}`);
+        await uploadObject(storageKey, processResult.output, `audio/${input.format}`);
 
         // Update the processed clip record
         const [updatedClip] = await ctx.db
@@ -298,23 +293,18 @@ export const processingRouter = createTRPCRouter({
             });
 
             // Calculate MOS for processed audio
-            const outputBuffer = processResult.output instanceof Buffer
-              ? processResult.output
-              : Buffer.from(processResult.output);
-
             const mosResult = yield* Effect.either(
-              mosService.calculateMOS({ audioSource: outputBuffer })
+              mosService.calculate({ audioSource: processResult.output })
             );
 
             return {
               processResult,
-              outputBuffer,
               mosScore: mosResult._tag === "Right" ? mosResult.right.score : null,
             };
           });
 
-          const { processResult, outputBuffer, mosScore } = await Effect.runPromise(
-            Effect.provide(processingProgram, MainLayer)
+          const { processResult, mosScore } = await Effect.runPromise(
+            Effect.provide(processingProgram, ProcessingLayer)
           );
 
           const storageKey = generateProcessedClipKey(
@@ -325,7 +315,7 @@ export const processingRouter = createTRPCRouter({
 
           await uploadObject(
             storageKey,
-            outputBuffer,
+            processResult.output,
             `audio/${input.format}`
           );
 
@@ -467,11 +457,11 @@ export const processingRouter = createTRPCRouter({
       // Calculate MOS using Effect-based service
       const mosProgram = Effect.gen(function* () {
         const mosService = yield* MOSService;
-        return yield* mosService.calculateMOS({ audioSource: audioBuffer });
+        return yield* mosService.calculate({ audioSource: audioBuffer });
       });
 
       const mosResult = await Effect.runPromise(
-        Effect.provide(mosProgram, MainLayer)
+        Effect.provide(mosProgram, ProcessingLayer)
       );
 
       const mosScore = mosResult.score;
@@ -513,11 +503,11 @@ export const processingRouter = createTRPCRouter({
           // Calculate MOS using Effect-based service
           const mosProgram = Effect.gen(function* () {
             const mosService = yield* MOSService;
-            return yield* mosService.calculateMOS({ audioSource: audioBuffer });
+            return yield* mosService.calculate({ audioSource: audioBuffer });
           });
 
           const mosResult = await Effect.runPromise(
-            Effect.provide(mosProgram, MainLayer)
+            Effect.provide(mosProgram, ProcessingLayer)
           );
 
           const mosScore = mosResult.score;
