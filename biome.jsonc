@@ -4,7 +4,7 @@
   "vcs": {
     "enabled": true,
     "useIgnoreFile": true,
-    "clientKind": "git",
+    "clientKind": "git"
   },
   "assist": {
     "enabled": true,
@@ -13,12 +13,14 @@
       "source": {
         "recommended": true,
         "organizeImports": "on",
-        "useSortedAttributes": "on",
-      },
-    },
+        "useSortedAttributes": "on"
+      }
+    }
   },
   "formatter": {
     "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
   },
   "linter": {
     "enabled": true,
@@ -29,41 +31,41 @@
           "level": "warn",
           "fix": "safe",
           "options": {
-            "functions": ["clsx", "cva", "cn"],
-          },
-        },
-      },
-    },
+            "functions": ["clsx", "cva", "cn"]
+          }
+        }
+      }
+    }
   },
   "html": {
     "formatter": {
-      "enabled": true,
-    },
+      "enabled": true
+    }
   },
   "javascript": {
     "assist": {
-      "enabled": true,
+      "enabled": true
     },
     "formatter": {
-      "enabled": true,
+      "enabled": true
     },
     "linter": {
-      "enabled": true,
-    },
+      "enabled": true
+    }
   },
   "css": {
     "assist": {
-      "enabled": true,
+      "enabled": true
     },
     "formatter": {
-      "enabled": true,
+      "enabled": true
     },
     "linter": {
-      "enabled": true,
+      "enabled": true
     },
     "parser": {
       "cssModules": true,
-      "tailwindDirectives": true,
-    },
-  },
+      "tailwindDirectives": true
+    }
+  }
 }

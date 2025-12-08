@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "check": "biome check .",
-    "check:unsafe": "biome check --write --unsafe .",
-    "check:write": "biome check --write .",
+    "biome:check": "biome check --no-errors-on-unmatched --max-diagnostics=none",
+    "biome:fix": "biome check --write --no-errors-on-unmatched --max-diagnostics=none",
+    "biome:format": "biome format --write",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
@@ -47,6 +47,5 @@
   },
   "ct3aMetadata": {
     "initVersion": "7.40.0"
-  },
-  "packageManager": "npm@10.9.3"
+  }
 }
