@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { LatestPost } from "~/app/_components/post";
+import { LatestPost } from "~/app/(app)/app/_components/post";
 import { auth } from "~/server/better-auth";
 import { getSession } from "~/server/better-auth/server";
 import { api, HydrateClient } from "~/trpc/server";
