@@ -1,27 +1,24 @@
-import { and, eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { projects } from "~/server/db/schema";
+import { collections, projects } from "~/server/db/schema";
 
 export const projectRouter = createTRPCRouter({
   list: protectedProcedure.query(async ({ ctx }) => {
     const result = await ctx.db.query.projects.findMany({
       where: eq(projects.userId, ctx.session.user.id),
       orderBy: (projects, { desc }) => [desc(projects.createdAt)],
-      with: {
-        collections: {
-          columns: { id: true },
-        },
+      extras: {
+        collectionsCount:
+          sql<number>`(select count(*) from ${collections} where ${collections.projectId} = ${projects.id})`.as(
+            "collections_count",
+          ),
       },
     });
 
-    return result.map((project) => ({
-      ...project,
-      _count: {
-        collections: project.collections.length,
-      },
-    }));
+    return result;
   }),
 
   getById: protectedProcedure
@@ -58,6 +55,13 @@ export const projectRouter = createTRPCRouter({
           userId: ctx.session.user.id,
         })
         .returning();
+
+      if (!project) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create project",
+        });
+      }
 
       return project;
     }),

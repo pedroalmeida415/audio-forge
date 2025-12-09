@@ -10,17 +10,10 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
+import type { RouterOutputs } from "~/trpc/react";
 
 type ProjectCardProps = {
-  project: {
-    id: string;
-    name: string;
-    description: string | null;
-    createdAt: Date;
-    _count: {
-      collections: number;
-    };
-  };
+  project: RouterOutputs["projects"]["list"][number];
 };
 
 export function ProjectCard({ project }: ProjectCardProps) {
@@ -33,8 +26,8 @@ export function ProjectCard({ project }: ProjectCardProps) {
               <FolderOpen className="size-5" />
             </div>
             <Badge className="shrink-0" variant="secondary">
-              {project._count.collections} collection
-              {project._count.collections !== 1 ? "s" : ""}
+              {project.collectionsCount} collection
+              {project.collectionsCount !== 1 ? "s" : ""}
             </Badge>
           </div>
           <div className="mt-3 space-y-1">
