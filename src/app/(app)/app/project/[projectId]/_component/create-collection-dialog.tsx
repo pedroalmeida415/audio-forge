@@ -32,11 +32,11 @@ export function CreateCollectionDialog({
 
   const utils = api.useUtils();
 
-  const createCollection = api.collection.create.useMutation({
+  const createCollection = api.collections.create.useMutation({
     onSuccess: (collection) => {
-      utils.project.getById.invalidate({ id: projectId });
-      utils.collection.list.invalidate({ projectId });
-      utils.collection.search.invalidate({ projectId });
+      utils.projects.getById.invalidate({ id: projectId });
+      utils.collections.list.invalidate({ projectId });
+      utils.collections.search.invalidate({ projectId });
       setOpen(false);
       setName("");
       setDescription("");

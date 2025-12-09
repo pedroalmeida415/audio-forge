@@ -37,7 +37,7 @@ export const session = pgTable("session", {
   token: text("token").notNull().unique(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
-  userId: text("user_id")
+  userId: uuid("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
 
@@ -52,7 +52,7 @@ export const account = pgTable("account", {
   id: uuid("id").defaultRandom().primaryKey(),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
-  userId: text("user_id")
+  userId: uuid("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   accessToken: text("access_token"),
@@ -93,6 +93,9 @@ export const projects = pgTable(
     id: uuid("id").defaultRandom().defaultRandom().primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -112,6 +115,10 @@ export const collections = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
 
@@ -130,6 +137,9 @@ export const clips = pgTable(
   "clip",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
 
     collectionId: uuid("collection_id")
       .notNull()
@@ -162,6 +172,9 @@ export const diarizations = pgTable(
   "diarization",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
 
     fileId: uuid("file_id")
       .notNull()
@@ -199,8 +212,11 @@ export const diarizations = pgTable(
   (table) => [index("diarization_id_idx").on(table.id)],
 );
 
-const files = pgTable("file", {
+export const files = pgTable("file", {
   id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   storageKey: varchar("storage_key", { length: 1024 }),
 
   createdAt: timestamp("created_at", { withTimezone: true })

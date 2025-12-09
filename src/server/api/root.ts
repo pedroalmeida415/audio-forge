@@ -1,3 +1,5 @@
+import { clipsRouter } from "~/server/api/routers/clips";
+import { collectionRouter } from "~/server/api/routers/collection";
 import { projectRouter } from "~/server/api/routers/project";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
@@ -7,7 +9,9 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
-  project: projectRouter,
+  projects: projectRouter,
+  collections: collectionRouter,
+  clips: clipsRouter,
 });
 
 // export type definition of API

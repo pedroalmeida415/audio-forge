@@ -2,6 +2,7 @@
 
 import { ArrowLeft, FolderOpen, Plus, Scissors } from "lucide-react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { use } from "react";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -14,13 +15,11 @@ export default function ProjectPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = use(params);
-  // TODO: get project using useSuspenseQuery to show loading state
-  // e.g. const [ project ] = api.project.getById.useSuspenseQuery({ id: projectId });
+  const [project] = api.projects.getById.useSuspenseQuery({ id: projectId });
 
-  // Handle project not found by redirecting to the not found page
-  // if (!project) {
-  //   notFound();
-  // }
+  if (!project) {
+    notFound();
+  }
 
   return (
     <div className="container mx-auto py-8">

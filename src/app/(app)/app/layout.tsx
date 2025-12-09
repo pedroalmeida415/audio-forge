@@ -37,8 +37,6 @@ export default async function RootLayout({
     redirect("/");
   }
 
-  // TODO: prefetch user's projects
-  // e.g. void api.project.list.prefetch();
   return (
     <html className={`${syne.variable} ${ibmPlexSans.variable}`} lang="en">
       <body className="bg-background bg-studio-grid">

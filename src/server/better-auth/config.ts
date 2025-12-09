@@ -21,6 +21,11 @@ export const auth = betterAuth({
   },
   // Make sure nextCookies() is the last plugin in the array
   plugins: [nextCookies()],
+  advanced: {
+    database: {
+      generateId: "uuid",
+    },
+  },
 });
 
 export type Session = typeof auth.$Infer.Session;
