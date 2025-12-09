@@ -7,17 +7,17 @@ const navItems = [
   {
     title: "Home",
     icon: <Home className="h-full w-full text-muted-foreground" />,
-    href: "/",
+    href: "/app",
   },
   {
     title: "Diarization",
     icon: <Users className="h-full w-full text-muted-foreground" />,
-    href: "/diarization",
+    href: "/app/diarization",
   },
   {
     title: "Clipping",
     icon: <Scissors className="h-full w-full text-muted-foreground" />,
-    href: "/clipping",
+    href: "/app/clipping",
   },
 ];
 
