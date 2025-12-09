@@ -186,7 +186,6 @@ export const diarizations = pgTable(
     // Diarization segments stored as JSONB
     output: jsonb("output").$type<{
       segments: {
-        id: string;
         speaker: string;
         start: number;
         end: number;
