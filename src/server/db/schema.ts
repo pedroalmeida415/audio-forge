@@ -1,58 +1,55 @@
 import { relations } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  doublePrecision,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
-export const posts = pgTable(
-  "post",
-  (d) => ({
-    id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
-    name: d.varchar({ length: 256 }),
-    createdById: d
-      .varchar({ length: 255 })
-      .notNull()
-      .references(() => user.id),
-    createdAt: d
-      .timestamp({ withTimezone: true })
-      .$defaultFn(() => new Date())
-      .notNull(),
-    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
-  }),
-  (t) => [
-    index("created_by_idx").on(t.createdById),
-    index("name_idx").on(t.name),
-  ],
-);
+// ============================================================================
+// AUTHENTICATION TABLES
+// ============================================================================
 
 export const user = pgTable("user", {
-  id: text("id").primaryKey(),
+  id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified")
     .$defaultFn(() => false)
     .notNull(),
   image: text("image"),
-  createdAt: timestamp("created_at")
-    .$defaultFn(() => /* @__PURE__ */ new Date())
-    .notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
-    .$defaultFn(() => /* @__PURE__ */ new Date())
-    .notNull(),
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
 });
 
 export const session = pgTable("session", {
-  id: text("id").primaryKey(),
+  id: uuid("id").defaultRandom().primaryKey(),
   expiresAt: timestamp("expires_at").notNull(),
   token: text("token").notNull().unique(),
-  createdAt: timestamp("created_at").notNull(),
-  updatedAt: timestamp("updated_at").notNull(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
 });
 
 export const account = pgTable("account", {
-  id: text("id").primaryKey(),
+  id: uuid("id").defaultRandom().primaryKey(),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
   userId: text("user_id")
@@ -65,22 +62,159 @@ export const account = pgTable("account", {
   refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
   scope: text("scope"),
   password: text("password"),
-  createdAt: timestamp("created_at").notNull(),
-  updatedAt: timestamp("updated_at").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
 });
 
 export const verification = pgTable("verification", {
-  id: text("id").primaryKey(),
+  id: uuid("id").defaultRandom().primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").$defaultFn(
-    () => /* @__PURE__ */ new Date(),
-  ),
-  updatedAt: timestamp("updated_at").$defaultFn(
-    () => /* @__PURE__ */ new Date(),
-  ),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
 });
+
+// ============================================================================
+// MAIN TABLES
+// ============================================================================
+
+export const projects = pgTable(
+  "project",
+  {
+    id: uuid("id").defaultRandom().defaultRandom().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("project_id_idx").on(table.id)],
+);
+
+export const collections = pgTable(
+  "collection",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("collection_id_idx").on(table.id)],
+);
+
+export const clips = pgTable(
+  "clip",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    collectionId: uuid("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+
+    mosScore: doublePrecision("mos_score"),
+    transcript: text("transcript"),
+
+    // Timestamps
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("clip_collection_id_idx").on(table.collectionId)],
+);
+
+/**
+ * Diarizations - One diarization per audio file
+ * Segments are stored as JSONB array (pure timestamp data)
+ */
+export const diarizations = pgTable(
+  "diarization",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+
+    // Pyannote processing info
+    diarizationJobId: varchar("diarization_job_id", { length: 255 }),
+
+    // Diarization segments stored as JSONB
+    output: jsonb("output").$type<{
+      segments: {
+        id: string;
+        speaker: string;
+        start: number;
+        end: number;
+        confidence?: number;
+        editedStart?: number;
+        editedEnd?: number;
+      }[];
+    }>(),
+
+    // Timestamps
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("diarization_id_idx").on(table.id)],
+);
+
+const files = pgTable("file", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  storageKey: varchar("storage_key", { length: 1024 }),
+
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+// ============================================================================
+// RELATIONS
+// ============================================================================
 
 export const userRelations = relations(user, ({ many }) => ({
   account: many(account),
@@ -94,3 +228,31 @@ export const accountRelations = relations(account, ({ one }) => ({
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, { fields: [session.userId], references: [user.id] }),
 }));
+
+export const projectRelations = relations(projects, ({ many }) => ({
+  collections: many(collections),
+}));
+
+export const collectionRelations = relations(collections, ({ many, one }) => ({
+  clips: many(clips),
+  project: one(projects, {
+    fields: [collections.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const clipRelations = relations(clips, ({ one }) => ({
+  collection: one(collections, {
+    fields: [clips.collectionId],
+    references: [collections.id],
+  }),
+  file: one(files, { fields: [clips.fileId], references: [files.id] }),
+}));
+
+export const diarizationRelations = relations(diarizations, ({ one }) => ({
+  file: one(files, { fields: [diarizations.fileId], references: [files.id] }),
+}));
+
+// ============================================================================
+// TYPE EXPORTS
+// ============================================================================
