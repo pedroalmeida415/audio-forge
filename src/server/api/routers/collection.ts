@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -52,18 +53,13 @@ export const collectionRouter = createTRPCRouter({
         })
         .returning();
 
-      return collection;
-    }),
+      if (!collection) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create collection",
+        });
+      }
 
-  search: protectedProcedure
-    .input(z.object({ projectId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.db.query.collections.findMany({
-        where: and(
-          eq(collections.projectId, input.projectId),
-          eq(collections.userId, ctx.session.user.id),
-        ),
-        orderBy: (collections, { asc }) => [asc(collections.name)],
-      });
+      return collection;
     }),
 });

@@ -36,7 +36,6 @@ export function CreateCollectionDialog({
     onSuccess: (collection) => {
       utils.projects.getById.invalidate({ id: projectId });
       utils.collections.list.invalidate({ projectId });
-      utils.collections.search.invalidate({ projectId });
       setOpen(false);
       setName("");
       setDescription("");

@@ -5,9 +5,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { use } from "react";
 import { api } from "~/trpc/react";
-// import { ClipEditorSidebar } from "./_components/clip-editor-sidebar";
-// import { ClipList } from "./_components/clip-list";
-// import { SelectionToolbar } from "./_components/selection-toolbar";
 
 export default function CollectionDetailPage({
   params,
@@ -36,7 +33,7 @@ export default function CollectionDetailPage({
         <div className="border-b px-6 py-4">
           <Link
             className="mb-2 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
-            href={`/project/${projectId}`}
+            href={`/app/project/${projectId}`}
           >
             <ArrowLeft className="mr-1 h-4 w-4" />
             Back to {collection.project.name}
@@ -57,14 +54,14 @@ export default function CollectionDetailPage({
         </div>
 
         {/* Selection toolbar */}
-        {/* <SelectionToolbar /> */}
+        {/* <Toolbar /> */}
 
         {/* Clips list */}
         {/* <ClipList /> */}
       </div>
 
-      {/* Right sidebar - editor */}
-      <div className="w-[400px] shrink-0">{/* <ClipEditorSidebar /> */}</div>
+      {/* Right sidebar */}
+      <div className="w-[400px] shrink-0">{/* <Sidebar /> */}</div>
     </div>
   );
 }

@@ -77,7 +77,7 @@ export default function ProjectPage({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {project.collections.map((collection) => (
               <Link
-                href={`/project/${projectId}/collections/${collection.id}`}
+                href={`/app/project/${projectId}/collection/${collection.id}`}
                 key={collection.id}
               >
                 <Card className="h-full transition-colors hover:bg-muted/50">

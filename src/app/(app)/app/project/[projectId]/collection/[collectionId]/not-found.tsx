@@ -13,7 +13,7 @@ export default function CollectionDetailNotFoundPage() {
   return (
     <div className="container mx-auto py-8">
       <p className="text-muted-foreground">Collection not found</p>
-      <Link href={`/project/${projectId}`}>
+      <Link href={`/app/project/${projectId}`}>
         <Button className="mt-4" variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Project

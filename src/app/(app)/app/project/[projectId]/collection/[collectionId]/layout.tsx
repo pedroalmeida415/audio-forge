@@ -9,10 +9,10 @@ export default async function CollectionDetailLayout({
 }) {
   const { collectionId } = await params;
 
-  void api.collection.getById.prefetch({
+  void api.collections.getById.prefetch({
     id: collectionId,
   });
-  void api.clip.listByCollection.prefetch({
+  void api.clips.listByCollection.prefetch({
     collectionId,
   });
 
