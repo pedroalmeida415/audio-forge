@@ -27,7 +27,7 @@ export default function ProjectPage({
       <div className="mb-8">
         <Link
           className="mb-4 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
-          href="/"
+          href="/app"
         >
           <ArrowLeft className="mr-1 h-4 w-4" />
           Back to Projects

@@ -18,7 +18,7 @@ type ProjectCardProps = {
 
 export function ProjectCard({ project }: ProjectCardProps) {
   return (
-    <Link className="group/card" href={`/project/${project.id}`}>
+    <Link className="group/card" href={`/app/project/${project.id}`}>
       <Card className="h-full cursor-pointer">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
