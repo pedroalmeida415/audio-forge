@@ -3,8 +3,15 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { use } from "react";
+import { use, useMemo } from "react";
 import { api } from "~/trpc/react";
+import { ClipList } from "./_component/clip-list";
+import { Sidebar } from "./_component/sidebar";
+import { Toolbar } from "./_component/toolbar";
+import {
+  enrichClipsWithMockData,
+  useCollectionState,
+} from "./_hooks/use-collection-state";
 
 export default function CollectionDetailPage({
   params,
@@ -25,11 +32,47 @@ export default function CollectionDetailPage({
     collectionId,
   });
 
+  const enrichedClips = useMemo(() => enrichClipsWithMockData(clips), [clips]);
+
+  const {
+    activeClipId,
+    activeClip,
+    selectedClipIds,
+    selectedClips,
+    filteredClips,
+    searchQuery,
+    filters,
+    sort,
+    activeFilterCount,
+    setActiveClip,
+    toggleClipSelection,
+    selectAll,
+    deselectAll,
+    setSearchQuery,
+    setFilters,
+    resetFilters,
+    setSort,
+  } = useCollectionState({ clips: enrichedClips });
+
+  const handleTranscriptionChange = (clipId: string, text: string) => {
+    console.log("Transcription change:", clipId, text);
+  };
+
+  const handleAutoTranscribe = (clipId: string) => {
+    console.log("Auto-transcribe:", clipId);
+  };
+
+  const handleProcess = (clipIds: string[], option: string) => {
+    console.log("Process:", clipIds, option);
+  };
+
+  const handleDelete = (clipIds: string[]) => {
+    console.log("Delete:", clipIds);
+  };
+
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      {/* Main content area - clips list */}
+    <div className="flex flex-1">
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header */}
         <div className="border-b px-6 py-4">
           <Link
             className="mb-2 inline-flex items-center text-muted-foreground text-sm hover:text-foreground"
@@ -53,15 +96,40 @@ export default function CollectionDetailPage({
           </div>
         </div>
 
-        {/* Selection toolbar */}
-        {/* <Toolbar /> */}
+        <Toolbar
+          activeFilterCount={activeFilterCount}
+          filters={filters}
+          onDeselectAll={deselectAll}
+          onFiltersChange={setFilters}
+          onFiltersReset={resetFilters}
+          onSearchChange={setSearchQuery}
+          onSelectAll={selectAll}
+          onSortChange={setSort}
+          searchQuery={searchQuery}
+          selectedCount={selectedClipIds.size}
+          sort={sort}
+          totalCount={filteredClips.length}
+        />
 
-        {/* Clips list */}
-        {/* <ClipList /> */}
+        <ClipList
+          activeClipId={activeClipId}
+          clips={filteredClips}
+          onCheckboxChange={toggleClipSelection}
+          onClipClick={setActiveClip}
+          selectedClipIds={selectedClipIds}
+        />
       </div>
 
-      {/* Right sidebar */}
-      <div className="w-[400px] shrink-0">{/* <Sidebar /> */}</div>
+      <div className="w-[400px] shrink-0">
+        <Sidebar
+          activeClip={activeClip}
+          onAutoTranscribe={handleAutoTranscribe}
+          onDelete={handleDelete}
+          onProcess={handleProcess}
+          onTranscriptionChange={handleTranscriptionChange}
+          selectedClips={selectedClips}
+        />
+      </div>
     </div>
   );
 }
