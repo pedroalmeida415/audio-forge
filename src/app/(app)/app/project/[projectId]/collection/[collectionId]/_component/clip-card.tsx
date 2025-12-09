@@ -55,7 +55,7 @@ export function ClipCard({
       </Button>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-medium text-sm">{label}</span>
+        <span className="mb-1 truncate font-medium text-sm">{label}</span>
         <span className="text-muted-foreground text-xs">
           {isEmpty ? "--" : formatDuration(duration)}
         </span>

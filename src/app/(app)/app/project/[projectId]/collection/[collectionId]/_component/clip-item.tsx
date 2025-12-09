@@ -61,13 +61,13 @@ export function ClipItem({
       </div>
       <div
         className={cn(
-          "mx-13 rounded-b-lg border border-t-0 bg-card/50 py-2 transition-colors",
+          "mr-4 ml-13 rounded-b-lg border border-t-0 bg-card/50 px-10 py-2 transition-colors",
           isActive && !isSelected && "border-primary/50 bg-primary/5",
           isSelected && "border-accent/50 bg-accent/5",
           !clip.transcript && "italic",
         )}
       >
-        <p className="line-clamp-2 pl-10 text-muted-foreground text-sm">
+        <p className="line-clamp-2 text-muted-foreground text-sm">
           {clip.transcript ?? "No transcription available"}
         </p>
       </div>
