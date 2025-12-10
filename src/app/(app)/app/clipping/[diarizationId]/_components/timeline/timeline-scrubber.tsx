@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface TimelineScrubberProps {
   currentTime: number;
@@ -15,6 +15,13 @@ export function TimelineScrubber({
 }: TimelineScrubberProps) {
   const [isDragging, setIsDragging] = useState(false);
   const scrubberRef = useRef<HTMLDivElement>(null);
+
+  // Use direct DOM manipulation for smooth playhead movement
+  useEffect(() => {
+    if (scrubberRef.current) {
+      scrubberRef.current.style.transform = `translateX(${timeToPixels(currentTime)}px)`;
+    }
+  }, [currentTime, timeToPixels]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -45,13 +52,10 @@ export function TimelineScrubber({
     [onDrag],
   );
 
-  const left = timeToPixels(currentTime);
-
   return (
     <div
-      className="pointer-events-none absolute inset-y-0 z-20"
+      className="pointer-events-none absolute inset-y-0 left-0 z-20 will-change-transform"
       ref={scrubberRef}
-      style={{ left }}
     >
       {/* Vertical line */}
       <div className="absolute inset-y-0 left-0 w-0.5 bg-primary shadow-sm shadow-primary/50" />

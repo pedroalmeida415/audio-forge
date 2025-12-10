@@ -17,7 +17,7 @@ export function TimelineTimestamps({
   timeToPixels,
 }: TimelineTimestampsProps) {
   return (
-    <div className="relative h-6 shrink-0 overflow-hidden border-b bg-muted/30">
+    <div className="pointer-events-none relative h-6 shrink-0 overflow-hidden border-b bg-muted/30">
       {marks.map((mark) => (
         <div
           className="absolute top-0 flex h-full flex-col items-center"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
+import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { TimelineSegmentsBar } from "./timeline-segments-bar";
 import { TimelineTimestamps } from "./timeline-timestamps";
@@ -24,6 +25,9 @@ export function TimelineContainer() {
       className="flex h-56 shrink-0 flex-col border-t bg-muted/20"
       ref={timelineContainerRef}
     >
+      {/* Progress bar */}
+      <TimelineProgressBar />
+
       {/* Toolbar */}
       <TimelineToolbar />
 
@@ -59,11 +63,7 @@ export function TimelineContainer() {
             />
 
             {/* Waveform */}
-            <TimelineWaveform
-              audioDataBuffer={audioDataBuffer}
-              duration={audioPlayer.duration}
-              pixelsPerSecond={timeline.pixelsPerSecond}
-            />
+            <TimelineWaveform />
           </div>
         </div>
       </div>
