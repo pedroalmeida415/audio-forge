@@ -21,7 +21,7 @@ import {
 interface ClippingWorkspaceContextValue {
   // Data
   fileName: string;
-  audioUrl: string;
+  audioDataBuffer: ArrayBuffer | null;
 
   // Hooks
   audioPlayer: AudioPlayer;
@@ -47,7 +47,7 @@ interface ClippingWorkspaceProviderProps {
   children: ReactNode;
   initialData: {
     diarization: RouterOutputs["diarization"]["getById"];
-    audioUrl: string;
+    audioDataBuffer: ArrayBuffer;
   };
 }
 
@@ -55,7 +55,7 @@ export function ClippingWorkspaceProvider({
   children,
   initialData,
 }: ClippingWorkspaceProviderProps) {
-  const { diarization, audioUrl } = initialData;
+  const { diarization, audioDataBuffer } = initialData;
 
   // Timeline container ref for measuring width
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +85,7 @@ export function ClippingWorkspaceProvider({
 
   // Audio player
   const audioPlayer = useAudioPlayer({
-    url: audioUrl,
+    buffer: audioDataBuffer,
   });
 
   // Workspace state (speakers, segments, selection)
@@ -180,7 +180,7 @@ export function ClippingWorkspaceProvider({
   const value = useMemo<ClippingWorkspaceContextValue>(
     () => ({
       fileName,
-      audioUrl,
+      audioDataBuffer,
       audioPlayer,
       timeline,
       workspace,
@@ -194,7 +194,7 @@ export function ClippingWorkspaceProvider({
     }),
     [
       fileName,
-      audioUrl,
+      audioDataBuffer,
       audioPlayer,
       timeline,
       workspace,

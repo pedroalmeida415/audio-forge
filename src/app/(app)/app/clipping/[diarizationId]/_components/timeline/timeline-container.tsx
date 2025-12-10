@@ -10,7 +10,7 @@ import { TimelineWaveform } from "./timeline-waveform";
 export function TimelineContainer() {
   const {
     audioPlayer,
-    audioUrl,
+    audioDataBuffer,
     timeline,
     workspace,
     handleTimelineSegmentClick,
@@ -60,7 +60,7 @@ export function TimelineContainer() {
 
             {/* Waveform */}
             <TimelineWaveform
-              audioUrl={audioPlayer.isLoading ? null : audioUrl}
+              audioDataBuffer={audioDataBuffer}
               duration={audioPlayer.duration}
               pixelsPerSecond={timeline.pixelsPerSecond}
             />

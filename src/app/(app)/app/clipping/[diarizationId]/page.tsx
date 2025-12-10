@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import { api } from "~/trpc/react";
+import { fetchAudioData } from "../_utils/audio-fetch";
 import { SegmentsGrid } from "./_components/segments-grid";
 import { SpeakersPanel } from "./_components/speakers-panel";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
@@ -24,8 +25,10 @@ export default function ClippingWorkspacePage({
     { refetchOnWindowFocus: false, staleTime: Infinity },
   );
 
+  const audioDataBuffer = use(fetchAudioData(audioUrl));
+
   return (
-    <ClippingWorkspaceProvider initialData={{ diarization, audioUrl }}>
+    <ClippingWorkspaceProvider initialData={{ diarization, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
         <WorkspaceHeader />
 

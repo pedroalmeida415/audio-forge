@@ -10,20 +10,20 @@ import {
 } from "~/lib/waveform-utils";
 
 interface TimelineWaveformProps {
-  audioUrl: string | null;
+  audioDataBuffer: ArrayBuffer | null;
   duration: number;
   pixelsPerSecond: number;
 }
 
 export function TimelineWaveform({
-  audioUrl,
+  audioDataBuffer,
   duration,
   pixelsPerSecond,
 }: TimelineWaveformProps) {
   const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const loadedUrlRef = useRef<string | null>(null);
+  const loadedBufferRef = useRef<ArrayBuffer | null>(null);
 
   // Calculate total width based on duration and zoom
   const totalWidth = useMemo(() => {
@@ -32,24 +32,26 @@ export function TimelineWaveform({
 
   // Load waveform data only once when audio URL is first available
   useEffect(() => {
-    if (!audioUrl || duration <= 0) return;
+    if (!audioDataBuffer || duration <= 0) return;
     // Prevent reloading if we already loaded this URL
-    if (loadedUrlRef.current === audioUrl) return;
+    if (loadedBufferRef.current === audioDataBuffer) return;
 
-    loadedUrlRef.current = audioUrl;
+    loadedBufferRef.current = audioDataBuffer;
     setIsLoading(true);
     setError(null);
 
-    generateWaveform(audioUrl, 2000)
+    generateWaveform(audioDataBuffer, 2000)
       .then((data) => {
         setWaveformData(data);
         setIsLoading(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load waveform");
+        setError(
+          err instanceof Error ? err.message : "Failed to load waveform",
+        );
         setIsLoading(false);
       });
-  }, [audioUrl, duration]);
+  }, [audioDataBuffer, duration]);
 
   // Prepare peaks for display based on current zoom level
   const displayPeaks = useMemo(() => {

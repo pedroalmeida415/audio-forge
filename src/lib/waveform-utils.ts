@@ -14,19 +14,13 @@ export interface WaveformData {
  * @returns Promise resolving to waveform data
  */
 export async function generateWaveform(
-  url: string,
+  buffer: ArrayBuffer,
   targetPeaks = 2000,
 ): Promise<WaveformData> {
   const audioContext = new AudioContext();
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch audio: ${response.statusText}`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const audioBuffer = await audioContext.decodeAudioData(buffer);
 
     // Get channel data (use mono or average of stereo)
     const channelData = audioBuffer.getChannelData(0);
@@ -74,7 +68,10 @@ export function normalizePeaks(peaks: number[]): number[] {
  * @param targetCount - Target number of peaks
  * @returns Downsampled peaks array
  */
-export function downsamplePeaks(peaks: number[], targetCount: number): number[] {
+export function downsamplePeaks(
+  peaks: number[],
+  targetCount: number,
+): number[] {
   if (peaks.length <= targetCount) return peaks;
 
   const ratio = peaks.length / targetCount;

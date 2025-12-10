@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseAudioPlayerOptions {
-  url: string;
+  buffer: ArrayBuffer;
 }
 
 interface AudioPlayerState {
@@ -15,7 +15,7 @@ interface AudioPlayerState {
   error: string | null;
 }
 
-export function useAudioPlayer({ url }: UseAudioPlayerOptions) {
+export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentEndTimeRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -32,7 +32,7 @@ export function useAudioPlayer({ url }: UseAudioPlayerOptions) {
 
   // Initialize audio element only once
   useEffect(() => {
-    if (isInitializedRef.current || !url) return;
+    if (isInitializedRef.current || !buffer) return;
     isInitializedRef.current = true;
 
     const audio = new Audio();
@@ -74,6 +74,8 @@ export function useAudioPlayer({ url }: UseAudioPlayerOptions) {
     audio.addEventListener("play", handlePlay);
     audio.addEventListener("pause", handlePause);
 
+    const blob = new Blob([buffer], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
     audio.src = url;
 
     return () => {
@@ -87,9 +89,10 @@ export function useAudioPlayer({ url }: UseAudioPlayerOptions) {
       audio.removeEventListener("pause", handlePause);
       audio.pause();
       audio.src = "";
+      audio.remove();
       audioRef.current = null;
     };
-  }, [url]);
+  }, [buffer]);
 
   // Use requestAnimationFrame for smooth playhead updates during playback
   useEffect(() => {
