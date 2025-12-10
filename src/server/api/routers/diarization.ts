@@ -2,15 +2,10 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
-
+import { env } from "~/env";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { diarizations, files } from "~/server/db/schema";
-import { env } from "~/env";
-import {
-  DiarizationService,
-  ServicesLive,
-  StorageService,
-} from "~/services";
+import { DiarizationService, ServicesLive, StorageService } from "~/services";
 
 // Helper to run Effect with services
 const runEffect = <A, E>(
@@ -162,6 +157,47 @@ export const diarizationRouter = createTRPCRouter({
       },
     });
   }),
+
+  // Get presigned URL for audio playback
+  getAudioUrl: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const diarization = await ctx.db.query.diarizations.findFirst({
+        where: and(
+          eq(diarizations.id, input.id),
+          eq(diarizations.userId, ctx.session.user.id),
+        ),
+        with: {
+          file: true,
+        },
+      });
+
+      if (!diarization) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Diarization not found",
+        });
+      }
+
+      const storageKey = diarization.file?.storageKey;
+      if (!storageKey) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Audio file not found",
+        });
+      }
+
+      const audioUrl = await runEffect(
+        Effect.flatMap(StorageService, (storage) =>
+          storage.generatePresignedDownloadUrl({
+            key: storageKey,
+            expiresIn: 3600, // 1 hour
+          }),
+        ),
+      );
+
+      return audioUrl;
+    }),
 
   // Delete a diarization
   delete: protectedProcedure
