@@ -10,8 +10,6 @@ import { TimelineWaveform } from "./timeline-waveform";
 
 export function TimelineContainer() {
   const {
-    audioPlayer,
-    audioDataBuffer,
     timeline,
     workspace,
     handleTimelineSegmentClick,
@@ -39,11 +37,7 @@ export function TimelineContainer() {
       >
         <div className="relative h-full" style={{ width: timeline.totalWidth }}>
           {/* Scrubber - positioned absolutely across the whole timeline */}
-          <TimelineScrubber
-            currentTime={audioPlayer.currentTime}
-            onDrag={handleScrubberDrag}
-            timeToPixels={timeline.timeToPixels}
-          />
+          <TimelineScrubber onDrag={handleScrubberDrag} />
 
           {/* Stacked timeline elements */}
           <div className="flex h-full flex-col">

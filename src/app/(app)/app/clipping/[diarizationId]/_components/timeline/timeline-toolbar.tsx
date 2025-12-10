@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
 } from "lucide-react";
+import { memo, useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Select,
@@ -29,7 +30,36 @@ const PLAYBACK_RATES = [
   { value: "2", label: "2x" },
 ];
 
-export function TimelineToolbar() {
+// Separate component for time display that updates via subscription
+const TimeDisplay = memo(function TimeDisplay() {
+  const { audioPlayer } = useClippingWorkspace();
+  const { subscribeToTime, getTime, duration } = audioPlayer;
+  const timeRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    // Set initial time
+    if (timeRef.current) {
+      timeRef.current.textContent = formatTimestamp(getTime());
+    }
+
+    const unsubscribe = subscribeToTime((time) => {
+      if (timeRef.current) {
+        timeRef.current.textContent = formatTimestamp(time);
+      }
+    });
+
+    return unsubscribe;
+  }, [subscribeToTime, getTime]);
+
+  return (
+    <div className="font-mono text-muted-foreground text-sm">
+      <span ref={timeRef}>{formatTimestamp(getTime())}</span> /{" "}
+      {formatTimestamp(duration)}
+    </div>
+  );
+});
+
+export const TimelineToolbar = memo(function TimelineToolbar() {
   const { audioPlayer, timeline, handleNavigateSegment } =
     useClippingWorkspace();
 
@@ -88,10 +118,7 @@ export function TimelineToolbar() {
       </Select>
 
       {/* Current time / Duration */}
-      <div className="font-mono text-muted-foreground text-sm">
-        {formatTimestamp(audioPlayer.currentTime)} /{" "}
-        {formatTimestamp(audioPlayer.duration)}
-      </div>
+      <TimeDisplay />
 
       {/* Spacer */}
       <div className="flex-1" />
@@ -131,4 +158,4 @@ export function TimelineToolbar() {
       </div>
     </div>
   );
-}
+});

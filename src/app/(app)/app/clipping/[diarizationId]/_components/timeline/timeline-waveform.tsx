@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import {
   downsamplePeaks,
@@ -10,9 +10,9 @@ import {
 } from "~/lib/waveform-utils";
 import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
 
-export function TimelineWaveform() {
+export const TimelineWaveform = memo(function TimelineWaveform() {
   const { audioDataBuffer, audioPlayer, timeline } = useClippingWorkspace();
-  const { currentTime, duration } = audioPlayer;
+  const { subscribeToTime, getTime, duration } = audioPlayer;
   const { pixelsPerSecond } = timeline;
   const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,13 +25,25 @@ export function TimelineWaveform() {
     return Math.max(1, duration * pixelsPerSecond);
   }, [duration, pixelsPerSecond]);
 
-  // Update played clip position using direct DOM manipulation for smooth animation
+  // Subscribe to time updates for direct DOM manipulation (bypasses React)
   useEffect(() => {
-    if (clipPathRef.current && duration > 0) {
-      const playedWidth = (currentTime / duration) * totalWidth;
+    if (!duration || duration <= 0) return;
+
+    // Set initial position
+    if (clipPathRef.current) {
+      const playedWidth = (getTime() / duration) * totalWidth;
       clipPathRef.current.setAttribute("width", String(playedWidth));
     }
-  }, [currentTime, duration, totalWidth]);
+
+    const unsubscribe = subscribeToTime((time) => {
+      if (clipPathRef.current) {
+        const playedWidth = (time / duration) * totalWidth;
+        clipPathRef.current.setAttribute("width", String(playedWidth));
+      }
+    });
+
+    return unsubscribe;
+  }, [subscribeToTime, duration, totalWidth, getTime]);
 
   // Load waveform data only once when audio URL is first available
   useEffect(() => {
@@ -125,11 +137,11 @@ export function TimelineWaveform() {
   if (!displayPeaks || !waveformPath) return null;
 
   const height = 80;
-  const playedWidth = duration > 0 ? (currentTime / duration) * totalWidth : 0;
 
   return (
     <div className="flex-1 overflow-hidden">
       <svg
+        aria-hidden="true"
         className="h-full"
         height={height}
         preserveAspectRatio="none"
@@ -141,7 +153,7 @@ export function TimelineWaveform() {
             <rect
               height={height}
               ref={clipPathRef}
-              width={playedWidth}
+              width={0}
               x={0}
               y={0}
             />
@@ -160,4 +172,4 @@ export function TimelineWaveform() {
       </svg>
     </div>
   );
-}
+});

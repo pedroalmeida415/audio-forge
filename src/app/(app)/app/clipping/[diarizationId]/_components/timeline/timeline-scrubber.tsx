@@ -1,27 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
 
 interface TimelineScrubberProps {
-  currentTime: number;
-  timeToPixels: (time: number) => number;
   onDrag: (clientX: number, rect: DOMRect) => void;
 }
 
-export function TimelineScrubber({
-  currentTime,
-  timeToPixels,
+export const TimelineScrubber = memo(function TimelineScrubber({
   onDrag,
 }: TimelineScrubberProps) {
+  const { audioPlayer, timeline } = useClippingWorkspace();
+  const { subscribeToTime, getTime } = audioPlayer;
+  const { timeToPixels } = timeline;
+
   const [isDragging, setIsDragging] = useState(false);
   const scrubberRef = useRef<HTMLDivElement>(null);
 
-  // Use direct DOM manipulation for smooth playhead movement
+  // Subscribe to time updates for direct DOM manipulation (bypasses React)
   useEffect(() => {
+    // Set initial position
     if (scrubberRef.current) {
-      scrubberRef.current.style.transform = `translateX(${timeToPixels(currentTime)}px)`;
+      scrubberRef.current.style.transform = `translateX(${timeToPixels(getTime())}px)`;
     }
-  }, [currentTime, timeToPixels]);
+
+    const unsubscribe = subscribeToTime((time) => {
+      if (scrubberRef.current) {
+        scrubberRef.current.style.transform = `translateX(${timeToPixels(time)}px)`;
+      }
+    });
+
+    return unsubscribe;
+  }, [subscribeToTime, timeToPixels, getTime]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -83,4 +93,4 @@ export function TimelineScrubber({
       />
     </div>
   );
-}
+});

@@ -8,11 +8,34 @@ interface UseAudioPlayerOptions {
 
 interface AudioPlayerState {
   isPlaying: boolean;
-  currentTime: number;
   duration: number;
   playbackRate: number;
   isLoading: boolean;
   error: string | null;
+}
+
+// Subscription-based current time store for high-frequency updates without React re-renders
+type TimeSubscriber = (time: number) => void;
+
+function createTimeStore() {
+  let currentTime = 0;
+  const subscribers = new Set<TimeSubscriber>();
+
+  return {
+    getTime: () => currentTime,
+    setTime: (time: number) => {
+      currentTime = time;
+      for (const fn of subscribers) {
+        fn(time);
+      }
+    },
+    subscribe: (fn: TimeSubscriber) => {
+      subscribers.add(fn);
+      return () => {
+        subscribers.delete(fn);
+      };
+    },
+  };
 }
 
 export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
@@ -21,9 +44,11 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
   const animationFrameRef = useRef<number | null>(null);
   const isInitializedRef = useRef(false);
 
+  // Time store for subscription-based updates (bypasses React render cycle)
+  const timeStoreRef = useRef(createTimeStore());
+
   const [state, setState] = useState<AudioPlayerState>({
     isPlaying: false,
-    currentTime: 0,
     duration: 0,
     playbackRate: 1,
     isLoading: true,
@@ -48,7 +73,8 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
     };
 
     const handleEnded = () => {
-      setState((s) => ({ ...s, isPlaying: false, currentTime: 0 }));
+      setState((s) => ({ ...s, isPlaying: false }));
+      timeStoreRef.current.setTime(0);
       segmentEndTimeRef.current = null;
     };
 
@@ -88,6 +114,7 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("pause", handlePause);
       audio.pause();
+      URL.revokeObjectURL(url);
       audio.src = "";
       audio.remove();
       audioRef.current = null;
@@ -112,7 +139,8 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
         return;
       }
 
-      setState((s) => ({ ...s, currentTime: audio.currentTime }));
+      // Update time store (triggers subscribers, not React re-render)
+      timeStoreRef.current.setTime(audio.currentTime);
       animationFrameRef.current = requestAnimationFrame(updateTime);
     };
 
@@ -147,7 +175,7 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
     const audio = audioRef.current;
     if (audio) {
       audio.currentTime = Math.max(0, Math.min(time, audio.duration || 0));
-      setState((s) => ({ ...s, currentTime: audio.currentTime }));
+      timeStoreRef.current.setTime(audio.currentTime);
     }
   }, []);
 
@@ -172,6 +200,16 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
     segmentEndTimeRef.current = null;
   }, []);
 
+  // Subscribe to time updates for direct DOM manipulation (bypasses React)
+  const subscribeToTime = useCallback((callback: TimeSubscriber) => {
+    return timeStoreRef.current.subscribe(callback);
+  }, []);
+
+  // Get current time (for initial render, not for animation)
+  const getTime = useCallback(() => {
+    return timeStoreRef.current.getTime();
+  }, []);
+
   return {
     ...state,
     play,
@@ -181,6 +219,8 @@ export function useAudioPlayer({ buffer }: UseAudioPlayerOptions) {
     setPlaybackRate,
     playSegment,
     stopSegmentPlayback,
+    subscribeToTime,
+    getTime,
   };
 }
 
