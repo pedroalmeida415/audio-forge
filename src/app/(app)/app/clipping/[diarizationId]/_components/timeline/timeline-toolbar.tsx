@@ -9,6 +9,7 @@ import {
   Plus,
 } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
+import { useShallow } from "zustand/shallow";
 import { Button } from "~/components/ui/button";
 import {
   Select,
@@ -19,7 +20,10 @@ import {
 } from "~/components/ui/select";
 import { Slider } from "~/components/ui/slider";
 import { formatTimestamp } from "~/lib/time-utils";
-import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
+import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+
+const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 
 const PLAYBACK_RATES = [
   { value: "0.5", label: "0.5x" },
@@ -32,36 +36,71 @@ const PLAYBACK_RATES = [
 
 // Separate component for time display that updates via subscription
 const TimeDisplay = memo(function TimeDisplay() {
-  const { audioPlayer } = useClippingWorkspace();
-  const { subscribeToTime, getTime, duration } = audioPlayer;
+  const {
+    store,
+    actions: { handleNavigateSegment },
+  } = useClippingWorkspaceStore();
+  const duration = useClippingWorkspaceStore((s) => s.duration);
   const timeRef = useRef<HTMLSpanElement>(null);
+  const lastFlooredTimeRef = useRef(-1);
 
   useEffect(() => {
     // Set initial time
+    const initialTime = store.getState().currentTime;
+    lastFlooredTimeRef.current = Math.floor(initialTime);
     if (timeRef.current) {
-      timeRef.current.textContent = formatTimestamp(getTime());
+      timeRef.current.textContent = formatTimestamp(initialTime);
     }
 
-    const unsubscribe = subscribeToTime((time) => {
-      if (timeRef.current) {
-        timeRef.current.textContent = formatTimestamp(time);
-      }
-    });
+    // Only update when the floored second changes (formatTimestamp shows whole seconds)
+    const unsubscribe = store.subscribe(
+      (state) => state.currentTime,
+      (time) => {
+        const flooredTime = Math.floor(time);
+        if (flooredTime !== lastFlooredTimeRef.current) {
+          lastFlooredTimeRef.current = flooredTime;
+          if (timeRef.current) {
+            timeRef.current.textContent = formatTimestamp(time);
+          }
+        }
+      },
+    );
 
     return unsubscribe;
-  }, [subscribeToTime, getTime]);
+  }, [store]);
 
   return (
     <div className="font-mono text-muted-foreground text-sm">
-      <span ref={timeRef}>{formatTimestamp(getTime())}</span> /{" "}
-      {formatTimestamp(duration)}
+      <span ref={timeRef}>{formatTimestamp(store.getState().currentTime)}</span>{" "}
+      / {formatTimestamp(duration)}
     </div>
   );
 });
 
 export const TimelineToolbar = memo(function TimelineToolbar() {
-  const { audioPlayer, timeline, handleNavigateSegment } =
-    useClippingWorkspace();
+  const {
+    isPlaying,
+    isLoading,
+    playbackRate,
+    zoomLevel,
+    zoomIn,
+    zoomOut,
+    setZoomLevel,
+  } = useClippingWorkspaceStore(
+    useShallow((s) => ({
+      isPlaying: s.isPlaying,
+      isLoading: s.isLoading,
+      playbackRate: s.playbackRate,
+      zoomLevel: s.zoomLevel,
+      zoomIn: s.zoomIn,
+      zoomOut: s.zoomOut,
+      setZoomLevel: s.setZoomLevel,
+    })),
+  );
+
+  const {
+    actions: { handleNavigateSegment, audio },
+  } = useClippingWorkspaceStore();
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">
@@ -88,12 +127,12 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
       {/* Play/Pause button */}
       <Button
         className="h-9 w-9"
-        disabled={audioPlayer.isLoading}
-        onClick={audioPlayer.togglePlayback}
+        disabled={isLoading}
+        onClick={audio.togglePlayback}
         size="icon"
         variant="secondary"
       >
-        {audioPlayer.isPlaying ? (
+        {isPlaying ? (
           <Pause className="h-4 w-4" />
         ) : (
           <Play className="h-4 w-4" />
@@ -102,8 +141,8 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
 
       {/* Playback speed */}
       <Select
-        onValueChange={(value) => audioPlayer.setPlaybackRate(Number(value))}
-        value={String(audioPlayer.playbackRate)}
+        onValueChange={(value) => audio.setPlaybackRate(Number(value))}
+        value={String(playbackRate)}
       >
         <SelectTrigger className="w-20">
           <SelectValue />
@@ -126,8 +165,8 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
       {/* Zoom controls */}
       <div className="flex items-center gap-2">
         <Button
-          disabled={timeline.zoomLevel <= timeline.minZoom}
-          onClick={timeline.zoomOut}
+          disabled={zoomLevel <= MIN_ZOOM}
+          onClick={zoomOut}
           size="icon"
           variant="ghost"
         >
@@ -136,16 +175,16 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
 
         <Slider
           className="w-24"
-          max={timeline.maxZoom}
-          min={timeline.minZoom}
-          onValueChange={([value]) => value && timeline.setZoomLevel(value)}
+          max={MAX_ZOOM}
+          min={MIN_ZOOM}
+          onValueChange={([value]) => value && setZoomLevel(value)}
           step={5}
-          value={[timeline.zoomLevel]}
+          value={[zoomLevel]}
         />
 
         <Button
-          disabled={timeline.zoomLevel >= timeline.maxZoom}
-          onClick={timeline.zoomIn}
+          disabled={zoomLevel >= MAX_ZOOM}
+          onClick={zoomIn}
           size="icon"
           variant="ghost"
         >
@@ -153,7 +192,7 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
         </Button>
 
         <span className="w-12 text-center font-mono text-muted-foreground text-sm">
-          {timeline.zoomLevel}%
+          {zoomLevel}%
         </span>
       </div>
     </div>

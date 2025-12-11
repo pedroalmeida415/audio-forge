@@ -9,11 +9,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import { useClippingWorkspace } from "../_context/clipping-workspace-context";
 
-export function WorkspaceHeader() {
-  const { fileName } = useClippingWorkspace();
-
+export function WorkspaceHeader({ fileName }: { fileName: string }) {
   return (
     <div className="flex items-center justify-between border-b px-4 py-3">
       <div className="flex items-center gap-3">

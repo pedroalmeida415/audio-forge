@@ -1,6 +1,9 @@
 "use client";
 
-import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
+import { useCallback, useMemo } from "react";
+import { useShallow } from "zustand/shallow";
+import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { TimelineSegmentsBar } from "./timeline-segments-bar";
@@ -8,20 +11,104 @@ import { TimelineTimestamps } from "./timeline-timestamps";
 import { TimelineToolbar } from "./timeline-toolbar";
 import { TimelineWaveform } from "./timeline-waveform";
 
+const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
+
+/**
+ * Get speaker color index from speaker order.
+ */
+function getSpeakerColorIndex(
+  segments: { speaker: string }[],
+  speaker: string,
+): number {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const seg of segments) {
+    if (!seen.has(seg.speaker)) {
+      seen.add(seg.speaker);
+      order.push(seg.speaker);
+    }
+  }
+  const index = order.indexOf(speaker);
+  return index >= 0 ? index : 0;
+}
+
 export function TimelineContainer() {
   const {
-    timeline,
-    workspace,
-    handleTimelineSegmentClick,
-    handleScrubberDrag,
-    handleTimelineClick,
-    timelineContainerRef,
-  } = useClippingWorkspace();
+    store,
+    actions: {
+      handleTimelineSegmentClick,
+      handleScrubberDrag,
+      handleTimelineClick,
+      containerRef,
+      timeline,
+    },
+  } = useClippingWorkspaceStore();
+  const {
+    duration,
+    zoomLevel,
+    containerWidth,
+    segmentsById,
+    selectedSegmentId,
+  } = useClippingWorkspaceStore(
+    useShallow((s) => ({
+      duration: s.duration,
+      zoomLevel: s.zoomLevel,
+      containerWidth: s.containerWidth,
+      segmentsById: s.segmentsById,
+      selectedSegmentId: s.selectedSegmentId,
+    })),
+  );
+
+  const segments = Object.values(segmentsById);
+
+  // Derived values
+  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
+  const pixelsPerSecond =
+    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+  const totalWidth = Math.max(duration * pixelsPerSecond, containerWidth);
+
+  // Generate timestamp marks
+  const timestampMarks = useMemo(() => {
+    const marks: { time: number; major: boolean }[] = [];
+
+    let majorInterval: number;
+    let minorInterval: number;
+
+    if (zoomLevel >= 200) {
+      majorInterval = 2;
+      minorInterval = 0.5;
+    } else if (zoomLevel >= 100) {
+      majorInterval = 5;
+      minorInterval = 1;
+    } else if (zoomLevel >= 50) {
+      majorInterval = 10;
+      minorInterval = 2;
+    } else {
+      majorInterval = 30;
+      minorInterval = 5;
+    }
+
+    const maxTime = Math.max(duration, visibleTimespan);
+
+    for (let t = 0; t <= maxTime; t += minorInterval) {
+      marks.push({
+        time: t,
+        major: t % majorInterval === 0,
+      });
+    }
+
+    return marks;
+  }, [duration, zoomLevel, visibleTimespan]);
+
+  const timeToPixels = useCallback(
+    (time: number) => time * pixelsPerSecond,
+    [pixelsPerSecond],
+  );
 
   return (
     <div
       className="flex h-56 shrink-0 flex-col border-t bg-muted/20"
-      ref={timelineContainerRef}
+      ref={containerRef}
     >
       {/* Progress bar */}
       <TimelineProgressBar />
@@ -33,9 +120,11 @@ export function TimelineContainer() {
       <div
         className="relative flex-1 cursor-crosshair overflow-x-auto overflow-y-hidden"
         onClick={handleTimelineClick}
+        onKeyDown={() => {}}
         ref={timeline.scrollContainerRef}
+        role="region"
       >
-        <div className="relative h-full" style={{ width: timeline.totalWidth }}>
+        <div className="relative h-full" style={{ width: totalWidth }}>
           {/* Scrubber - positioned absolutely across the whole timeline */}
           <TimelineScrubber onDrag={handleScrubberDrag} />
 
@@ -43,17 +132,19 @@ export function TimelineContainer() {
           <div className="flex h-full flex-col">
             {/* Timestamps */}
             <TimelineTimestamps
-              marks={timeline.timestampMarks}
-              timeToPixels={timeline.timeToPixels}
+              marks={timestampMarks}
+              timeToPixels={timeToPixels}
             />
 
             {/* Segments bar */}
             <TimelineSegmentsBar
-              getSpeakerColorIndex={workspace.getSpeakerColorIndex}
+              getSpeakerColorIndex={(speaker) =>
+                getSpeakerColorIndex(segments, speaker)
+              }
               onSegmentClick={handleTimelineSegmentClick}
-              segments={workspace.segments}
-              selectedSegmentId={workspace.selectedSegmentId}
-              timeToPixels={timeline.timeToPixels}
+              segments={segments}
+              selectedSegmentId={selectedSegmentId}
+              timeToPixels={timeToPixels}
             />
 
             {/* Waveform */}

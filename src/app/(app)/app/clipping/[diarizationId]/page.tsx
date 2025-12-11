@@ -2,12 +2,12 @@
 
 import { use } from "react";
 import { api } from "~/trpc/react";
-import { fetchAudioData } from "../_utils/audio-fetch";
 import { SegmentsGrid } from "./_components/segments-grid";
 import { SpeakersPanel } from "./_components/speakers-panel";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
 import { WorkspaceHeader } from "./_components/workspace-header";
-import { ClippingWorkspaceProvider } from "./_context/clipping-workspace-context";
+import { ClippingWorkspaceStoreProvider } from "./_store/clipping-workspace-provider";
+import { fetchAudioData } from "./_utils/audio-fetch";
 
 export default function ClippingWorkspacePage({
   params,
@@ -27,10 +27,14 @@ export default function ClippingWorkspacePage({
 
   const audioDataBuffer = use(fetchAudioData(audioUrl));
 
+  const fileName =
+    diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
+  const segments = diarization.output?.segments ?? [];
+
   return (
-    <ClippingWorkspaceProvider initialData={{ diarization, audioDataBuffer }}>
+    <ClippingWorkspaceStoreProvider initialData={{ segments, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
-        <WorkspaceHeader />
+        <WorkspaceHeader fileName={fileName} />
 
         <div className="flex min-h-0 flex-1">
           <SpeakersPanel />
@@ -39,6 +43,6 @@ export default function ClippingWorkspacePage({
 
         <TimelineContainer />
       </div>
-    </ClippingWorkspaceProvider>
+    </ClippingWorkspaceStoreProvider>
   );
 }

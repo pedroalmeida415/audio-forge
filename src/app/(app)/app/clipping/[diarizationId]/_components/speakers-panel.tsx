@@ -1,12 +1,71 @@
 "use client";
 
+import { useMemo } from "react";
 import { cn } from "~/lib/utils";
-import { useClippingWorkspace } from "../_context/clipping-workspace-context";
+import { useClippingWorkspaceStore } from "../_store/clipping-workspace-provider";
+import type { SpeakerMetadata } from "../_store/clipping-workspace-store";
 import { SpeakerCard } from "./speaker-card";
 
+/**
+ * Derives speaker metadata from segments.
+ */
+function computeSpeakers(
+  segments: { speaker: string; start: number; end: number }[],
+  duration: number,
+): SpeakerMetadata[] {
+  // Get unique speakers in order of first appearance
+  const seen = new Set<string>();
+  const speakerOrder: string[] = [];
+  for (const segment of segments) {
+    if (!seen.has(segment.speaker)) {
+      seen.add(segment.speaker);
+      speakerOrder.push(segment.speaker);
+    }
+  }
+
+  // Calculate speaker metadata
+  const speakerMap = new Map<
+    string,
+    { segmentCount: number; totalDuration: number }
+  >();
+
+  for (const segment of segments) {
+    const existing = speakerMap.get(segment.speaker) ?? {
+      segmentCount: 0,
+      totalDuration: 0,
+    };
+    speakerMap.set(segment.speaker, {
+      segmentCount: existing.segmentCount + 1,
+      totalDuration: existing.totalDuration + (segment.end - segment.start),
+    });
+  }
+
+  return speakerOrder.map((speaker, index) => {
+    const data = speakerMap.get(speaker) ?? {
+      segmentCount: 0,
+      totalDuration: 0,
+    };
+    return {
+      id: speaker,
+      label: speaker,
+      segmentCount: data.segmentCount,
+      totalDuration: data.totalDuration,
+      percentage: duration > 0 ? (data.totalDuration / duration) * 100 : 0,
+      colorIndex: index,
+    };
+  });
+}
+
 export function SpeakersPanel() {
-  const { workspace } = useClippingWorkspace();
-  const { speakers, selectedSpeaker, selectSpeaker } = workspace;
+  const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
+  const duration = useClippingWorkspaceStore((s) => s.duration);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
+  const selectSpeaker = useClippingWorkspaceStore((s) => s.selectSpeaker);
+
+  const speakers = useMemo(
+    () => computeSpeakers(Object.values(segmentsById), duration),
+    [segmentsById, duration],
+  );
 
   return (
     <div className="w-64 shrink-0 overflow-y-auto border-r bg-muted/20">

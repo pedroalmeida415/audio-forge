@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { formatTimestamp } from "~/lib/time-utils";
 
 interface TimestampMark {
@@ -12,7 +13,7 @@ interface TimelineTimestampsProps {
   timeToPixels: (time: number) => number;
 }
 
-export function TimelineTimestamps({
+export const TimelineTimestamps = memo(function TimelineTimestamps({
   marks,
   timeToPixels,
 }: TimelineTimestampsProps) {
@@ -38,4 +39,5 @@ export function TimelineTimestamps({
       ))}
     </div>
   );
-}
+});
+TimelineTimestamps.displayName = "TimelineTimestamps";

@@ -1,7 +1,10 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
+import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+
+const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 interface TimelineScrubberProps {
   onDrag: (clientX: number, rect: DOMRect) => void;
@@ -10,28 +13,47 @@ interface TimelineScrubberProps {
 export const TimelineScrubber = memo(function TimelineScrubber({
   onDrag,
 }: TimelineScrubberProps) {
-  const { audioPlayer, timeline } = useClippingWorkspace();
-  const { subscribeToTime, getTime } = audioPlayer;
-  const { timeToPixels } = timeline;
+  const { store } = useClippingWorkspaceStore();
+  // Subscribe to zoom/container changes via React (infrequent updates)
+  const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);
+  const containerWidth = useClippingWorkspaceStore((s) => s.containerWidth);
 
   const [isDragging, setIsDragging] = useState(false);
   const scrubberRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to time updates for direct DOM manipulation (bypasses React)
+  // Cache pixelsPerSecond in a ref - updated when zoom/width changes
+  const pixelsPerSecondRef = useRef(0);
+  useEffect(() => {
+    const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
+    pixelsPerSecondRef.current =
+      visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+
+    // Update position immediately when zoom/width changes
+    if (scrubberRef.current) {
+      const time = store.getState().currentTime;
+      scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
+    }
+  }, [zoomLevel, containerWidth, store]);
+
+  // Subscribe to currentTime updates for direct DOM manipulation (bypasses React)
   useEffect(() => {
     // Set initial position
     if (scrubberRef.current) {
-      scrubberRef.current.style.transform = `translateX(${timeToPixels(getTime())}px)`;
+      const time = store.getState().currentTime;
+      scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
     }
 
-    const unsubscribe = subscribeToTime((time) => {
-      if (scrubberRef.current) {
-        scrubberRef.current.style.transform = `translateX(${timeToPixels(time)}px)`;
-      }
-    });
+    const unsubscribe = store.subscribe(
+      (state) => state.currentTime,
+      (time) => {
+        if (scrubberRef.current) {
+          scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
+        }
+      },
+    );
 
     return unsubscribe;
-  }, [subscribeToTime, timeToPixels, getTime]);
+  }, [store]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -68,11 +90,11 @@ export const TimelineScrubber = memo(function TimelineScrubber({
       ref={scrubberRef}
     >
       {/* Vertical line */}
-      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary shadow-sm shadow-primary/50" />
+      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary shadow-primary/50 shadow-sm" />
 
       {/* Draggable handle at top */}
       <div
-        className="pointer-events-auto absolute -left-2.5 top-0 flex h-5 w-5 cursor-ew-resize items-center justify-center"
+        className="-left-2.5 pointer-events-auto absolute top-0 flex h-5 w-5 cursor-ew-resize items-center justify-center"
         onPointerDown={handlePointerDown}
       >
         <div
@@ -84,7 +106,7 @@ export const TimelineScrubber = memo(function TimelineScrubber({
 
       {/* Triangle indicator */}
       <div
-        className="absolute -left-1.5 top-5 h-0 w-0"
+        className="-left-1.5 absolute top-5 h-0 w-0"
         style={{
           borderLeft: "6px solid transparent",
           borderRight: "6px solid transparent",

@@ -2,8 +2,8 @@
 const audioCache = new Map<string, Promise<ArrayBuffer>>();
 
 /**
- * Fetches audio data and returns both a blob URL (for playback) and
- * ArrayBuffer (for waveform generation). Cached for use with React's use() hook.
+ * Fetches audio data and returns an ArrayBuffer (for waveform generation).
+ * Cached for use with React's use() hook to avoid duplicate fetches.
  */
 export function fetchAudioData(url: string): Promise<ArrayBuffer> {
   const cached = audioCache.get(url);

@@ -1,11 +1,14 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef } from "react";
-import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
+import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
 
 export const TimelineProgressBar = memo(function TimelineProgressBar() {
-  const { audioPlayer } = useClippingWorkspace();
-  const { subscribeToTime, getTime, duration, seek } = audioPlayer;
+  const {
+    store,
+    actions: { audio },
+  } = useClippingWorkspaceStore();
+  const duration = useClippingWorkspaceStore((s) => s.duration);
 
   const progressRef = useRef<HTMLDivElement>(null);
   const filledRef = useRef<HTMLDivElement>(null);
@@ -15,20 +18,24 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
     if (!duration || duration <= 0) return;
 
     // Set initial position
+    const initialTime = store.getState().currentTime;
     if (filledRef.current) {
-      const percentage = (getTime() / duration) * 100;
+      const percentage = (initialTime / duration) * 100;
       filledRef.current.style.width = `${percentage}%`;
     }
 
-    const unsubscribe = subscribeToTime((time) => {
-      if (filledRef.current) {
-        const percentage = (time / duration) * 100;
-        filledRef.current.style.width = `${percentage}%`;
-      }
-    });
+    const unsubscribe = store.subscribe(
+      (state) => state.currentTime,
+      (time) => {
+        if (filledRef.current) {
+          const percentage = (time / duration) * 100;
+          filledRef.current.style.width = `${percentage}%`;
+        }
+      },
+    );
 
     return unsubscribe;
-  }, [subscribeToTime, duration, getTime]);
+  }, [store, duration]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -39,9 +46,9 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       const percentage = clickX / rect.width;
       const newTime = percentage * duration;
 
-      seek(Math.max(0, Math.min(newTime, duration)));
+      audio.seek(Math.max(0, Math.min(newTime, duration)));
     },
-    [duration, seek],
+    [duration, audio],
   );
 
   const handleDrag = useCallback(
@@ -55,7 +62,7 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
         const clickX = clientX - rect.left;
         const percentage = Math.max(0, Math.min(1, clickX / rect.width));
         const newTime = percentage * duration;
-        seek(newTime);
+        audio.seek(newTime);
       };
 
       updatePosition(e.clientX);
@@ -72,30 +79,30 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
     },
-    [duration, seek],
+    [duration, audio],
   );
+
+  const currentTime = store.getState().currentTime;
 
   return (
     <div
       aria-label="Audio progress"
       aria-valuemax={duration}
       aria-valuemin={0}
-      aria-valuenow={getTime()}
+      aria-valuenow={currentTime}
       className="h-2 w-full cursor-pointer bg-muted"
       onClick={handleClick}
       onKeyDown={(e) => {
-        if (e.key === "ArrowLeft") seek(Math.max(0, getTime() - 5));
-        if (e.key === "ArrowRight") seek(Math.min(duration, getTime() + 5));
+        const time = store.getState().currentTime;
+        if (e.key === "ArrowLeft") audio.seek(Math.max(0, time - 5));
+        if (e.key === "ArrowRight") audio.seek(Math.min(duration, time + 5));
       }}
       onPointerDown={handleDrag}
       ref={progressRef}
       role="slider"
       tabIndex={0}
     >
-      <div
-        className="h-full bg-primary will-change-[width]"
-        ref={filledRef}
-      />
+      <div className="h-full bg-primary will-change-[width]" ref={filledRef} />
     </div>
   );
 });

@@ -3,7 +3,7 @@
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
-import type { SpeakerMetadata } from "../_hooks/use-workspace-state";
+import type { SpeakerMetadata } from "../_store/clipping-workspace-store";
 
 interface SpeakerCardProps {
   speaker: SpeakerMetadata;

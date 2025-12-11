@@ -1,14 +1,45 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useClippingWorkspace } from "../_context/clipping-workspace-context";
+import { useEffect, useMemo, useRef } from "react";
+import { useClippingWorkspaceStore } from "../_store/clipping-workspace-provider";
 import { SegmentCard } from "./segment-card";
 
+/**
+ * Get speaker color index from speaker order.
+ */
+function getSpeakerColorIndex(
+  segments: { speaker: string }[],
+  speaker: string,
+): number {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const seg of segments) {
+    if (!seen.has(seg.speaker)) {
+      seen.add(seg.speaker);
+      order.push(seg.speaker);
+    }
+  }
+  const index = order.indexOf(speaker);
+  return index >= 0 ? index : 0;
+}
+
 export function SegmentsGrid() {
-  const { workspace, handleSegmentSelect, handleSegmentPlay } =
-    useClippingWorkspace();
-  const { filteredSegments, selectedSegmentId, getSpeakerColorIndex } =
-    workspace;
+  const {
+    actions: { handleSegmentPlay, handleSegmentSelect },
+  } = useClippingWorkspaceStore();
+  const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
+  const selectedSegmentId = useClippingWorkspaceStore(
+    (s) => s.selectedSegmentId,
+  );
+
+  // Derive filtered segments
+  const filteredSegments = useMemo(() => {
+    const segments = Object.values(segmentsById);
+    return selectedSpeaker
+      ? segments.filter((s) => s.speaker === selectedSpeaker)
+      : segments;
+  }, [segmentsById, selectedSpeaker]);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
@@ -18,7 +49,7 @@ export function SegmentsGrid() {
     if (selectedSegmentId && selectedRef.current) {
       selectedRef.current.scrollIntoView({
         behavior: "smooth",
-        block: "nearest",
+        block: "center",
       });
     }
   }, [selectedSegmentId]);
@@ -44,7 +75,10 @@ export function SegmentsGrid() {
             ref={segment.id === selectedSegmentId ? selectedRef : undefined}
           >
             <SegmentCard
-              colorIndex={getSpeakerColorIndex(segment.speaker)}
+              colorIndex={getSpeakerColorIndex(
+                Object.values(segmentsById),
+                segment.speaker,
+              )}
               isSelected={segment.id === selectedSegmentId}
               onPlay={() => handleSegmentPlay(segment.id)}
               onSelect={() => handleSegmentSelect(segment.id)}

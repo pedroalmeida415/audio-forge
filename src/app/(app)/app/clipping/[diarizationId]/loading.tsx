@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noArrayIndexKey: "This is a loading skeleton" */
 import { Skeleton } from "~/components/ui/skeleton";
 
 export default function ClippingWorkspaceLoading() {

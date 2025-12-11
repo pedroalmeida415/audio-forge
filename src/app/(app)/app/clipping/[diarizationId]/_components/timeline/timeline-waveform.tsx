@@ -8,17 +8,28 @@ import {
   normalizePeaks,
   type WaveformData,
 } from "~/lib/waveform-utils";
-import { useClippingWorkspace } from "../../_context/clipping-workspace-context";
+import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+
+const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export const TimelineWaveform = memo(function TimelineWaveform() {
-  const { audioDataBuffer, audioPlayer, timeline } = useClippingWorkspace();
-  const { subscribeToTime, getTime, duration } = audioPlayer;
-  const { pixelsPerSecond } = timeline;
+  const { store } = useClippingWorkspaceStore();
+  const audioDataBuffer = useClippingWorkspaceStore((s) => s.audioDataBuffer);
+  const duration = useClippingWorkspaceStore((s) => s.duration);
+  const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);
+  const containerWidth = useClippingWorkspaceStore((s) => s.containerWidth);
+
   const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadedBufferRef = useRef<ArrayBuffer | null>(null);
   const clipPathRef = useRef<SVGRectElement>(null);
+
+  // Calculate derived values
+  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
+  const pixelsPerSecond =
+    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
 
   // Calculate total width based on duration and zoom
   const totalWidth = useMemo(() => {
@@ -30,20 +41,24 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
     if (!duration || duration <= 0) return;
 
     // Set initial position
+    const initialTime = store.getState().currentTime;
     if (clipPathRef.current) {
-      const playedWidth = (getTime() / duration) * totalWidth;
+      const playedWidth = (initialTime / duration) * totalWidth;
       clipPathRef.current.setAttribute("width", String(playedWidth));
     }
 
-    const unsubscribe = subscribeToTime((time) => {
-      if (clipPathRef.current) {
-        const playedWidth = (time / duration) * totalWidth;
-        clipPathRef.current.setAttribute("width", String(playedWidth));
-      }
-    });
+    const unsubscribe = store.subscribe(
+      (state) => state.currentTime,
+      (time) => {
+        if (clipPathRef.current) {
+          const playedWidth = (time / duration) * totalWidth;
+          clipPathRef.current.setAttribute("width", String(playedWidth));
+        }
+      },
+    );
 
     return unsubscribe;
-  }, [subscribeToTime, duration, totalWidth, getTime]);
+  }, [store, duration, totalWidth]);
 
   // Load waveform data only once when audio URL is first available
   useEffect(() => {
@@ -150,13 +165,7 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
       >
         <defs>
           <clipPath id="played-clip">
-            <rect
-              height={height}
-              ref={clipPathRef}
-              width={0}
-              x={0}
-              y={0}
-            />
+            <rect height={height} ref={clipPathRef} width={0} x={0} y={0} />
           </clipPath>
         </defs>
 

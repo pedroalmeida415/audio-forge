@@ -7,15 +7,15 @@
     "clientKind": "git"
   },
   "assist": {
-    "enabled": true,
-    "actions": {
-      "recommended": true,
-      "source": {
-        "recommended": true,
-        "organizeImports": "on",
-        "useSortedAttributes": "on"
-      }
-    }
+    "enabled": false
+    // "actions": {
+    //   "recommended": true,
+    //   "source": {
+    //     "recommended": true,
+    //     "organizeImports": "on",
+    //     "useSortedAttributes": "on"
+    //   }
+    // }
   },
   "formatter": {
     "enabled": true,
