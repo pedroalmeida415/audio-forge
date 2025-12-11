@@ -24,7 +24,7 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadedBufferRef = useRef<ArrayBuffer | null>(null);
-  const clipPathRef = useRef<SVGRectElement>(null);
+  const playedWrapperRef = useRef<HTMLDivElement>(null);
 
   // Calculate derived values
   const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
@@ -42,23 +42,23 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
 
     // Set initial position
     const initialTime = store.getState().currentTime;
-    if (clipPathRef.current) {
-      const playedWidth = (initialTime / duration) * totalWidth;
-      clipPathRef.current.setAttribute("width", String(playedWidth));
+    if (playedWrapperRef.current) {
+      const percentage = (initialTime / duration) * 100;
+      playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
     }
 
     const unsubscribe = store.subscribe(
       (state) => state.currentTime,
       (time) => {
-        if (clipPathRef.current) {
-          const playedWidth = (time / duration) * totalWidth;
-          clipPathRef.current.setAttribute("width", String(playedWidth));
+        if (playedWrapperRef.current) {
+          const percentage = (time / duration) * 100;
+          playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
         }
       },
     );
 
     return unsubscribe;
-  }, [store, duration, totalWidth]);
+  }, [store, duration]);
 
   // Load waveform data only once when audio URL is first available
   useEffect(() => {
@@ -154,7 +154,8 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
   const height = 80;
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="relative flex-1 overflow-hidden">
+      {/* Unplayed waveform (dark/muted) */}
       <svg
         aria-hidden="true"
         className="h-full"
@@ -163,22 +164,26 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
         style={{ width: totalWidth }}
         viewBox={`0 0 ${totalWidth} ${height}`}
       >
-        <defs>
-          <clipPath id="played-clip">
-            <rect height={height} ref={clipPathRef} width={0} x={0} y={0} />
-          </clipPath>
-        </defs>
-
-        {/* Unplayed waveform (dark/muted) */}
         <path className="fill-muted-foreground/30" d={waveformPath} />
-
-        {/* Played waveform (bright) - clipped to current time */}
-        <path
-          className="fill-primary/70"
-          clipPath="url(#played-clip)"
-          d={waveformPath}
-        />
       </svg>
+
+      {/* Played waveform (bright) - clipped via CSS */}
+      <div
+        ref={playedWrapperRef}
+        className="absolute inset-0 will-change-[clip-path]"
+        style={{ clipPath: "inset(0 100% 0 0)" }}
+      >
+        <svg
+          aria-hidden="true"
+          className="h-full"
+          height={height}
+          preserveAspectRatio="none"
+          style={{ width: totalWidth }}
+          viewBox={`0 0 ${totalWidth} ${height}`}
+        >
+          <path className="fill-primary/70" d={waveformPath} />
+        </svg>
+      </div>
     </div>
   );
 });

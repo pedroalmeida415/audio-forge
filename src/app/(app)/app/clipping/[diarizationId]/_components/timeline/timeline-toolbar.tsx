@@ -99,7 +99,7 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
   );
 
   const {
-    actions: { handleNavigateSegment, audio },
+    actions: { handleNavigateSegment, playback },
   } = useClippingWorkspaceStore();
 
   return (
@@ -128,7 +128,7 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
       <Button
         className="h-9 w-9"
         disabled={isLoading}
-        onClick={audio.togglePlayback}
+        onClick={playback.togglePlayback}
         size="icon"
         variant="secondary"
       >
@@ -141,7 +141,7 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
 
       {/* Playback speed */}
       <Select
-        onValueChange={(value) => audio.setPlaybackRate(Number(value))}
+        onValueChange={(value) => playback.setPlaybackRate(Number(value))}
         value={String(playbackRate)}
       >
         <SelectTrigger className="w-20">

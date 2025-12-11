@@ -6,7 +6,7 @@ import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provi
 export const TimelineProgressBar = memo(function TimelineProgressBar() {
   const {
     store,
-    actions: { audio },
+    actions: { playback },
   } = useClippingWorkspaceStore();
   const duration = useClippingWorkspaceStore((s) => s.duration);
 
@@ -46,9 +46,9 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       const percentage = clickX / rect.width;
       const newTime = percentage * duration;
 
-      audio.seek(Math.max(0, Math.min(newTime, duration)));
+      playback.seek(Math.max(0, Math.min(newTime, duration)));
     },
-    [duration, audio],
+    [duration, playback],
   );
 
   const handleDrag = useCallback(
@@ -62,7 +62,7 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
         const clickX = clientX - rect.left;
         const percentage = Math.max(0, Math.min(1, clickX / rect.width));
         const newTime = percentage * duration;
-        audio.seek(newTime);
+        playback.seek(newTime);
       };
 
       updatePosition(e.clientX);
@@ -79,7 +79,7 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
     },
-    [duration, audio],
+    [duration, playback],
   );
 
   const currentTime = store.getState().currentTime;
@@ -94,8 +94,8 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       onClick={handleClick}
       onKeyDown={(e) => {
         const time = store.getState().currentTime;
-        if (e.key === "ArrowLeft") audio.seek(Math.max(0, time - 5));
-        if (e.key === "ArrowRight") audio.seek(Math.min(duration, time + 5));
+        if (e.key === "ArrowLeft") playback.seek(Math.max(0, time - 5));
+        if (e.key === "ArrowRight") playback.seek(Math.min(duration, time + 5));
       }}
       onPointerDown={handleDrag}
       ref={progressRef}

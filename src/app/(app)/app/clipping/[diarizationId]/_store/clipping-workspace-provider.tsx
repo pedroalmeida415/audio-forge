@@ -14,20 +14,16 @@ import {
   type ClippingWorkspaceStoreApi,
   createClippingWorkspaceStore,
 } from "./clipping-workspace-store";
-import { type AudioActions, useAudioRefs } from "./use-audio-refs";
 import { useContainerRef } from "./use-container-ref";
-import { type TimelineActions, useTimelineRefs } from "./use-timeline-refs";
+import { type PlaybackActions, usePlayback } from "./use-playback";
 
 // ============================================================================
 // Context
 // ============================================================================
 
 interface ClippingWorkspaceActions {
-  // Audio actions
-  audio: AudioActions;
-
-  // Timeline actions
-  timeline: TimelineActions;
+  // Playback actions (audio + timeline combined)
+  playback: PlaybackActions;
 
   // Container ref
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -62,8 +58,7 @@ export function ClippingWorkspaceStoreProvider({
   const [store] = useState(() => createClippingWorkspaceStore(initialData));
 
   // Initialize ref hooks
-  const audio = useAudioRefs(store);
-  const timeline = useTimelineRefs(store);
+  const playback = usePlayback(store);
   const containerRef = useContainerRef(store);
 
   // Combined handlers
@@ -72,10 +67,10 @@ export function ClippingWorkspaceStoreProvider({
       store.getState().selectSegment(segmentId);
       const segment = store.getState().segmentsById[segmentId];
       if (segment) {
-        timeline.scrollToTime(segment.start);
+        playback.scrollToTime(segment.start);
       }
     },
-    [store, timeline],
+    [store, playback],
   );
 
   const handleTimelineSegmentClick = useCallback(
@@ -89,11 +84,11 @@ export function ClippingWorkspaceStoreProvider({
     (segmentId: string) => {
       const segment = store.getState().segmentsById[segmentId];
       if (segment) {
-        audio.playSegment(segment.start, segment.end);
-        timeline.scrollToTime(segment.start);
+        playback.playSegment(segment.start, segment.end);
+        playback.scrollToTime(segment.start);
       }
     },
-    [store, audio, timeline],
+    [store, playback],
   );
 
   const handleNavigateSegment = useCallback(
@@ -112,7 +107,7 @@ export function ClippingWorkspaceStoreProvider({
           direction === "next" ? filteredSegments[0] : undefined;
         if (nextSegment) {
           state.selectSegment(nextSegment.id);
-          timeline.scrollToTime(nextSegment.start);
+          playback.scrollToTime(nextSegment.start);
         }
         return;
       }
@@ -128,43 +123,43 @@ export function ClippingWorkspaceStoreProvider({
 
       if (segment) {
         state.selectSegment(segment.id);
-        timeline.scrollToTime(segment.start);
+        playback.scrollToTime(segment.start);
       }
     },
-    [store, timeline],
+    [store, playback],
   );
 
   const handleScrubberDrag = useCallback(
     (clientX: number, rect: DOMRect) => {
-      const container = timeline.scrollContainerRef.current;
+      const container = playback.scrollContainerRef.current;
       if (!container) return;
 
       const scrollLeft = container.scrollLeft;
       const relativeX = clientX - rect.left + scrollLeft;
-      const time = timeline.pixelsToTime(relativeX);
+      const time = playback.pixelsToTime(relativeX);
       const duration = store.getState().duration;
       const clampedTime = Math.max(0, Math.min(time, duration));
-      audio.seek(clampedTime);
+      playback.seek(clampedTime);
     },
-    [store, timeline, audio],
+    [store, playback],
   );
 
   const handleTimelineClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if ((e.target as HTMLElement).closest("button")) return;
 
-      const container = timeline.scrollContainerRef.current;
+      const container = playback.scrollContainerRef.current;
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
       const scrollLeft = container.scrollLeft;
       const relativeX = e.clientX - rect.left + scrollLeft;
-      const time = timeline.pixelsToTime(relativeX);
+      const time = playback.pixelsToTime(relativeX);
       const duration = store.getState().duration;
       const clampedTime = Math.max(0, Math.min(time, duration));
-      audio.seek(clampedTime);
+      playback.seek(clampedTime);
     },
-    [store, timeline, audio],
+    [store, playback],
   );
 
   return (
@@ -172,8 +167,7 @@ export function ClippingWorkspaceStoreProvider({
       value={{
         store,
         actions: {
-          audio,
-          timeline,
+          playback,
           containerRef,
           handleSegmentSelect,
           handleTimelineSegmentClick,

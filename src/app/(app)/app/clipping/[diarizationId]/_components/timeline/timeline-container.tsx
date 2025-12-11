@@ -40,7 +40,7 @@ export function TimelineContainer() {
       handleScrubberDrag,
       handleTimelineClick,
       containerRef,
-      timeline,
+      playback,
     },
   } = useClippingWorkspaceStore();
   const {
@@ -121,7 +121,7 @@ export function TimelineContainer() {
         className="relative flex-1 cursor-crosshair overflow-x-auto overflow-y-hidden"
         onClick={handleTimelineClick}
         onKeyDown={() => {}}
-        ref={timeline.scrollContainerRef}
+        ref={playback.scrollContainerRef}
         role="region"
       >
         <div className="relative h-full" style={{ width: totalWidth }}>

@@ -2,23 +2,85 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { ClippingWorkspaceStoreApi } from "./clipping-workspace-store";
+import { TIMELINE_CONSTANTS } from "./clipping-workspace-store";
+
+const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 /**
- * Hook that manages audio element refs and connects to the store.
- * Handles Web Audio API lifecycle, event listeners, and RAF loop.
+ * Helper to calculate pixels per second from store state.
+ */
+function getPixelsPerSecond(zoomLevel: number, containerWidth: number): number {
+  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
+  if (visibleTimespan <= 0) return 0;
+  return containerWidth / visibleTimespan;
+}
+
+/**
+ * Combined hook that manages audio playback and timeline scrolling.
+ * Handles Web Audio API lifecycle, event listeners, RAF loop, and auto-scrolling.
  *
  * Must be rendered within ClippingWorkspaceStoreProvider.
  */
-export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
+export function usePlayback(store: ClippingWorkspaceStoreApi) {
+  // Audio refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentEndTimeRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const isInitializedRef = useRef(false);
 
+  // Timeline refs
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
   // Get buffer from store
   const audioDataBuffer = store.getState().audioDataBuffer;
 
-  // Initialize audio element only once
+  // ============================================================================
+  // Timeline utilities
+  // ============================================================================
+
+  // Convert time to pixel position
+  const timeToPixels = useCallback(
+    (time: number): number => {
+      const { zoomLevel, containerWidth } = store.getState();
+      return time * getPixelsPerSecond(zoomLevel, containerWidth);
+    },
+    [store],
+  );
+
+  // Convert pixel position to time
+  const pixelsToTime = useCallback(
+    (pixels: number): number => {
+      const { zoomLevel, containerWidth } = store.getState();
+      const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+      if (pps <= 0) return 0;
+      return pixels / pps;
+    },
+    [store],
+  );
+
+  // Scroll to a specific time position
+  const scrollToTime = useCallback(
+    (time: number, behavior: ScrollBehavior = "smooth") => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      const { containerWidth } = store.getState();
+      const targetX = timeToPixels(time);
+      // Center the time in the viewport
+      const scrollLeft = targetX - containerWidth / 2;
+
+      container.scrollTo({
+        left: Math.max(0, scrollLeft),
+        behavior,
+      });
+    },
+    [store, timeToPixels],
+  );
+
+  // ============================================================================
+  // Audio initialization
+  // ============================================================================
+
   useEffect(() => {
     if (isInitializedRef.current || !audioDataBuffer) return;
     isInitializedRef.current = true;
@@ -78,8 +140,15 @@ export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
     };
   }, [audioDataBuffer, store]);
 
-  // RAF loop for smooth playhead updates during playback
+  // ============================================================================
+  // RAF loop for smooth playhead updates + auto-scroll
+  // ============================================================================
+
   useEffect(() => {
+    // Track the target visible area we're scrolling to
+    let targetVisibleRight = 0;
+    let targetVisibleLeft = 0;
+
     const unsubscribe = store.subscribe(
       (state) => state.isPlaying,
       (isPlaying) => {
@@ -91,8 +160,17 @@ export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
           return;
         }
 
+        // Initialize target boundaries
+        const container = scrollContainerRef.current;
+        if (container) {
+          const { containerWidth } = store.getState();
+          targetVisibleLeft = container.scrollLeft;
+          targetVisibleRight = targetVisibleLeft + containerWidth;
+        }
+
         const updateTime = () => {
           const audio = audioRef.current;
+          const container = scrollContainerRef.current;
           if (!audio) return;
 
           // Check segment end
@@ -105,8 +183,35 @@ export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
             return;
           }
 
+          const currentTime = audio.currentTime;
+
           // Update time in store (triggers primitive selector subscribers)
-          store.getState().setCurrentTime(audio.currentTime);
+          store.getState().setCurrentTime(currentTime);
+
+          // Auto-scroll: keep playhead visible, always land on left side
+          if (container) {
+            const { zoomLevel, containerWidth } = store.getState();
+            const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+            const timeX = currentTime * pps;
+            const padding = containerWidth * 0.1;
+
+            // Check against TARGET boundaries (where we're scrolling to), not current scroll position
+            const pastRightEdge = timeX > targetVisibleRight - padding;
+            const pastLeftEdge = timeX < targetVisibleLeft + padding;
+
+            if (pastRightEdge || pastLeftEdge) {
+              // Always position playhead on the left side with padding
+              const newScrollLeft = Math.max(0, timeX - padding);
+              container.scrollTo({
+                left: newScrollLeft,
+                behavior: "smooth",
+              });
+              // Update target boundaries to where we're scrolling
+              targetVisibleLeft = newScrollLeft;
+              targetVisibleRight = newScrollLeft + containerWidth;
+            }
+          }
+
           animationFrameRef.current = requestAnimationFrame(updateTime);
         };
 
@@ -123,7 +228,10 @@ export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
     };
   }, [store]);
 
-  // Actions
+  // ============================================================================
+  // Audio actions
+  // ============================================================================
+
   const play = useCallback(() => {
     segmentEndTimeRef.current = null;
     audioRef.current?.play();
@@ -179,6 +287,13 @@ export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
   }, []);
 
   return {
+    // Timeline refs and utilities
+    scrollContainerRef,
+    timeToPixels,
+    pixelsToTime,
+    scrollToTime,
+
+    // Audio actions
     play,
     pause,
     togglePlayback,
@@ -189,4 +304,4 @@ export function useAudioRefs(store: ClippingWorkspaceStoreApi) {
   };
 }
 
-export type AudioActions = ReturnType<typeof useAudioRefs>;
+export type PlaybackActions = ReturnType<typeof usePlayback>;
