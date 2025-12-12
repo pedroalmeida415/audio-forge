@@ -2,15 +2,15 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
+import { usePlaybackContext } from "../../_context/playback.context";
+import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 import {
   downsamplePeaks,
   generateWaveform,
   normalizePeaks,
   type WaveformData,
-} from "~/lib/waveform-utils";
-import { usePlaybackContext } from "../../_context/playback.context";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+} from "../../_utils/waveform-utils";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
