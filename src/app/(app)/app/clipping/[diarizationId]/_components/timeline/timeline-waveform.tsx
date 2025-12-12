@@ -8,6 +8,7 @@ import {
   normalizePeaks,
   type WaveformData,
 } from "~/lib/waveform-utils";
+import { usePlaybackContext } from "../../_context/playback.context";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
@@ -15,7 +16,7 @@ const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export const TimelineWaveform = memo(function TimelineWaveform() {
   const store = useClippingWorkspaceStore();
-  const audioDataBuffer = useClippingWorkspaceStore((s) => s.audioDataBuffer);
+  const { audioDataBufferRef } = usePlaybackContext();
   const duration = useClippingWorkspaceStore((s) => s.duration);
   const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);
   const containerWidth = useClippingWorkspaceStore((s) => s.containerWidth);
@@ -61,16 +62,17 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
   }, [store, duration]);
 
   // Load waveform data only once when audio URL is first available
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Ref should not change
   useEffect(() => {
-    if (!audioDataBuffer || duration <= 0) return;
+    if (!audioDataBufferRef.current || duration <= 0) return;
     // Prevent reloading if we already loaded this URL
-    if (loadedBufferRef.current === audioDataBuffer) return;
+    if (loadedBufferRef.current === audioDataBufferRef.current) return;
 
-    loadedBufferRef.current = audioDataBuffer;
+    loadedBufferRef.current = audioDataBufferRef.current;
     setIsLoading(true);
     setError(null);
 
-    generateWaveform(audioDataBuffer, 2000)
+    generateWaveform(audioDataBufferRef.current, 2000)
       .then((data) => {
         setWaveformData(data);
         setIsLoading(false);
@@ -81,7 +83,7 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
         );
         setIsLoading(false);
       });
-  }, [audioDataBuffer, duration]);
+  }, [duration]);
 
   // Prepare peaks for display based on current zoom level
   const displayPeaks = useMemo(() => {

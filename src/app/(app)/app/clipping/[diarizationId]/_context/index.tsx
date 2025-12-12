@@ -14,9 +14,13 @@ export default function ClippingWorkspaceProviders({
   children: React.ReactNode;
   initialData: ClippingWorkspaceInitialData;
 }) {
+  const { audioDataBuffer, segments } = initialData;
+
   return (
-    <ClippingWorkspaceStoreProvider initialData={initialData}>
-      <PlaybackProvider>{children}</PlaybackProvider>
+    <ClippingWorkspaceStoreProvider initialData={{ segments }}>
+      <PlaybackProvider initialData={{ audioDataBuffer }}>
+        {children}
+      </PlaybackProvider>
     </ClippingWorkspaceStoreProvider>
   );
 }

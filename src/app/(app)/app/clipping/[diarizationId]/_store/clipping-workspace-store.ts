@@ -63,7 +63,6 @@ interface WorkspaceState {
   segmentsById: Record<string, SegmentWithId>;
   selectedSpeaker: string | null;
   selectedSegmentId: string | null;
-  audioDataBuffer: ArrayBuffer | null;
 }
 
 interface WorkspaceActions {
@@ -98,9 +97,8 @@ const DEFAULT_CONTAINER_WIDTH = 800;
 // Initial State Factory
 // ============================================================================
 
-export interface ClippingWorkspaceInitialData {
+export interface ClippingWorkspaceStoreInitialData {
   segments: DiarizationSegment[];
-  audioDataBuffer: ArrayBuffer;
 }
 
 function createSegmentsWithIds(
@@ -129,7 +127,7 @@ function getInitialSpeaker(segments: DiarizationSegment[]): string | null {
 // ============================================================================
 
 export function createClippingWorkspaceStore(
-  initialData: ClippingWorkspaceInitialData,
+  initialData: ClippingWorkspaceStoreInitialData,
 ) {
   const segmentsById = createSegmentsWithIds(initialData.segments);
   const initialSpeaker = getInitialSpeaker(initialData.segments);
@@ -174,7 +172,6 @@ export function createClippingWorkspaceStore(
         segmentsById: segmentsById,
         selectedSpeaker: initialSpeaker,
         selectedSegmentId: null,
-        audioDataBuffer: initialData.audioDataBuffer,
 
         // Workspace actions
         selectSpeaker: (speaker) =>

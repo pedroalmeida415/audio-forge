@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useClippingWorkspaceStore } from "../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../_store/clipping-workspace-store";
 
@@ -21,79 +21,58 @@ function getPixelsPerSecond(zoomLevel: number, containerWidth: number): number {
  *
  * Must be rendered within ClippingWorkspaceStoreProvider.
  */
-export function usePlayback() {
+export function usePlayback(audioDataBuffer: ArrayBuffer) {
   const store = useClippingWorkspaceStore();
 
   // Audio refs
+  const audioDataBufferRef = useRef<ArrayBuffer>(audioDataBuffer);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentEndTimeRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   // Track which buffer was initialized to handle re-initialization on navigation
-  const initializedBufferRef = useRef<ArrayBuffer | null>(null);
 
   // Timeline refs
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Get buffer from store
-  const audioDataBuffer = store.getState().audioDataBuffer;
 
   // ============================================================================
   // Timeline utilities
   // ============================================================================
 
   // Convert time to pixel position
-  const timeToPixels = useCallback(
-    (time: number): number => {
-      const { zoomLevel, containerWidth } = store.getState();
-      return time * getPixelsPerSecond(zoomLevel, containerWidth);
-    },
-    [store],
-  );
+  const timeToPixels = (time: number): number => {
+    const { zoomLevel, containerWidth } = store.getState();
+    return time * getPixelsPerSecond(zoomLevel, containerWidth);
+  };
 
   // Convert pixel position to time
-  const pixelsToTime = useCallback(
-    (pixels: number): number => {
-      const { zoomLevel, containerWidth } = store.getState();
-      const pps = getPixelsPerSecond(zoomLevel, containerWidth);
-      if (pps <= 0) return 0;
-      return pixels / pps;
-    },
-    [store],
-  );
+  const pixelsToTime = (pixels: number): number => {
+    const { zoomLevel, containerWidth } = store.getState();
+    const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+    if (pps <= 0) return 0;
+    return pixels / pps;
+  };
 
   // Scroll to a specific time position
-  const scrollToTime = useCallback(
-    (time: number, behavior: ScrollBehavior = "smooth") => {
-      const container = scrollContainerRef.current;
-      if (!container) return;
+  const scrollToTime = (time: number, behavior: ScrollBehavior = "smooth") => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-      const { containerWidth } = store.getState();
-      const targetX = timeToPixels(time);
-      // Center the time in the viewport
-      const scrollLeft = targetX - containerWidth / 2;
+    const { containerWidth } = store.getState();
+    const targetX = timeToPixels(time);
+    // Center the time in the viewport
+    const scrollLeft = targetX - containerWidth / 2;
 
-      container.scrollTo({
-        left: Math.max(0, scrollLeft),
-        behavior,
-      });
-    },
-    [store, timeToPixels],
-  );
+    container.scrollTo({
+      left: Math.max(0, scrollLeft),
+      behavior,
+    });
+  };
 
   // ============================================================================
   // Audio initialization
   // ============================================================================
 
   useEffect(() => {
-    // Skip if no buffer available
-    if (!audioDataBuffer) return;
-
-    // Skip if we already initialized this exact buffer (prevents duplicate setup)
-    if (initializedBufferRef.current === audioDataBuffer) return;
-
-    // Mark this buffer as being initialized
-    initializedBufferRef.current = audioDataBuffer;
-
     const audio = new Audio();
     audio.preload = "metadata";
     audioRef.current = audio;
@@ -128,7 +107,7 @@ export function usePlayback() {
     audio.addEventListener("play", handlePlay);
     audio.addEventListener("pause", handlePause);
 
-    const blob = new Blob([audioDataBuffer], { type: "audio/wav" });
+    const blob = new Blob([audioDataBufferRef.current], { type: "audio/wav" });
     const url = URL.createObjectURL(blob);
     audio.src = url;
 
@@ -147,9 +126,8 @@ export function usePlayback() {
       audio.remove();
       audioRef.current = null;
       // Reset the initialized buffer ref so we can reinitialize on next mount
-      initializedBufferRef.current = null;
     };
-  }, [audioDataBuffer, store]);
+  }, [store]);
 
   // ============================================================================
   // RAF loop for smooth playhead updates + auto-scroll
@@ -243,160 +221,136 @@ export function usePlayback() {
   // Audio actions
   // ============================================================================
 
-  const play = useCallback(() => {
+  const play = () => {
     segmentEndTimeRef.current = null;
     audioRef.current?.play();
-  }, []);
+  };
 
-  const pause = useCallback(() => {
+  const pause = () => {
     segmentEndTimeRef.current = null;
     audioRef.current?.pause();
-  }, []);
+  };
 
-  const togglePlayback = useCallback(() => {
+  const togglePlayback = () => {
     const isPlaying = store.getState().isPlaying;
     if (isPlaying) {
       pause();
     } else {
       play();
     }
-  }, [store, play, pause]);
+  };
 
-  const seek = useCallback(
-    (time: number) => {
-      const audio = audioRef.current;
-      if (audio) {
-        audio.currentTime = Math.max(0, Math.min(time, audio.duration || 0));
-        store.getState().setCurrentTime(audio.currentTime);
-      }
-    },
-    [store],
-  );
+  const seek = (time: number) => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.currentTime = Math.max(0, Math.min(time, audio.duration || 0));
+      store.getState().setCurrentTime(audio.currentTime);
+    }
+  };
 
-  const setPlaybackRate = useCallback(
-    (rate: number) => {
-      const audio = audioRef.current;
-      if (audio) {
-        audio.playbackRate = rate;
-        store.getState().setPlaybackRate(rate);
-      }
-    },
-    [store],
-  );
+  const setPlaybackRate = (rate: number) => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.playbackRate = rate;
+      store.getState().setPlaybackRate(rate);
+    }
+  };
 
-  const playSegment = useCallback((start: number, end: number) => {
+  const playSegment = (start: number, end: number) => {
     const audio = audioRef.current;
     if (!audio) return;
 
     segmentEndTimeRef.current = end;
     audio.currentTime = start;
     audio.play();
-  }, []);
+  };
 
   // Combined handlers
-  const handleSegmentSelect = useCallback(
-    (segmentId: string) => {
-      store.getState().selectSegment(segmentId);
-      const segment = store.getState().segmentsById[segmentId];
-      if (segment) {
-        scrollToTime(segment.start);
+  const handleSegmentSelect = (segmentId: string) => {
+    store.getState().selectSegment(segmentId);
+    const segment = store.getState().segmentsById[segmentId];
+    if (segment) {
+      scrollToTime(segment.start);
+    }
+  };
+
+  const handleTimelineSegmentClick = (segmentId: string) => {
+    store.getState().selectSegment(segmentId);
+  };
+
+  const handleSegmentPlay = (segmentId: string) => {
+    const segment = store.getState().segmentsById[segmentId];
+    if (segment) {
+      playSegment(segment.start, segment.end);
+      scrollToTime(segment.start);
+    }
+  };
+
+  const handleNavigateSegment = (direction: "next" | "prev") => {
+    const state = store.getState();
+    const { selectedSegmentId, selectedSpeaker, segmentsById } = state;
+    const segments = Object.values(segmentsById);
+
+    // Filter segments by speaker
+    const filteredSegments = selectedSpeaker
+      ? segments.filter((s) => s.speaker === selectedSpeaker)
+      : segments;
+
+    if (!selectedSegmentId) {
+      const nextSegment =
+        direction === "next" ? filteredSegments[0] : undefined;
+      if (nextSegment) {
+        state.selectSegment(nextSegment.id);
+        scrollToTime(nextSegment.start);
       }
-    },
-    [store, scrollToTime],
-  );
+      return;
+    }
 
-  const handleTimelineSegmentClick = useCallback(
-    (segmentId: string) => {
-      store.getState().selectSegment(segmentId);
-    },
-    [store],
-  );
+    const currentIndex = filteredSegments.findIndex(
+      (s) => s.id === selectedSegmentId,
+    );
+    if (currentIndex === -1) return;
 
-  const handleSegmentPlay = useCallback(
-    (segmentId: string) => {
-      const segment = store.getState().segmentsById[segmentId];
-      if (segment) {
-        playSegment(segment.start, segment.end);
-        scrollToTime(segment.start);
-      }
-    },
-    [store, playSegment, scrollToTime],
-  );
+    const newIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
+    const segment = filteredSegments[newIndex];
 
-  const handleNavigateSegment = useCallback(
-    (direction: "next" | "prev") => {
-      const state = store.getState();
-      const { selectedSegmentId, selectedSpeaker, segmentsById } = state;
-      const segments = Object.values(segmentsById);
+    if (segment) {
+      state.selectSegment(segment.id);
+      scrollToTime(segment.start);
+    }
+  };
 
-      // Filter segments by speaker
-      const filteredSegments = selectedSpeaker
-        ? segments.filter((s) => s.speaker === selectedSpeaker)
-        : segments;
+  const handleScrubberDrag = (clientX: number, rect: DOMRect) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-      if (!selectedSegmentId) {
-        const nextSegment =
-          direction === "next" ? filteredSegments[0] : undefined;
-        if (nextSegment) {
-          state.selectSegment(nextSegment.id);
-          scrollToTime(nextSegment.start);
-        }
-        return;
-      }
+    const scrollLeft = container.scrollLeft;
+    const relativeX = clientX - rect.left + scrollLeft;
+    const time = pixelsToTime(relativeX);
+    const duration = store.getState().duration;
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    seek(clampedTime);
+  };
 
-      const currentIndex = filteredSegments.findIndex(
-        (s) => s.id === selectedSegmentId,
-      );
-      if (currentIndex === -1) return;
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("button")) return;
 
-      const newIndex =
-        direction === "next" ? currentIndex + 1 : currentIndex - 1;
-      const segment = filteredSegments[newIndex];
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-      if (segment) {
-        state.selectSegment(segment.id);
-        scrollToTime(segment.start);
-      }
-    },
-    [store, scrollToTime],
-  );
-
-  const handleScrubberDrag = useCallback(
-    (clientX: number, rect: DOMRect) => {
-      const container = scrollContainerRef.current;
-      if (!container) return;
-
-      const scrollLeft = container.scrollLeft;
-      const relativeX = clientX - rect.left + scrollLeft;
-      const time = pixelsToTime(relativeX);
-      const duration = store.getState().duration;
-      const clampedTime = Math.max(0, Math.min(time, duration));
-      seek(clampedTime);
-    },
-    [store, pixelsToTime, seek],
-  );
-
-  const handleTimelineClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if ((e.target as HTMLElement).closest("button")) return;
-
-      const container = scrollContainerRef.current;
-      if (!container) return;
-
-      const rect = container.getBoundingClientRect();
-      const scrollLeft = container.scrollLeft;
-      const relativeX = e.clientX - rect.left + scrollLeft;
-      const time = pixelsToTime(relativeX);
-      const duration = store.getState().duration;
-      const clampedTime = Math.max(0, Math.min(time, duration));
-      seek(clampedTime);
-    },
-    [store, pixelsToTime, seek],
-  );
+    const rect = container.getBoundingClientRect();
+    const scrollLeft = container.scrollLeft;
+    const relativeX = e.clientX - rect.left + scrollLeft;
+    const time = pixelsToTime(relativeX);
+    const duration = store.getState().duration;
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    seek(clampedTime);
+  };
 
   return {
     // Timeline refs and utilities
     scrollContainerRef,
+    audioDataBufferRef,
     timeToPixels,
     pixelsToTime,
     scrollToTime,

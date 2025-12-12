@@ -3,9 +3,9 @@
 import { createContext, type ReactNode, use, useState } from "react";
 import { useStore } from "zustand";
 import {
-  type ClippingWorkspaceInitialData,
   type ClippingWorkspaceStore,
   type ClippingWorkspaceStoreApi,
+  type ClippingWorkspaceStoreInitialData,
   createClippingWorkspaceStore,
 } from "../_store/clipping-workspace-store";
 
@@ -23,7 +23,7 @@ const ClippingWorkspaceStoreContext = createContext<
 
 interface ClippingWorkspaceStoreProviderProps {
   children: ReactNode;
-  initialData: ClippingWorkspaceInitialData;
+  initialData: ClippingWorkspaceStoreInitialData;
 }
 
 export function ClippingWorkspaceStoreProvider({

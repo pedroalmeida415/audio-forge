@@ -14,11 +14,19 @@ const PlaybackContext = createContext<PlaybackActions | undefined>(undefined);
 
 interface PlaybackProviderProps {
   children: ReactNode;
+  initialData: {
+    audioDataBuffer: ArrayBuffer;
+  };
 }
 
-export function PlaybackProvider({ children }: PlaybackProviderProps) {
+export function PlaybackProvider({
+  initialData,
+  children,
+}: PlaybackProviderProps) {
+  const { audioDataBuffer } = initialData;
+
   // Initialize ref hooks
-  const playback = usePlayback();
+  const playback = usePlayback(audioDataBuffer);
 
   return (
     <PlaybackContext.Provider value={playback}>
