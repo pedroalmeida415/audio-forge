@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
@@ -18,7 +18,6 @@ export const TimelineScrubber = memo(function TimelineScrubber({
   const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);
   const containerWidth = useClippingWorkspaceStore((s) => s.containerWidth);
 
-  const [isDragging, setIsDragging] = useState(false);
   const scrubberRef = useRef<HTMLDivElement>(null);
 
   // Cache pixelsPerSecond in a ref - updated when zoom/width changes
@@ -59,7 +58,6 @@ export const TimelineScrubber = memo(function TimelineScrubber({
     (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      setIsDragging(true);
 
       // Get the scrollable container (parent of the timeline content div)
       const scrollContainer = scrubberRef.current?.parentElement?.parentElement;
@@ -73,7 +71,6 @@ export const TimelineScrubber = memo(function TimelineScrubber({
       };
 
       const handlePointerUp = () => {
-        setIsDragging(false);
         document.removeEventListener("pointermove", handlePointerMove);
         document.removeEventListener("pointerup", handlePointerUp);
       };
@@ -86,33 +83,22 @@ export const TimelineScrubber = memo(function TimelineScrubber({
 
   return (
     <div
-      className="pointer-events-none absolute inset-y-0 left-0 z-20 will-change-transform"
+      className="absolute inset-y-0 left-0 z-20 cursor-ew-resize will-change-transform"
       ref={scrubberRef}
+      onPointerDown={handlePointerDown}
     >
       {/* Vertical line */}
-      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary shadow-primary/50 shadow-sm" />
-
-      {/* Draggable handle at top */}
-      <div
-        className="-left-2.5 pointer-events-auto absolute top-0 flex h-5 w-5 cursor-ew-resize items-center justify-center"
-        onPointerDown={handlePointerDown}
-      >
-        <div
-          className={`h-4 w-4 rounded-full border-2 border-primary bg-background shadow-md transition-transform ${
-            isDragging ? "scale-110 bg-primary" : "hover:scale-105"
-          }`}
-        />
-      </div>
+      <div className="-translate-x-px absolute inset-y-0 left-0 w-0.5 bg-primary" />
 
       {/* Triangle indicator */}
-      <div
-        className="-left-1.5 absolute top-5 h-0 w-0"
-        style={{
-          borderLeft: "6px solid transparent",
-          borderRight: "6px solid transparent",
-          borderTop: "6px solid hsl(var(--primary))",
-        }}
-      />
+      <svg
+        className="-top-0.5 -left-1.5 absolute w-3 fill-primary"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 9 12"
+      >
+        <title>Playhead</title>
+        <path d="M8 1v5L4.5 10 1 6V1h7z" fillRule="nonzero"></path>
+      </svg>
     </div>
   );
 });
