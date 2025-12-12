@@ -117,11 +117,6 @@ function createSegmentsWithIds(
   );
 }
 
-function getInitialSpeaker(segments: DiarizationSegment[]): string | null {
-  if (segments.length === 0) return null;
-  return segments[0]?.speaker ?? null;
-}
-
 // ============================================================================
 // Store Factory
 // ============================================================================
@@ -130,7 +125,6 @@ export function createClippingWorkspaceStore(
   initialData: ClippingWorkspaceStoreInitialData,
 ) {
   const segmentsById = createSegmentsWithIds(initialData.segments);
-  const initialSpeaker = getInitialSpeaker(initialData.segments);
 
   return createStore<ClippingWorkspaceStore>()(
     subscribeWithSelector(
@@ -170,7 +164,7 @@ export function createClippingWorkspaceStore(
 
         // Workspace state
         segmentsById: segmentsById,
-        selectedSpeaker: initialSpeaker,
+        selectedSpeaker: null,
         selectedSegmentId: null,
 
         // Workspace actions

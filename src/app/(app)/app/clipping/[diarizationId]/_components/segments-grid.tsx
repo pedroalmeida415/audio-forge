@@ -35,9 +35,7 @@ export function SegmentsGrid() {
   // Derive filtered segments
   const filteredSegments = useMemo(() => {
     const segments = Object.values(segmentsById);
-    return selectedSpeaker
-      ? segments.filter((s) => s.speaker === selectedSpeaker)
-      : segments;
+    return segments.filter((s) => s.speaker === selectedSpeaker);
   }, [segmentsById, selectedSpeaker]);
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -52,6 +50,16 @@ export function SegmentsGrid() {
       });
     }
   }, [selectedSegmentId]);
+
+  if (!selectedSpeaker) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-muted-foreground">
+          Select a speaker to view their segments
+        </p>
+      </div>
+    );
+  }
 
   if (filteredSegments.length === 0) {
     return (
