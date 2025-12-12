@@ -20,7 +20,8 @@ import {
 } from "~/components/ui/select";
 import { Slider } from "~/components/ui/slider";
 import { formatTimestamp } from "~/lib/time-utils";
-import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { usePlaybackContext } from "../../_context/playback.context";
+import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
@@ -36,10 +37,7 @@ const PLAYBACK_RATES = [
 
 // Separate component for time display that updates via subscription
 const TimeDisplay = memo(function TimeDisplay() {
-  const {
-    store,
-    actions: { handleNavigateSegment },
-  } = useClippingWorkspaceStore();
+  const store = useClippingWorkspaceStore();
   const duration = useClippingWorkspaceStore((s) => s.duration);
   const timeRef = useRef<HTMLSpanElement>(null);
   const lastFlooredTimeRef = useRef(-1);
@@ -98,9 +96,8 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
     })),
   );
 
-  const {
-    actions: { handleNavigateSegment, playback },
-  } = useClippingWorkspaceStore();
+  const { handleNavigateSegment, togglePlayback, setPlaybackRate } =
+    usePlaybackContext();
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">
@@ -128,7 +125,7 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
       <Button
         className="h-9 w-9"
         disabled={isLoading}
-        onClick={playback.togglePlayback}
+        onClick={togglePlayback}
         size="icon"
         variant="secondary"
       >
@@ -141,7 +138,7 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
 
       {/* Playback speed */}
       <Select
-        onValueChange={(value) => playback.setPlaybackRate(Number(value))}
+        onValueChange={(value) => setPlaybackRate(Number(value))}
         value={String(playbackRate)}
       >
         <SelectTrigger className="w-20">

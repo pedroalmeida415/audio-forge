@@ -2,7 +2,9 @@
 
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/shallow";
-import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { usePlaybackContext } from "../../_context/playback.context";
+import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrubber } from "./timeline-scrubber";
@@ -34,15 +36,11 @@ function getSpeakerColorIndex(
 
 export function TimelineContainer() {
   const {
-    store,
-    actions: {
-      handleTimelineSegmentClick,
-      handleScrubberDrag,
-      handleTimelineClick,
-      containerRef,
-      playback,
-    },
-  } = useClippingWorkspaceStore();
+    handleTimelineSegmentClick,
+    handleScrubberDrag,
+    handleTimelineClick,
+    scrollContainerRef,
+  } = usePlaybackContext();
   const {
     duration,
     zoomLevel,
@@ -58,6 +56,8 @@ export function TimelineContainer() {
       selectedSegmentId: s.selectedSegmentId,
     })),
   );
+
+  const containerRef = useTimelineResize();
 
   const segments = Object.values(segmentsById);
 
@@ -121,7 +121,7 @@ export function TimelineContainer() {
         className="relative flex-1 cursor-crosshair overflow-x-auto overflow-y-hidden"
         onClick={handleTimelineClick}
         onKeyDown={() => {}}
-        ref={playback.scrollContainerRef}
+        ref={scrollContainerRef}
         role="region"
       >
         <div className="relative h-full" style={{ width: totalWidth }}>

@@ -1,14 +1,13 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef } from "react";
-import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { usePlaybackContext } from "../../_context/playback.context";
+import { useClippingWorkspaceStore } from "../../_context/store.context";
 
 export const TimelineProgressBar = memo(function TimelineProgressBar() {
-  const {
-    store,
-    actions: { playback },
-  } = useClippingWorkspaceStore();
+  const { seek } = usePlaybackContext();
   const duration = useClippingWorkspaceStore((s) => s.duration);
+  const store = useClippingWorkspaceStore();
 
   const progressRef = useRef<HTMLDivElement>(null);
   const filledRef = useRef<HTMLDivElement>(null);
@@ -46,9 +45,9 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       const percentage = clickX / rect.width;
       const newTime = percentage * duration;
 
-      playback.seek(Math.max(0, Math.min(newTime, duration)));
+      seek(Math.max(0, Math.min(newTime, duration)));
     },
-    [duration, playback],
+    [duration, seek],
   );
 
   const handleDrag = useCallback(
@@ -62,7 +61,7 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
         const clickX = clientX - rect.left;
         const percentage = Math.max(0, Math.min(1, clickX / rect.width));
         const newTime = percentage * duration;
-        playback.seek(newTime);
+        seek(newTime);
       };
 
       updatePosition(e.clientX);
@@ -79,7 +78,7 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
     },
-    [duration, playback],
+    [duration, seek],
   );
 
   const currentTime = store.getState().currentTime;
@@ -94,8 +93,8 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       onClick={handleClick}
       onKeyDown={(e) => {
         const time = store.getState().currentTime;
-        if (e.key === "ArrowLeft") playback.seek(Math.max(0, time - 5));
-        if (e.key === "ArrowRight") playback.seek(Math.min(duration, time + 5));
+        if (e.key === "ArrowLeft") seek(Math.max(0, time - 5));
+        if (e.key === "ArrowRight") seek(Math.min(duration, time + 5));
       }}
       onPointerDown={handleDrag}
       ref={progressRef}

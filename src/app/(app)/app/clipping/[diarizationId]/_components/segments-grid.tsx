@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { useClippingWorkspaceStore } from "../_store/clipping-workspace-provider";
+import { usePlaybackContext } from "../_context/playback.context";
+import { useClippingWorkspaceStore } from "../_context/store.context";
 import { SegmentCard } from "./segment-card";
 
 /**
@@ -24,9 +25,7 @@ function getSpeakerColorIndex(
 }
 
 export function SegmentsGrid() {
-  const {
-    actions: { handleSegmentPlay, handleSegmentSelect },
-  } = useClippingWorkspaceStore();
+  const { handleSegmentPlay, handleSegmentSelect } = usePlaybackContext();
   const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
   const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
   const selectedSegmentId = useClippingWorkspaceStore(

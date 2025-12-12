@@ -6,7 +6,7 @@ import { SegmentsGrid } from "./_components/segments-grid";
 import { SpeakersPanel } from "./_components/speakers-panel";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
 import { WorkspaceHeader } from "./_components/workspace-header";
-import { ClippingWorkspaceStoreProvider } from "./_store/clipping-workspace-provider";
+import ClippingWorkspaceProviders from "./_context";
 import { fetchAudioData } from "./_utils/audio-fetch";
 
 export default function ClippingWorkspacePage({
@@ -32,7 +32,7 @@ export default function ClippingWorkspacePage({
   const segments = diarization.output?.segments ?? [];
 
   return (
-    <ClippingWorkspaceStoreProvider initialData={{ segments, audioDataBuffer }}>
+    <ClippingWorkspaceProviders initialData={{ segments, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
         <WorkspaceHeader fileName={fileName} />
 
@@ -43,6 +43,6 @@ export default function ClippingWorkspacePage({
 
         <TimelineContainer />
       </div>
-    </ClippingWorkspaceStoreProvider>
+    </ClippingWorkspaceProviders>
   );
 }

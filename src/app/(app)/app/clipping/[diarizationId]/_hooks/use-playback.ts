@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { ClippingWorkspaceStoreApi } from "./clipping-workspace-store";
-import { TIMELINE_CONSTANTS } from "./clipping-workspace-store";
+import { useClippingWorkspaceStore } from "../_context/store.context";
+import { TIMELINE_CONSTANTS } from "../_store/clipping-workspace-store";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
@@ -21,12 +21,15 @@ function getPixelsPerSecond(zoomLevel: number, containerWidth: number): number {
  *
  * Must be rendered within ClippingWorkspaceStoreProvider.
  */
-export function usePlayback(store: ClippingWorkspaceStoreApi) {
+export function usePlayback() {
+  const store = useClippingWorkspaceStore();
+
   // Audio refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentEndTimeRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const isInitializedRef = useRef(false);
+  // Track which buffer was initialized to handle re-initialization on navigation
+  const initializedBufferRef = useRef<ArrayBuffer | null>(null);
 
   // Timeline refs
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -82,8 +85,14 @@ export function usePlayback(store: ClippingWorkspaceStoreApi) {
   // ============================================================================
 
   useEffect(() => {
-    if (isInitializedRef.current || !audioDataBuffer) return;
-    isInitializedRef.current = true;
+    // Skip if no buffer available
+    if (!audioDataBuffer) return;
+
+    // Skip if we already initialized this exact buffer (prevents duplicate setup)
+    if (initializedBufferRef.current === audioDataBuffer) return;
+
+    // Mark this buffer as being initialized
+    initializedBufferRef.current = audioDataBuffer;
 
     const audio = new Audio();
     audio.preload = "metadata";
@@ -137,6 +146,8 @@ export function usePlayback(store: ClippingWorkspaceStoreApi) {
       audio.src = "";
       audio.remove();
       audioRef.current = null;
+      // Reset the initialized buffer ref so we can reinitialize on next mount
+      initializedBufferRef.current = null;
     };
   }, [audioDataBuffer, store]);
 
@@ -282,9 +293,106 @@ export function usePlayback(store: ClippingWorkspaceStoreApi) {
     audio.play();
   }, []);
 
-  const stopSegmentPlayback = useCallback(() => {
-    segmentEndTimeRef.current = null;
-  }, []);
+  // Combined handlers
+  const handleSegmentSelect = useCallback(
+    (segmentId: string) => {
+      store.getState().selectSegment(segmentId);
+      const segment = store.getState().segmentsById[segmentId];
+      if (segment) {
+        scrollToTime(segment.start);
+      }
+    },
+    [store, scrollToTime],
+  );
+
+  const handleTimelineSegmentClick = useCallback(
+    (segmentId: string) => {
+      store.getState().selectSegment(segmentId);
+    },
+    [store],
+  );
+
+  const handleSegmentPlay = useCallback(
+    (segmentId: string) => {
+      const segment = store.getState().segmentsById[segmentId];
+      if (segment) {
+        playSegment(segment.start, segment.end);
+        scrollToTime(segment.start);
+      }
+    },
+    [store, playSegment, scrollToTime],
+  );
+
+  const handleNavigateSegment = useCallback(
+    (direction: "next" | "prev") => {
+      const state = store.getState();
+      const { selectedSegmentId, selectedSpeaker, segmentsById } = state;
+      const segments = Object.values(segmentsById);
+
+      // Filter segments by speaker
+      const filteredSegments = selectedSpeaker
+        ? segments.filter((s) => s.speaker === selectedSpeaker)
+        : segments;
+
+      if (!selectedSegmentId) {
+        const nextSegment =
+          direction === "next" ? filteredSegments[0] : undefined;
+        if (nextSegment) {
+          state.selectSegment(nextSegment.id);
+          scrollToTime(nextSegment.start);
+        }
+        return;
+      }
+
+      const currentIndex = filteredSegments.findIndex(
+        (s) => s.id === selectedSegmentId,
+      );
+      if (currentIndex === -1) return;
+
+      const newIndex =
+        direction === "next" ? currentIndex + 1 : currentIndex - 1;
+      const segment = filteredSegments[newIndex];
+
+      if (segment) {
+        state.selectSegment(segment.id);
+        scrollToTime(segment.start);
+      }
+    },
+    [store, scrollToTime],
+  );
+
+  const handleScrubberDrag = useCallback(
+    (clientX: number, rect: DOMRect) => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      const scrollLeft = container.scrollLeft;
+      const relativeX = clientX - rect.left + scrollLeft;
+      const time = pixelsToTime(relativeX);
+      const duration = store.getState().duration;
+      const clampedTime = Math.max(0, Math.min(time, duration));
+      seek(clampedTime);
+    },
+    [store, pixelsToTime, seek],
+  );
+
+  const handleTimelineClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const scrollLeft = container.scrollLeft;
+      const relativeX = e.clientX - rect.left + scrollLeft;
+      const time = pixelsToTime(relativeX);
+      const duration = store.getState().duration;
+      const clampedTime = Math.max(0, Math.min(time, duration));
+      seek(clampedTime);
+    },
+    [store, pixelsToTime, seek],
+  );
 
   return {
     // Timeline refs and utilities
@@ -300,7 +408,14 @@ export function usePlayback(store: ClippingWorkspaceStoreApi) {
     seek,
     setPlaybackRate,
     playSegment,
-    stopSegmentPlayback,
+
+    // Combined handlers
+    handleSegmentSelect,
+    handleTimelineSegmentClick,
+    handleSegmentPlay,
+    handleNavigateSegment,
+    handleScrubberDrag,
+    handleTimelineClick,
   };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { ClippingWorkspaceStoreApi } from "./clipping-workspace-store";
+import { useClippingWorkspaceStore } from "../_context/store.context";
 
 /**
  * Hook that manages timeline container ref and updates containerWidth in store.
@@ -9,7 +9,8 @@ import type { ClippingWorkspaceStoreApi } from "./clipping-workspace-store";
  *
  * Must be rendered within ClippingWorkspaceStoreProvider.
  */
-export function useContainerRef(store: ClippingWorkspaceStoreApi) {
+export function useTimelineResize() {
+  const store = useClippingWorkspaceStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

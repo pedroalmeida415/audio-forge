@@ -8,13 +8,13 @@ import {
   normalizePeaks,
   type WaveformData,
 } from "~/lib/waveform-utils";
-import { useClippingWorkspaceStore } from "../../_store/clipping-workspace-provider";
+import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export const TimelineWaveform = memo(function TimelineWaveform() {
-  const { store } = useClippingWorkspaceStore();
+  const store = useClippingWorkspaceStore();
   const audioDataBuffer = useClippingWorkspaceStore((s) => s.audioDataBuffer);
   const duration = useClippingWorkspaceStore((s) => s.duration);
   const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);

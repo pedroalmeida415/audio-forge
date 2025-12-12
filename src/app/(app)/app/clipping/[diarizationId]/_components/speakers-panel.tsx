@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { cn } from "~/lib/utils";
-import { useClippingWorkspaceStore } from "../_store/clipping-workspace-provider";
+import { useClippingWorkspaceStore } from "../_context/store.context";
 import type { SpeakerMetadata } from "../_store/clipping-workspace-store";
 import { SpeakerCard } from "./speaker-card";
 
