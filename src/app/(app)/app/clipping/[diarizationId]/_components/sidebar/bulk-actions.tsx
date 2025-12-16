@@ -13,11 +13,8 @@ export function BulkActions() {
     (s) => s.archiveSelectedSegments,
   );
 
-  // if (selectedSegmentIds.size === 0) {
-  //   return null;
-  // }
-
   const selectedIds = Array.from(selectedSegmentIds);
+  const hasSelection = selectedSegmentIds.size > 0;
 
   return (
     <div className="space-y-2">
@@ -30,6 +27,7 @@ export function BulkActions() {
           size="sm"
           className="h-9 justify-start"
           onClick={() => markAsReviewed(selectedIds)}
+          disabled={!hasSelection}
         >
           <Check className="mr-2 h-4 w-4" />
           Mark as Reviewed
@@ -42,6 +40,7 @@ export function BulkActions() {
             // TODO: Open speaker selection dialog
             console.log("Change speaker for:", selectedIds);
           }}
+          disabled={!hasSelection}
         >
           <User className="mr-2 h-4 w-4" />
           Change Speaker
@@ -49,8 +48,9 @@ export function BulkActions() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500"
+          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500 disabled:text-red-500/50"
           onClick={archiveSelectedSegments}
+          disabled={!hasSelection}
         >
           <Trash2 className="mr-2 h-4 w-4" />
           Delete Selected

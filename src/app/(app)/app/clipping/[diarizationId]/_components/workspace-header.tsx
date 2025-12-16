@@ -15,14 +15,18 @@ import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { useClippingWorkspaceStore } from "../_context/store.context";
 import type { ViewMode } from "../_store/clipping-workspace-store";
-import { getUniqueSpeakers } from "../_utils/segment-utils";
+import { getSpeakerDisplayName, getUniqueSpeakers } from "../_utils/segment-utils";
 
-export function WorkspaceHeader({ fileName }: { fileName: string }) {
+export function WorkspaceHeader() {
+  const fileName = useClippingWorkspaceStore((s) => s.fileName);
   const viewMode = useClippingWorkspaceStore((s) => s.viewMode);
   const setViewMode = useClippingWorkspaceStore((s) => s.setViewMode);
   const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
   const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
   const selectSpeaker = useClippingWorkspaceStore((s) => s.selectSpeaker);
+  const speakerCollections = useClippingWorkspaceStore(
+    (s) => s.speakerCollections,
+  );
 
   const speakers = useMemo(() => {
     return getUniqueSpeakers(Object.values(segmentsById));
@@ -49,7 +53,7 @@ export function WorkspaceHeader({ fileName }: { fileName: string }) {
           value={selectedSpeaker ?? ""}
           onValueChange={(value) => selectSpeaker(value || null)}
         >
-          <SelectTrigger className="h-9 w-[140px] rounded-lg bg-muted text-xs">
+          <SelectTrigger className="h-9 w-[160px] rounded-lg bg-muted text-xs">
             <SelectValue placeholder="Select speaker">
               {selectedSpeaker && (
                 <span className="flex items-center gap-2">
@@ -60,7 +64,9 @@ export function WorkspaceHeader({ fileName }: { fileName: string }) {
                         getSpeakerColor(speakerColorIndex).border,
                     }}
                   />
-                  <span>{selectedSpeaker}</span>
+                  <span className="truncate">
+                    {getSpeakerDisplayName(selectedSpeaker, speakerCollections)}
+                  </span>
                 </span>
               )}
             </SelectValue>
@@ -75,7 +81,9 @@ export function WorkspaceHeader({ fileName }: { fileName: string }) {
                       className="h-2.5 w-2.5 rounded-full"
                       style={{ backgroundColor: color.border }}
                     />
-                    {speaker}
+                    <span className="truncate">
+                      {getSpeakerDisplayName(speaker, speakerCollections)}
+                    </span>
                   </span>
                 </SelectItem>
               );
@@ -105,7 +113,7 @@ export function WorkspaceHeader({ fileName }: { fileName: string }) {
 
       {/* Generate Clips button moved to table toolbar */}
       <div className="flex flex-1 justify-end">
-        <Button size="sm" className="h-8" disabled>
+        <Button size="sm" className="h-9" disabled>
           <ScissorsIcon className="mr-1.5 h-3.5 w-3.5" />
           Generate Clips
         </Button>

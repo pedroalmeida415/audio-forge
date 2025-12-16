@@ -1,16 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-  AlertCircle,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  CircleMinus,
-  Play,
-  Trash2,
-  User,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Play, Trash2, User } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -23,7 +14,6 @@ import { cn } from "~/lib/utils";
 import type { SegmentWithId } from "../../_store/clipping-workspace-store";
 import {
   ALERT_THRESHOLDS,
-  getSegmentAlerts,
   getSegmentDuration,
 } from "../../_utils/segment-utils";
 
@@ -31,11 +21,6 @@ import {
 export interface TableSegment extends SegmentWithId {
   index: number;
   colorIndex: number;
-}
-
-// Column meta for sorting indicators
-interface ColumnMeta {
-  sortable?: boolean;
 }
 
 // Get sort icon based on column state
@@ -69,6 +54,7 @@ export function createColumns(options: {
         <Checkbox
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
+          onClick={(e) => e.stopPropagation()}
           aria-label="Select row"
           className="translate-y-[2px]"
         />
@@ -78,57 +64,30 @@ export function createColumns(options: {
       size: 40,
     },
 
-    // Alerts column (no header title)
+    // Play button column
     {
-      id: "alerts",
-      accessorFn: (row) => getSegmentAlerts(row).length,
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-3 h-8 px-2"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          <SortIcon isSorted={column.getIsSorted()} />
-        </Button>
+      id: "play",
+      header: "",
+      cell: ({ row }) => (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={(e) => {
+                e.stopPropagation();
+                options.onPlay(row.original.id);
+              }}
+            >
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Play segment</TooltipContent>
+        </Tooltip>
       ),
-      cell: ({ row }) => {
-        const alerts = getSegmentAlerts(row.original);
-        const hasRealAlerts = alerts.filter((a) => a !== "no_text").length > 0;
-
-        if (!hasRealAlerts) return null;
-
-        return (
-          <div className="flex gap-1">
-            {alerts.includes("too_long") && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex h-5 w-5 items-center justify-center rounded bg-amber-500/20 text-amber-500">
-                    <AlertCircle className="h-3 w-3" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Segment too long (&gt;{ALERT_THRESHOLDS.TOO_LONG}s)
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {alerts.includes("too_short") && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex h-5 w-5 items-center justify-center rounded bg-red-500/20 text-red-500">
-                    <CircleMinus className="h-3 w-3" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Segment too short (&lt;{ALERT_THRESHOLDS.TOO_SHORT}s)
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        );
-      },
-      size: 60,
-      meta: { sortable: true } as ColumnMeta,
+      enableSorting: false,
+      size: 40,
     },
 
     // Index column
@@ -144,7 +103,7 @@ export function createColumns(options: {
       size: 50,
     },
 
-    // Transcription column
+    // Transcription column (flexible width)
     {
       id: "transcription",
       accessorFn: () => "",
@@ -152,7 +111,7 @@ export function createColumns(options: {
       cell: () => (
         <span className="text-muted-foreground italic">No transcription</span>
       ),
-      size: 300,
+      // No size - will expand to fill available space
     },
 
     // Start time column
@@ -219,7 +178,6 @@ export function createColumns(options: {
         );
       },
       size: 90,
-      meta: { sortable: true } as ColumnMeta,
     },
 
     // Reviewed column (sortable)
@@ -254,33 +212,15 @@ export function createColumns(options: {
         );
       },
       size: 90,
-      meta: { sortable: true } as ColumnMeta,
     },
 
-    // Actions column (ghost - no header, shows on hover)
+    // Actions column (shows on hover)
     {
       id: "actions",
       header: "",
       cell: ({ row }) => {
         return (
           <div className="flex gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    options.onPlay(row.original.id);
-                  }}
-                >
-                  <Play className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Play segment</TooltipContent>
-            </Tooltip>
-
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -317,7 +257,7 @@ export function createColumns(options: {
           </div>
         );
       },
-      size: 100,
+      size: 80,
       enableSorting: false,
       enableHiding: false,
     },

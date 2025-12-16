@@ -27,21 +27,14 @@ export default function ClippingWorkspacePage({
 
   const audioDataBuffer = use(fetchAudioData(audioUrl));
 
-  const fileName =
-    diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
-  const segments = diarization.output?.segments ?? [];
-
   return (
-    <ClippingWorkspaceProviders initialData={{ segments, audioDataBuffer }}>
+    <ClippingWorkspaceProviders initialData={{ diarization, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
-        <WorkspaceHeader fileName={fileName} />
+        <WorkspaceHeader />
 
         <div className="flex min-h-0 flex-1">
           <TableView />
-          <RightSidebar
-            diarizationId={diarizationId}
-            projectId={diarization.projectId}
-          />
+          <RightSidebar />
         </div>
 
         <TimelineContainer />

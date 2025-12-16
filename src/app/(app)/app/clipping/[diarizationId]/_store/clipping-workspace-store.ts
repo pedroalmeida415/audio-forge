@@ -34,6 +34,12 @@ export type SegmentAlertType = "too_long" | "too_short" | "no_text";
 // View mode
 export type ViewMode = "table" | "focus";
 
+// Speaker-to-collection mapping
+export type SpeakerCollections = Record<
+  string,
+  { collectionId: string; collectionName: string }
+>;
+
 // Sort configuration
 export interface SortConfig {
   column: "duration" | "reviewed" | "alerts";
@@ -81,12 +87,19 @@ interface TimelineActions {
 
 // Workspace slice
 interface WorkspaceState {
+  // Diarization metadata
+  diarizationId: string;
+  projectId: string;
+  fileName: string;
+  // Segments and speaker mappings
   segmentsById: Record<string, SegmentWithId>;
+  speakerCollections: SpeakerCollections;
+  // Selection state
   selectedSpeaker: string | null;
   selectedSegmentId: string | null;
-  // New state for table view
-  viewMode: ViewMode;
   selectedSegmentIds: Set<string>;
+  // View state
+  viewMode: ViewMode;
   sortBy: SortConfig | null;
   filters: FilterConfig;
 }
@@ -112,6 +125,11 @@ interface WorkspaceActions {
   markAsReviewed: (segmentIds: string[]) => void;
   markAsUnreviewed: (segmentIds: string[]) => void;
   changeSpeaker: (segmentIds: string[], newSpeaker: string) => void;
+  // Speaker collection mapping
+  setSpeakerCollection: (
+    speaker: string,
+    collection: { collectionId: string; collectionName: string },
+  ) => void;
 }
 
 // Combined store
@@ -141,8 +159,21 @@ const DEFAULT_CONTAINER_WIDTH = 800;
 // Initial State Factory
 // ============================================================================
 
+// Diarization data from tRPC query
+export interface DiarizationData {
+  id: string;
+  projectId: string;
+  output: {
+    segments: DiarizationSegment[];
+  } | null;
+  speakerCollections: SpeakerCollections | null;
+  file: {
+    storageKey: string | null;
+  } | null;
+}
+
 export interface ClippingWorkspaceStoreInitialData {
-  segments: DiarizationSegment[];
+  diarization: DiarizationData;
 }
 
 function createSegmentsWithIds(
@@ -168,7 +199,11 @@ function createSegmentsWithIds(
 export function createClippingWorkspaceStore(
   initialData: ClippingWorkspaceStoreInitialData,
 ) {
-  const segmentsById = createSegmentsWithIds(initialData.segments);
+  const { diarization } = initialData;
+  const segmentsById = createSegmentsWithIds(diarization.output?.segments ?? []);
+  const speakerCollections = diarization.speakerCollections ?? {};
+  const fileName =
+    diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
 
   return createStore<ClippingWorkspaceStore>()(
     subscribeWithSelector(
@@ -207,11 +242,15 @@ export function createClippingWorkspaceStore(
         setContainerWidth: (width) => set({ containerWidth: width }),
 
         // Workspace state
+        diarizationId: diarization.id,
+        projectId: diarization.projectId,
+        fileName: fileName,
         segmentsById: segmentsById,
+        speakerCollections: speakerCollections,
         selectedSpeaker: null,
         selectedSegmentId: null,
-        viewMode: "table" as ViewMode,
         selectedSegmentIds: new Set<string>(),
+        viewMode: "table" as ViewMode,
         sortBy: null,
         filters: {
           alerts: [],
@@ -336,6 +375,10 @@ export function createClippingWorkspaceStore(
                 segment.speaker = newSpeaker;
               }
             }
+          }),
+        setSpeakerCollection: (speaker, collection) =>
+          set((state) => {
+            state.speakerCollections[speaker] = collection;
           }),
       })),
     ),

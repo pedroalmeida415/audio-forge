@@ -3,6 +3,7 @@ import type {
   SegmentAlertType,
   SegmentWithId,
   SortConfig,
+  SpeakerCollections,
 } from "../_store/clipping-workspace-store";
 
 // ============================================================================
@@ -314,4 +315,14 @@ export function getUniqueSpeakers(segments: SegmentWithId[]): string[] {
     }
   }
   return Array.from(speakers).sort();
+}
+
+/**
+ * Get display name for a speaker - shows collection name if assigned, otherwise speaker name
+ */
+export function getSpeakerDisplayName(
+  speaker: string,
+  speakerCollections: SpeakerCollections,
+): string {
+  return speakerCollections[speaker]?.collectionName ?? speaker;
 }

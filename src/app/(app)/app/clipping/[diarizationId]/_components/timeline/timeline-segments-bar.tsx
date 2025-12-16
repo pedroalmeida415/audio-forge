@@ -2,6 +2,8 @@
 
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
+import type { SpeakerCollections } from "../../_store/clipping-workspace-store";
+import { getSpeakerDisplayName } from "../../_utils/segment-utils";
 
 interface Segment {
   id: string;
@@ -14,6 +16,7 @@ interface TimelineSegmentsBarProps {
   segments: Segment[];
   selectedSegmentId: string | null;
   selectedSpeaker: string | null;
+  speakerCollections: SpeakerCollections;
   timeToPixels: (time: number) => number;
   onSegmentClick: (segmentId: string) => void;
   getSpeakerColorIndex: (speaker: string) => number;
@@ -23,6 +26,7 @@ export function TimelineSegmentsBar({
   segments,
   selectedSegmentId,
   selectedSpeaker,
+  speakerCollections,
   timeToPixels,
   onSegmentClick,
   getSpeakerColorIndex,
@@ -65,7 +69,7 @@ export function TimelineSegmentsBar({
                   color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color.border,
                 }}
               >
-                {segment.speaker}
+                {getSpeakerDisplayName(segment.speaker, speakerCollections)}
               </span>
             )}
           </button>

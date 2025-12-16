@@ -9,12 +9,9 @@ import { CollectionCombobox } from "./collection-combobox";
 import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
 
-interface RightSidebarProps {
-  diarizationId: string;
-  projectId: string;
-}
-
-export function RightSidebar({ diarizationId, projectId }: RightSidebarProps) {
+export function RightSidebar() {
+  const diarizationId = useClippingWorkspaceStore((s) => s.diarizationId);
+  const projectId = useClippingWorkspaceStore((s) => s.projectId);
   const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
 
   if (!selectedSpeaker) {

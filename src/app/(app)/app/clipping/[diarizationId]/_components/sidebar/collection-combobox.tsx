@@ -18,6 +18,7 @@ import {
 } from "~/components/ui/popover";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
+import { useClippingWorkspaceStore } from "../../_context/store.context";
 
 interface CollectionComboboxProps {
   speaker: string;
@@ -25,12 +26,21 @@ interface CollectionComboboxProps {
   projectId: string;
 }
 
+type SpeakerMapping = { collectionId: string; collectionName: string } | null;
+
 export function CollectionCombobox({
   speaker,
   diarizationId,
   projectId,
 }: CollectionComboboxProps) {
   const [open, setOpen] = useState(false);
+
+  const speakerCollections = useClippingWorkspaceStore(
+    (s) => s.speakerCollections,
+  );
+  const updateSpeakerCollection = useClippingWorkspaceStore(
+    (s) => s.setSpeakerCollection,
+  );
 
   const utils = api.useUtils();
 
@@ -40,27 +50,46 @@ export function CollectionCombobox({
     { enabled: !!projectId },
   );
 
-  // Fetch current diarization to get speaker mappings
-  const { data: diarization } = api.diarization.getById.useQuery(
-    { id: diarizationId },
-    { enabled: !!diarizationId },
-  );
+  const setSpeakerCollectionMutation =
+    api.diarization.setSpeakerCollection.useMutation({
+      onMutate: async (newData) => {
+        // Cancel any outgoing refetches to prevent overwriting optimistic update
+        await utils.diarization.getById.cancel({ id: diarizationId });
 
-  const setSpeakerCollection = api.diarization.setSpeakerCollection.useMutation({
-    onSuccess: () => {
-      utils.diarization.getById.invalidate({ id: diarizationId });
-    },
-  });
+        // Snapshot the previous value
+        const previousMapping: SpeakerMapping =
+          speakerCollections[speaker] ?? null;
 
-  // Get current mapping for this speaker
-  const currentMapping = diarization?.speakerCollections?.[speaker];
+        // Optimistically update the store
+        updateSpeakerCollection(newData.speaker, {
+          collectionId: newData.collectionId,
+          collectionName: newData.collectionName,
+        });
+
+        // Return context with previous value for rollback
+        return { previousMapping };
+      },
+      onError: (_err, newData, context) => {
+        // Rollback to previous state on error
+        if (context?.previousMapping) {
+          updateSpeakerCollection(newData.speaker, context.previousMapping);
+        }
+      },
+      onSettled: () => {
+        // Invalidate to refetch fresh data
+        void utils.diarization.getById.invalidate({ id: diarizationId });
+      },
+    });
+
+  // Get current mapping for this speaker from the store
+  const currentMapping = speakerCollections[speaker];
   const selectedCollectionId = currentMapping?.collectionId;
 
   const handleSelect = (collectionId: string) => {
     const collection = collections?.find((c) => c.id === collectionId);
     if (!collection) return;
 
-    setSpeakerCollection.mutate({
+    setSpeakerCollectionMutation.mutate({
       diarizationId,
       speaker,
       collectionId: collection.id,

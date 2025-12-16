@@ -28,6 +28,10 @@ export function StatsSection() {
   }, [segmentsById, selectedSpeaker]);
 
   const maxDistribution = Math.max(...distribution, 1);
+  const reviewedPercent =
+    stats.segmentCount > 0
+      ? Math.round((stats.reviewedCount / stats.segmentCount) * 100)
+      : 0;
 
   return (
     <div className="space-y-3">
@@ -38,18 +42,23 @@ export function StatsSection() {
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-md bg-muted/50 p-2.5">
-          <div className="text-[10px] text-muted-foreground">Speakers</div>
-          <div className="font-semibold text-xl">{stats.speakerCount}</div>
+          <div className="text-muted-foreground text-xs">Segments</div>
+          <div className="font-semibold text-xl">{stats.segmentCount}</div>
         </div>
         <div className="rounded-md bg-muted/50 p-2.5">
-          <div className="text-[10px] text-muted-foreground">Segments</div>
-          <div className="font-semibold text-xl">{stats.segmentCount}</div>
+          <div className="flex items-start justify-between gap-1 text-muted-foreground text-xs">
+            Reviewed
+            <span className="font-normal text-muted-foreground">
+              ({reviewedPercent}%)
+            </span>
+          </div>
+          <div className="font-semibold text-xl">{stats.reviewedCount} </div>
         </div>
       </div>
 
       {/* Duration distribution chart */}
       <div>
-        <div className="mb-2 text-[10px] text-muted-foreground">
+        <div className="mb-2 text-muted-foreground text-xs">
           Duration Distribution
         </div>
         <div className="flex h-8 items-end gap-0.5">
@@ -65,12 +74,8 @@ export function StatsSection() {
           ))}
         </div>
         <div className="mt-1 flex justify-between">
-          <span className="font-mono text-[10px] text-muted-foreground">
-            0.5s
-          </span>
-          <span className="font-mono text-[10px] text-muted-foreground">
-            30s+
-          </span>
+          <span className="font-mono text-muted-foreground text-xs">0.5s</span>
+          <span className="font-mono text-muted-foreground text-xs">30s+</span>
         </div>
       </div>
     </div>
