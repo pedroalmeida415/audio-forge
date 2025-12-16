@@ -1,7 +1,14 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Play, Trash2, User } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Play,
+  Trash2,
+  User,
+} from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -64,6 +71,19 @@ export function createColumns(options: {
       size: 40,
     },
 
+    // Index column
+    {
+      id: "index",
+      accessorFn: (row) => row.index,
+      header: () => <span className="block text-center">#</span>,
+      cell: ({ row }) => (
+        <span className="block text-center font-mono text-muted-foreground text-xs">
+          {String(row.original.index + 1).padStart(3, "0")}
+        </span>
+      ),
+      size: 50,
+    },
+
     // Play button column
     {
       id: "play",
@@ -90,26 +110,15 @@ export function createColumns(options: {
       size: 40,
     },
 
-    // Index column
-    {
-      id: "index",
-      accessorFn: (row) => row.index,
-      header: "#",
-      cell: ({ row }) => (
-        <span className="font-mono text-muted-foreground text-xs">
-          {String(row.original.index + 1).padStart(3, "0")}
-        </span>
-      ),
-      size: 50,
-    },
-
     // Transcription column (flexible width)
     {
       id: "transcription",
       accessorFn: () => "",
       header: "Transcription",
       cell: () => (
-        <span className="text-muted-foreground italic">No transcription</span>
+        <span className="text-muted-foreground text-sm italic">
+          No transcription
+        </span>
       ),
       // No size - will expand to fill available space
     },
