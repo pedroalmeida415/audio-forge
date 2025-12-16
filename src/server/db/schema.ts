@@ -176,6 +176,10 @@ export const diarizations = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
 
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+
     fileId: uuid("file_id")
       .notNull()
       .references(() => files.id, { onDelete: "cascade" }),
@@ -194,6 +198,11 @@ export const diarizations = pgTable(
         editedEnd?: number;
       }[];
     }>(),
+
+    // Speaker-to-collection mappings stored as JSONB
+    speakerCollections: jsonb("speaker_collections").$type<
+      Record<string, { collectionId: string; collectionName: string }>
+    >(),
 
     // Timestamps
     startedAt: timestamp("started_at", { withTimezone: true })
@@ -246,6 +255,7 @@ export const sessionRelations = relations(session, ({ one }) => ({
 
 export const projectRelations = relations(projects, ({ many }) => ({
   collections: many(collections),
+  diarizations: many(diarizations),
 }));
 
 export const collectionRelations = relations(collections, ({ many, one }) => ({
@@ -266,6 +276,10 @@ export const clipRelations = relations(clips, ({ one }) => ({
 
 export const diarizationRelations = relations(diarizations, ({ one }) => ({
   file: one(files, { fields: [diarizations.fileId], references: [files.id] }),
+  project: one(projects, {
+    fields: [diarizations.projectId],
+    references: [projects.id],
+  }),
 }));
 
 // ============================================================================

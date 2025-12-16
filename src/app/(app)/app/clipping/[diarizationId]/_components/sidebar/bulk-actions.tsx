@@ -13,9 +13,9 @@ export function BulkActions() {
     (s) => s.archiveSelectedSegments,
   );
 
-  if (selectedSegmentIds.size === 0) {
-    return null;
-  }
+  // if (selectedSegmentIds.size === 0) {
+  //   return null;
+  // }
 
   const selectedIds = Array.from(selectedSegmentIds);
 

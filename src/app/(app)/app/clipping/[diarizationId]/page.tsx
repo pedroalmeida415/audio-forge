@@ -38,7 +38,10 @@ export default function ClippingWorkspacePage({
 
         <div className="flex min-h-0 flex-1">
           <TableView />
-          <RightSidebar />
+          <RightSidebar
+            diarizationId={diarizationId}
+            projectId={diarization.projectId}
+          />
         </div>
 
         <TimelineContainer />

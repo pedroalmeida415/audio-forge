@@ -8,11 +8,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import {
-  defaultRangeExtractor,
-  type Range,
-  useVirtualizer,
-} from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
@@ -23,56 +19,9 @@ import { createColumns, type TableSegment } from "./columns";
 
 // Row heights for virtualization
 const ROW_HEIGHT = 44;
-const GROUP_HEADER_HEIGHT = 32;
 
-// Virtual row types
-type VirtualRowData =
-  | { type: "group-header"; speaker: string; count: number; colorIndex: number }
-  | { type: "segment"; segment: TableSegment };
-
-// Memoized group header row
-const GroupHeaderRow = memo(function GroupHeaderRow({
-  speaker,
-  count,
-  colorIndex,
-  isActiveSticky,
-  start,
-  size,
-}: {
-  speaker: string;
-  count: number;
-  colorIndex: number;
-  isActiveSticky: boolean;
-  start: number;
-  size: number;
-}) {
-  const color = getSpeakerColor(colorIndex);
-
-  return (
-    <div
-      className="flex items-center gap-2 border-b bg-muted/95 px-4 py-1.5 backdrop-blur-sm"
-      style={{
-        ...(isActiveSticky
-          ? { position: "sticky", zIndex: 10 }
-          : {
-              position: "absolute",
-              transform: `translateY(${start}px)`,
-            }),
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: size,
-      }}
-    >
-      <div
-        className="h-3 w-3 rounded-full"
-        style={{ backgroundColor: color.border }}
-      />
-      <span className="font-medium text-sm">{speaker}</span>
-      <span className="text-muted-foreground text-xs">({count} segments)</span>
-    </div>
-  );
-});
+// Virtual row types - simplified to segment only since we always have a speaker selected
+type VirtualRowData = { type: "segment"; segment: TableSegment };
 
 // Memoized segment row - renders its own cells using getRow
 const SegmentRowItem = memo(function SegmentRowItem({
@@ -133,7 +82,6 @@ const SegmentRowItem = memo(function SegmentRowItem({
 // Props for the isolated virtualizer component
 interface VirtualizedTableBodyProps {
   virtualRows: VirtualRowData[];
-  stickyIndexes: number[];
   onSelectSegment: (id: string) => void;
   getRow: (id: string) => ReturnType<Table<TableSegment>["getRow"]>;
   selectedIds: Set<string>;
@@ -146,7 +94,6 @@ function arePropsEqual(
 ): boolean {
   return (
     prevProps.virtualRows === nextProps.virtualRows &&
-    prevProps.stickyIndexes === nextProps.stickyIndexes &&
     prevProps.onSelectSegment === nextProps.onSelectSegment &&
     prevProps.getRow === nextProps.getRow &&
     prevProps.selectedIds === nextProps.selectedIds
@@ -156,53 +103,10 @@ function arePropsEqual(
 // Isolated virtualizer component - only re-renders on scroll, not on parent state changes
 const VirtualizedTableBody = memo(function VirtualizedTableBody({
   virtualRows,
-  stickyIndexes,
   onSelectSegment,
   getRow,
   selectedIds,
 }: VirtualizedTableBodyProps) {
-  const activeStickyIndexRef = useRef(0);
-
-  // Estimate size based on row type
-  const estimateSize = useCallback(
-    (index: number) => {
-      const row = virtualRows[index];
-      if (!row) return ROW_HEIGHT;
-      if (row.type === "group-header") return GROUP_HEADER_HEIGHT;
-      return ROW_HEIGHT;
-    },
-    [virtualRows],
-  );
-
-  // Optimized range extractor - avoids creating intermediate arrays
-  const rangeExtractor = useCallback(
-    (range: Range) => {
-      // Find active sticky without creating intermediate arrays
-      let activeSticky = 0;
-      for (let i = stickyIndexes.length - 1; i >= 0; i--) {
-        const idx = stickyIndexes[i];
-        if (idx !== undefined && range.startIndex >= idx) {
-          activeSticky = idx;
-          break;
-        }
-      }
-      activeStickyIndexRef.current = activeSticky;
-
-      // Get default range
-      const defaultRange = defaultRangeExtractor(range);
-
-      // Only add sticky if not already in range
-      if (!defaultRange.includes(activeSticky)) {
-        const result = [activeSticky, ...defaultRange];
-        result.sort((a, b) => a - b);
-        return result;
-      }
-
-      return defaultRange;
-    },
-    [stickyIndexes],
-  );
-
   // Track if we have a valid scroll element
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
     null,
@@ -212,10 +116,9 @@ const VirtualizedTableBody = memo(function VirtualizedTableBody({
   const virtualizer = useVirtualizer({
     count: virtualRows.length,
     getScrollElement: () => scrollElement,
-    estimateSize,
+    estimateSize: () => ROW_HEIGHT,
     overscan: 5,
     enabled: !!scrollElement,
-    rangeExtractor,
   });
 
   // Callback ref to set scroll element
@@ -235,24 +138,6 @@ const VirtualizedTableBody = memo(function VirtualizedTableBody({
           const rowData = virtualRows[virtualRow.index];
           if (!rowData) return null;
 
-          const isActiveSticky =
-            activeStickyIndexRef.current === virtualRow.index;
-
-          if (rowData.type === "group-header") {
-            return (
-              <GroupHeaderRow
-                key={`group-${rowData.speaker}`}
-                speaker={rowData.speaker}
-                count={rowData.count}
-                colorIndex={rowData.colorIndex}
-                isActiveSticky={isActiveSticky}
-                start={virtualRow.start}
-                size={virtualRow.size}
-              />
-            );
-          }
-
-          // Segment row
           return (
             <SegmentRowItem
               key={rowData.segment.id}
@@ -363,47 +248,10 @@ export function SegmentsTable() {
     return withMetadata;
   }, [segmentsById, filters, selectedSpeaker, speakerOrder]);
 
-  // Build flat virtualized rows with group headers
-  const { virtualRows, stickyIndexes } = useMemo(() => {
-    const rows: VirtualRowData[] = [];
-    const stickies: number[] = [];
-
-    if (selectedSpeaker) {
-      for (const segment of tableData) {
-        rows.push({ type: "segment", segment });
-      }
-    } else {
-      const bySpeak = new Map<string, TableSegment[]>();
-
-      for (const segment of tableData) {
-        const existing = bySpeak.get(segment.speaker);
-        if (existing) {
-          existing.push(segment);
-        } else {
-          bySpeak.set(segment.speaker, [segment]);
-        }
-      }
-
-      for (const speaker of speakerOrder) {
-        const segs = bySpeak.get(speaker);
-        if (segs && segs.length > 0) {
-          stickies.push(rows.length);
-          rows.push({
-            type: "group-header",
-            speaker,
-            count: segs.length,
-            colorIndex: speakerOrder.indexOf(speaker),
-          });
-
-          for (const segment of segs) {
-            rows.push({ type: "segment", segment });
-          }
-        }
-      }
-    }
-
-    return { virtualRows: rows, stickyIndexes: stickies };
-  }, [tableData, selectedSpeaker, speakerOrder]);
+  // Build flat virtualized rows - always single speaker view
+  const virtualRows = useMemo(() => {
+    return tableData.map((segment): VirtualRowData => ({ type: "segment", segment }));
+  }, [tableData]);
 
   // Column definitions
   const columns = useMemo(
@@ -474,7 +322,6 @@ export function SegmentsTable() {
       {/* Isolated virtualized body - won't re-render on parent state changes */}
       <VirtualizedTableBody
         virtualRows={virtualRows}
-        stickyIndexes={stickyIndexes}
         onSelectSegment={selectSegment}
         getRow={getRow}
         selectedIds={selectedSegmentIds}

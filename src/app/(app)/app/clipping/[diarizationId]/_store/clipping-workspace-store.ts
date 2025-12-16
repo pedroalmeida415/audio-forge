@@ -221,7 +221,11 @@ export function createClippingWorkspaceStore(
 
         // Workspace actions
         selectSpeaker: (speaker) =>
-          set({ selectedSpeaker: speaker, selectedSegmentId: null }),
+          set({
+            selectedSpeaker: speaker,
+            selectedSegmentId: null,
+            selectedSegmentIds: new Set(),
+          }),
         selectSegment: (segmentId) =>
           set((state) => {
             if (!segmentId) {
@@ -253,12 +257,13 @@ export function createClippingWorkspaceStore(
           }),
         selectAllSegments: () =>
           set((state) => {
+            // Only select segments when a speaker is selected
+            if (!state.selectedSpeaker) {
+              return {};
+            }
             const visibleSegmentIds = Object.values(state.segmentsById)
               .filter((s) => !s.isDeleted)
-              .filter(
-                (s) =>
-                  !state.selectedSpeaker || s.speaker === state.selectedSpeaker,
-              )
+              .filter((s) => s.speaker === state.selectedSpeaker)
               .map((s) => s.id);
             return { selectedSegmentIds: new Set(visibleSegmentIds) };
           }),

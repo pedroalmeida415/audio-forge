@@ -40,6 +40,7 @@ export const diarizationRouter = createTRPCRouter({
     .input(
       z.object({
         storageKey: z.string().min(1),
+        projectId: z.string().uuid(),
         numSpeakers: z.number().int().min(1).max(20).optional(),
       }),
     )
@@ -88,6 +89,7 @@ export const diarizationRouter = createTRPCRouter({
         .insert(diarizations)
         .values({
           userId: ctx.session.user.id,
+          projectId: input.projectId,
           fileId: file.id,
           diarizationJobId: jobResult.jobId,
           startedAt: new Date(),
@@ -120,6 +122,7 @@ export const diarizationRouter = createTRPCRouter({
         ),
         with: {
           file: true,
+          project: true,
         },
       });
 
@@ -234,6 +237,48 @@ export const diarizationRouter = createTRPCRouter({
 
       // Delete diarization (cascade will delete file)
       await ctx.db.delete(diarizations).where(eq(diarizations.id, input.id));
+
+      return { success: true };
+    }),
+
+  // Set speaker-to-collection mapping
+  setSpeakerCollection: protectedProcedure
+    .input(
+      z.object({
+        diarizationId: z.string().uuid(),
+        speaker: z.string().min(1),
+        collectionId: z.string().uuid(),
+        collectionName: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const diarization = await ctx.db.query.diarizations.findFirst({
+        where: and(
+          eq(diarizations.id, input.diarizationId),
+          eq(diarizations.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!diarization) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Diarization not found",
+        });
+      }
+
+      const currentMappings = diarization.speakerCollections ?? {};
+      const updatedMappings = {
+        ...currentMappings,
+        [input.speaker]: {
+          collectionId: input.collectionId,
+          collectionName: input.collectionName,
+        },
+      };
+
+      await ctx.db
+        .update(diarizations)
+        .set({ speakerCollections: updatedMappings })
+        .where(eq(diarizations.id, input.diarizationId));
 
       return { success: true };
     }),
