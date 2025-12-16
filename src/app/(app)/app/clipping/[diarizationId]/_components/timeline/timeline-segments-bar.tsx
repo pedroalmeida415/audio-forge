@@ -13,6 +13,7 @@ interface Segment {
 interface TimelineSegmentsBarProps {
   segments: Segment[];
   selectedSegmentId: string | null;
+  selectedSpeaker: string | null;
   timeToPixels: (time: number) => number;
   onSegmentClick: (segmentId: string) => void;
   getSpeakerColorIndex: (speaker: string) => number;
@@ -21,6 +22,7 @@ interface TimelineSegmentsBarProps {
 export function TimelineSegmentsBar({
   segments,
   selectedSegmentId,
+  selectedSpeaker,
   timeToPixels,
   onSegmentClick,
   getSpeakerColorIndex,
@@ -33,6 +35,9 @@ export function TimelineSegmentsBar({
         const left = timeToPixels(segment.start);
         const width = timeToPixels(segment.end) - left;
         const isSelected = segment.id === selectedSegmentId;
+        // Dim segments that don't belong to the selected speaker
+        const isDimmed =
+          selectedSpeaker !== null && segment.speaker !== selectedSpeaker;
 
         return (
           <button
@@ -41,21 +46,24 @@ export function TimelineSegmentsBar({
               isSelected
                 ? "z-10 ring-2 ring-primary ring-offset-1 ring-offset-background"
                 : "hover:brightness-110",
+              isDimmed && "opacity-25 grayscale",
             )}
             key={segment.id}
             onClick={() => onSegmentClick(segment.id)}
             style={{
               left,
               width: Math.max(width, 4),
-              backgroundColor: color.bg,
-              borderColor: color.border,
+              backgroundColor: isDimmed ? "rgba(100, 100, 100, 0.3)" : color.bg,
+              borderColor: isDimmed ? "rgba(100, 100, 100, 0.5)" : color.border,
             }}
             type="button"
           >
             {width > 50 && (
               <span
                 className="block truncate px-1 font-mono text-[10px] leading-6"
-                style={{ color: color.border }}
+                style={{
+                  color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color.border,
+                }}
               >
                 {segment.speaker}
               </span>

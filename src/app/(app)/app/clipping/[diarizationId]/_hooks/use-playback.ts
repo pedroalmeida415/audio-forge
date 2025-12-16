@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useClippingWorkspaceStore } from "../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../_store/clipping-workspace-store";
 

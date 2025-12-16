@@ -15,6 +15,8 @@ export interface DiarizationSegment {
 
 export interface SegmentWithId extends DiarizationSegment {
   id: string;
+  isDeleted?: boolean;
+  isReviewed?: boolean;
 }
 
 export interface SpeakerMetadata {
@@ -24,6 +26,25 @@ export interface SpeakerMetadata {
   totalDuration: number;
   percentage: number;
   colorIndex: number;
+}
+
+// Alert types for segments
+export type SegmentAlertType = "too_long" | "too_short" | "no_text";
+
+// View mode
+export type ViewMode = "table" | "focus";
+
+// Sort configuration
+export interface SortConfig {
+  column: "duration" | "reviewed" | "alerts";
+  direction: "asc" | "desc";
+}
+
+// Filter configuration
+export interface FilterConfig {
+  alerts: SegmentAlertType[];
+  reviewed: boolean | null; // null = all, true = reviewed only, false = unreviewed only
+  search: string;
 }
 
 // Audio slice
@@ -63,11 +84,34 @@ interface WorkspaceState {
   segmentsById: Record<string, SegmentWithId>;
   selectedSpeaker: string | null;
   selectedSegmentId: string | null;
+  // New state for table view
+  viewMode: ViewMode;
+  selectedSegmentIds: Set<string>;
+  sortBy: SortConfig | null;
+  filters: FilterConfig;
 }
 
 interface WorkspaceActions {
   selectSpeaker: (speaker: string | null) => void;
   selectSegment: (segmentId: string | null) => void;
+  // View mode
+  setViewMode: (mode: ViewMode) => void;
+  // Multi-select
+  toggleSegmentSelection: (segmentId: string) => void;
+  selectAllSegments: () => void;
+  clearSelection: () => void;
+  setSelectedSegmentIds: (ids: Set<string>) => void;
+  // Sorting & Filtering
+  setSortBy: (config: SortConfig | null) => void;
+  setFilters: (filters: Partial<FilterConfig>) => void;
+  clearFilters: () => void;
+  // Segment mutations
+  archiveSegment: (segmentId: string) => void;
+  archiveSelectedSegments: () => void;
+  restoreSegment: (segmentId: string) => void;
+  markAsReviewed: (segmentIds: string[]) => void;
+  markAsUnreviewed: (segmentIds: string[]) => void;
+  changeSpeaker: (segmentIds: string[], newSpeaker: string) => void;
 }
 
 // Combined store
@@ -166,6 +210,14 @@ export function createClippingWorkspaceStore(
         segmentsById: segmentsById,
         selectedSpeaker: null,
         selectedSegmentId: null,
+        viewMode: "table" as ViewMode,
+        selectedSegmentIds: new Set<string>(),
+        sortBy: null,
+        filters: {
+          alerts: [],
+          reviewed: null,
+          search: "",
+        },
 
         // Workspace actions
         selectSpeaker: (speaker) =>
@@ -183,6 +235,102 @@ export function createClippingWorkspaceStore(
               };
             }
             return { selectedSegmentId: segmentId };
+          }),
+
+        // View mode
+        setViewMode: (mode) => set({ viewMode: mode }),
+
+        // Multi-select
+        toggleSegmentSelection: (segmentId) =>
+          set((state) => {
+            const newSet = new Set(state.selectedSegmentIds);
+            if (newSet.has(segmentId)) {
+              newSet.delete(segmentId);
+            } else {
+              newSet.add(segmentId);
+            }
+            return { selectedSegmentIds: newSet };
+          }),
+        selectAllSegments: () =>
+          set((state) => {
+            const visibleSegmentIds = Object.values(state.segmentsById)
+              .filter((s) => !s.isDeleted)
+              .filter(
+                (s) =>
+                  !state.selectedSpeaker || s.speaker === state.selectedSpeaker,
+              )
+              .map((s) => s.id);
+            return { selectedSegmentIds: new Set(visibleSegmentIds) };
+          }),
+        clearSelection: () => set({ selectedSegmentIds: new Set() }),
+        setSelectedSegmentIds: (ids) => set({ selectedSegmentIds: ids }),
+
+        // Sorting & Filtering
+        setSortBy: (config) => set({ sortBy: config }),
+        setFilters: (newFilters) =>
+          set((state) => ({
+            filters: { ...state.filters, ...newFilters },
+          })),
+        clearFilters: () =>
+          set({
+            filters: { alerts: [], reviewed: null, search: "" },
+          }),
+
+        // Segment mutations
+        archiveSegment: (segmentId) =>
+          set((state) => {
+            const segment = state.segmentsById[segmentId];
+            if (segment) {
+              segment.isDeleted = true;
+            }
+            // Remove from selection if selected
+            const newSelection = new Set(state.selectedSegmentIds);
+            newSelection.delete(segmentId);
+            return { selectedSegmentIds: newSelection };
+          }),
+        archiveSelectedSegments: () =>
+          set((state) => {
+            for (const segmentId of state.selectedSegmentIds) {
+              const segment = state.segmentsById[segmentId];
+              if (segment) {
+                segment.isDeleted = true;
+              }
+            }
+            return { selectedSegmentIds: new Set() };
+          }),
+        restoreSegment: (segmentId) =>
+          set((state) => {
+            const segment = state.segmentsById[segmentId];
+            if (segment) {
+              segment.isDeleted = false;
+            }
+          }),
+        markAsReviewed: (segmentIds) =>
+          set((state) => {
+            for (const segmentId of segmentIds) {
+              const segment = state.segmentsById[segmentId];
+              if (segment) {
+                segment.isReviewed = true;
+              }
+            }
+          }),
+        markAsUnreviewed: (segmentIds) =>
+          set((state) => {
+            for (const segmentId of segmentIds) {
+              const segment = state.segmentsById[segmentId];
+              if (segment) {
+                segment.isReviewed = false;
+              }
+            }
+          }),
+        changeSpeaker: (segmentIds, newSpeaker) =>
+          set((state) => {
+            for (const segmentId of segmentIds) {
+              const segment = state.segmentsById[segmentId];
+              if (segment) {
+                segment.speaker = newSpeaker;
+              }
+            }
           }),
       })),
     ),

@@ -47,6 +47,7 @@ export function TimelineContainer() {
     containerWidth,
     segmentsById,
     selectedSegmentId,
+    selectedSpeaker,
   } = useClippingWorkspaceStore(
     useShallow((s) => ({
       duration: s.duration,
@@ -54,6 +55,7 @@ export function TimelineContainer() {
       containerWidth: s.containerWidth,
       segmentsById: s.segmentsById,
       selectedSegmentId: s.selectedSegmentId,
+      selectedSpeaker: s.selectedSpeaker,
     })),
   );
 
@@ -144,6 +146,7 @@ export function TimelineContainer() {
               onSegmentClick={handleTimelineSegmentClick}
               segments={segments}
               selectedSegmentId={selectedSegmentId}
+              selectedSpeaker={selectedSpeaker}
               timeToPixels={timeToPixels}
             />
 

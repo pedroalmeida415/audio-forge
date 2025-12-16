@@ -2,8 +2,8 @@
 
 import { use } from "react";
 import { api } from "~/trpc/react";
-import { SegmentsGrid } from "./_components/segments-grid";
-import { SpeakersPanel } from "./_components/speakers-panel";
+import { RightSidebar } from "./_components/sidebar";
+import { TableView } from "./_components/table";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
 import { WorkspaceHeader } from "./_components/workspace-header";
 import ClippingWorkspaceProviders from "./_context";
@@ -37,8 +37,8 @@ export default function ClippingWorkspacePage({
         <WorkspaceHeader fileName={fileName} />
 
         <div className="flex min-h-0 flex-1">
-          <SpeakersPanel />
-          <SegmentsGrid />
+          <TableView />
+          <RightSidebar />
         </div>
 
         <TimelineContainer />
