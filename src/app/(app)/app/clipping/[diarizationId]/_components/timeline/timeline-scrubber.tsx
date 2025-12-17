@@ -15,8 +15,8 @@ export function TimelineScrubber({
 }: TimelineScrubberProps) {
   const store = useClippingWorkspaceStore();
   // Subscribe to zoom/container changes via React (infrequent updates)
-  const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);
-  const containerWidth = useClippingWorkspaceStore((s) => s.containerWidth);
+  const zoomLevel = useClippingWorkspaceStore((s) => s.timeline.zoomLevel);
+  const containerWidth = useClippingWorkspaceStore((s) => s.timeline.containerWidth);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +29,7 @@ export function TimelineScrubber({
 
     // Update position immediately when zoom/width changes
     if (scrubberRef.current) {
-      const time = store.getState().currentTime;
+      const time = store.getState().playback.currentTime;
       scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
     }
   }, [zoomLevel, containerWidth, store]);
@@ -38,12 +38,12 @@ export function TimelineScrubber({
   useEffect(() => {
     // Set initial position
     if (scrubberRef.current) {
-      const time = store.getState().currentTime;
+      const time = store.getState().playback.currentTime;
       scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
     }
 
     const unsubscribe = store.subscribe(
-      (state) => state.currentTime,
+      (state) => state.playback.currentTime,
       (time) => {
         if (scrubberRef.current) {
           scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;

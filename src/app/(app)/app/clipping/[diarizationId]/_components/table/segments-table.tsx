@@ -56,18 +56,18 @@ export function SegmentsTable() {
   // Get store API for direct state access (avoids stale closures)
   const store = useClippingWorkspaceStore();
 
-  const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
+  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
   const selectedSegmentIds = useClippingWorkspaceStore(
-    (s) => s.selectedSegmentIds,
+    (s) => s.segments.selectedSegmentIds,
   );
-  const filters = useClippingWorkspaceStore((s) => s.filters);
-  const setSortBy = useClippingWorkspaceStore((s) => s.setSortBy);
+  const filters = useClippingWorkspaceStore((s) => s.ui.filters);
+  const setSortBy = useClippingWorkspaceStore((s) => s.ui.setSortBy);
   const setSelectedSegmentIds = useClippingWorkspaceStore(
-    (s) => s.setSelectedSegmentIds,
+    (s) => s.segments.setSelectedSegmentIds,
   );
-  const archiveSegment = useClippingWorkspaceStore((s) => s.archiveSegment);
-  const selectSegment = useClippingWorkspaceStore((s) => s.selectSegment);
+  const archiveSegment = useClippingWorkspaceStore((s) => s.segments.archiveSegment);
+  const selectSegment = useClippingWorkspaceStore((s) => s.segments.selectSegment);
 
   const playbackContext = usePlaybackContext();
 
@@ -130,7 +130,7 @@ export function SegmentsTable() {
   ) => {
     if (typeof updater === "function") {
       // Get current selection directly from store to avoid stale closure
-      const currentIds = store.getState().selectedSegmentIds;
+      const currentIds = store.getState().segments.selectedSegmentIds;
       const currentRowSelection = Object.fromEntries(
         Array.from(currentIds).map((id) => [id, true]),
       );

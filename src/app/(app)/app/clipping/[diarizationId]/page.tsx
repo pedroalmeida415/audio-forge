@@ -30,6 +30,8 @@ export default function ClippingWorkspacePage({
   const fileName =
     diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
 
+  console.log("[ClippingWorkspacePage] Rendered");
+
   return (
     <ClippingWorkspaceProviders initialData={{ diarization, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">

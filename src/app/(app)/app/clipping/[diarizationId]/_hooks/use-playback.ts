@@ -40,13 +40,13 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
 
   // Convert time to pixel position
   const timeToPixels = (time: number): number => {
-    const { zoomLevel, containerWidth } = store.getState();
+    const { zoomLevel, containerWidth } = store.getState().timeline;
     return time * getPixelsPerSecond(zoomLevel, containerWidth);
   };
 
   // Convert pixel position to time
   const pixelsToTime = (pixels: number): number => {
-    const { zoomLevel, containerWidth } = store.getState();
+    const { zoomLevel, containerWidth } = store.getState().timeline;
     const pps = getPixelsPerSecond(zoomLevel, containerWidth);
     if (pps <= 0) return 0;
     return pixels / pps;
@@ -57,7 +57,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const { containerWidth } = store.getState();
+    const { containerWidth } = store.getState().timeline;
     const targetX = timeToPixels(time);
     // Center the time in the viewport
     const scrollLeft = targetX - containerWidth / 2;
@@ -78,27 +78,27 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     audioRef.current = audio;
 
     const handleLoadedMetadata = () => {
-      store.getState().setDuration(audio.duration);
-      store.getState().setIsLoading(false);
+      store.getState().playback.setDuration(audio.duration);
+      store.getState().playback.setIsLoading(false);
     };
 
     const handleEnded = () => {
-      store.getState().setIsPlaying(false);
-      store.getState().setCurrentTime(0);
+      store.getState().playback.setIsPlaying(false);
+      store.getState().playback.setCurrentTime(0);
       segmentEndTimeRef.current = null;
     };
 
     const handleError = () => {
-      store.getState().setIsLoading(false);
-      store.getState().setError("Failed to load audio");
+      store.getState().playback.setIsLoading(false);
+      store.getState().playback.setError("Failed to load audio");
     };
 
     const handlePlay = () => {
-      store.getState().setIsPlaying(true);
+      store.getState().playback.setIsPlaying(true);
     };
 
     const handlePause = () => {
-      store.getState().setIsPlaying(false);
+      store.getState().playback.setIsPlaying(false);
     };
 
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
@@ -139,7 +139,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     let targetVisibleLeft = 0;
 
     const unsubscribe = store.subscribe(
-      (state) => state.isPlaying,
+      (state) => state.playback.isPlaying,
       (isPlaying) => {
         if (!isPlaying) {
           if (animationFrameRef.current) {
@@ -152,7 +152,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
         // Initialize target boundaries
         const container = scrollContainerRef.current;
         if (container) {
-          const { containerWidth } = store.getState();
+          const { containerWidth } = store.getState().timeline;
           targetVisibleLeft = container.scrollLeft;
           targetVisibleRight = targetVisibleLeft + containerWidth;
         }
@@ -175,11 +175,11 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
           const currentTime = audio.currentTime;
 
           // Update time in store (triggers primitive selector subscribers)
-          store.getState().setCurrentTime(currentTime);
+          store.getState().playback.setCurrentTime(currentTime);
 
           // Auto-scroll: keep playhead visible, always land on left side
           if (container) {
-            const { zoomLevel, containerWidth } = store.getState();
+            const { zoomLevel, containerWidth } = store.getState().timeline;
             const pps = getPixelsPerSecond(zoomLevel, containerWidth);
             const timeX = currentTime * pps;
             const padding = containerWidth * 0.1;
@@ -232,7 +232,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
   };
 
   const togglePlayback = () => {
-    const isPlaying = store.getState().isPlaying;
+    const isPlaying = store.getState().playback.isPlaying;
     if (isPlaying) {
       pause();
     } else {
@@ -244,7 +244,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     const audio = audioRef.current;
     if (audio) {
       audio.currentTime = Math.max(0, Math.min(time, audio.duration || 0));
-      store.getState().setCurrentTime(audio.currentTime);
+      store.getState().playback.setCurrentTime(audio.currentTime);
     }
   };
 
@@ -252,7 +252,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     const audio = audioRef.current;
     if (audio) {
       audio.playbackRate = rate;
-      store.getState().setPlaybackRate(rate);
+      store.getState().playback.setPlaybackRate(rate);
     }
   };
 
@@ -267,19 +267,19 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
 
   // Combined handlers
   const handleSegmentSelect = (segmentId: string) => {
-    store.getState().selectSegment(segmentId);
-    const segment = store.getState().segmentsById[segmentId];
+    store.getState().segments.selectSegment(segmentId);
+    const segment = store.getState().segments.segmentsById[segmentId];
     if (segment) {
       scrollToTime(segment.start);
     }
   };
 
   const handleTimelineSegmentClick = (segmentId: string) => {
-    store.getState().selectSegment(segmentId);
+    store.getState().segments.selectSegment(segmentId);
   };
 
   const handleSegmentPlay = (segmentId: string) => {
-    const segment = store.getState().segmentsById[segmentId];
+    const segment = store.getState().segments.segmentsById[segmentId];
     if (segment) {
       playSegment(segment.start, segment.end);
       scrollToTime(segment.start);
@@ -287,8 +287,8 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
   };
 
   const handleNavigateSegment = (direction: "next" | "prev") => {
-    const state = store.getState();
-    const { selectedSegmentId, selectedSpeaker, segmentsById } = state;
+    const segmentsState = store.getState().segments;
+    const { selectedSegmentId, selectedSpeaker, segmentsById } = segmentsState;
     const segments = Object.values(segmentsById);
 
     // Filter segments by speaker
@@ -300,7 +300,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
       const nextSegment =
         direction === "next" ? filteredSegments[0] : undefined;
       if (nextSegment) {
-        state.selectSegment(nextSegment.id);
+        segmentsState.selectSegment(nextSegment.id);
         scrollToTime(nextSegment.start);
       }
       return;
@@ -315,7 +315,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     const segment = filteredSegments[newIndex];
 
     if (segment) {
-      state.selectSegment(segment.id);
+      segmentsState.selectSegment(segment.id);
       scrollToTime(segment.start);
     }
   };
@@ -327,7 +327,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     const scrollLeft = container.scrollLeft;
     const relativeX = clientX - rect.left + scrollLeft;
     const time = pixelsToTime(relativeX);
-    const duration = store.getState().duration;
+    const duration = store.getState().playback.duration;
     const clampedTime = Math.max(0, Math.min(time, duration));
     seek(clampedTime);
   };
@@ -342,7 +342,7 @@ export function usePlayback(audioDataBuffer: ArrayBuffer) {
     const scrollLeft = container.scrollLeft;
     const relativeX = e.clientX - rect.left + scrollLeft;
     const time = pixelsToTime(relativeX);
-    const duration = store.getState().duration;
+    const duration = store.getState().playback.duration;
     const clampedTime = Math.max(0, Math.min(time, duration));
     seek(clampedTime);
   };

@@ -10,9 +10,9 @@ import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
 
 export function RightSidebar() {
-  const diarizationId = useClippingWorkspaceStore((s) => s.diarizationId);
-  const projectId = useClippingWorkspaceStore((s) => s.projectId);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
+  const diarizationId = useClippingWorkspaceStore((s) => s.segments.diarizationId);
+  const projectId = useClippingWorkspaceStore((s) => s.segments.projectId);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

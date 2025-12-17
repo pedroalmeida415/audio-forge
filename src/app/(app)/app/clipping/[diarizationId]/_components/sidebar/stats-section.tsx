@@ -7,8 +7,8 @@ import {
 } from "../../_utils/segment-utils";
 
 export function StatsSection() {
-  const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
+  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
 
   let segments = Object.values(segmentsById);
   if (selectedSpeaker) {

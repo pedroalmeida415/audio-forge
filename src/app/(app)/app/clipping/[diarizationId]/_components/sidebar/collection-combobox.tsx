@@ -36,10 +36,10 @@ export function CollectionCombobox({
   const [open, setOpen] = useState(false);
 
   const speakerCollections = useClippingWorkspaceStore(
-    (s) => s.speakerCollections,
+    (s) => s.segments.speakerCollections,
   );
   const updateSpeakerCollection = useClippingWorkspaceStore(
-    (s) => s.setSpeakerCollection,
+    (s) => s.segments.setSpeakerCollection,
   );
 
   const utils = api.useUtils();
@@ -51,35 +51,7 @@ export function CollectionCombobox({
   );
 
   const setSpeakerCollectionMutation =
-    api.diarization.setSpeakerCollection.useMutation({
-      onMutate: async (newData) => {
-        // Cancel any outgoing refetches to prevent overwriting optimistic update
-        await utils.diarization.getById.cancel({ id: diarizationId });
-
-        // Snapshot the previous value
-        const previousMapping: SpeakerMapping =
-          speakerCollections[speaker] ?? null;
-
-        // Optimistically update the store
-        updateSpeakerCollection(newData.speaker, {
-          collectionId: newData.collectionId,
-          collectionName: newData.collectionName,
-        });
-
-        // Return context with previous value for rollback
-        return { previousMapping };
-      },
-      onError: (_err, newData, context) => {
-        // Rollback to previous state on error
-        if (context?.previousMapping) {
-          updateSpeakerCollection(newData.speaker, context.previousMapping);
-        }
-      },
-      onSettled: () => {
-        // Invalidate to refetch fresh data
-        void utils.diarization.getById.invalidate({ id: diarizationId });
-      },
-    });
+    api.diarization.setSpeakerCollection.useMutation();
 
   // Get current mapping for this speaker from the store
   const currentMapping = speakerCollections[speaker];
@@ -118,7 +90,9 @@ export function CollectionCombobox({
                 {currentMapping?.collectionName}
               </span>
             ) : (
-              <span className="text-muted-foreground">Select collection...</span>
+              <span className="text-muted-foreground">
+                Select collection...
+              </span>
             )}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>

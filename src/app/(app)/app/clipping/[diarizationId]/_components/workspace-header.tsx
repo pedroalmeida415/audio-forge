@@ -24,13 +24,13 @@ interface WorkspaceHeaderProps {
 }
 
 export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
-  const viewMode = useClippingWorkspaceStore((s) => s.viewMode);
-  const setViewMode = useClippingWorkspaceStore((s) => s.setViewMode);
-  const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
-  const selectSpeaker = useClippingWorkspaceStore((s) => s.selectSpeaker);
+  const viewMode = useClippingWorkspaceStore((s) => s.ui.viewMode);
+  const setViewMode = useClippingWorkspaceStore((s) => s.ui.setViewMode);
+  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
+  const selectSpeaker = useClippingWorkspaceStore((s) => s.segments.selectSpeaker);
   const speakerCollections = useClippingWorkspaceStore(
-    (s) => s.speakerCollections,
+    (s) => s.segments.speakerCollections,
   );
 
   const speakers = getUniqueSpeakers(Object.values(segmentsById));

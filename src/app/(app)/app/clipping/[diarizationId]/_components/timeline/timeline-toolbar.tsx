@@ -38,13 +38,13 @@ const PLAYBACK_RATES = [
 // Separate component for time display that updates via subscription
 function TimeDisplay() {
   const store = useClippingWorkspaceStore();
-  const duration = useClippingWorkspaceStore((s) => s.duration);
+  const duration = useClippingWorkspaceStore((s) => s.playback.duration);
   const timeRef = useRef<HTMLSpanElement>(null);
   const lastFlooredTimeRef = useRef(-1);
 
   useEffect(() => {
     // Set initial time
-    const initialTime = store.getState().currentTime;
+    const initialTime = store.getState().playback.currentTime;
     lastFlooredTimeRef.current = Math.floor(initialTime);
     if (timeRef.current) {
       timeRef.current.textContent = formatTimestamp(initialTime);
@@ -52,7 +52,7 @@ function TimeDisplay() {
 
     // Only update when the floored second changes (formatTimestamp shows whole seconds)
     const unsubscribe = store.subscribe(
-      (state) => state.currentTime,
+      (state) => state.playback.currentTime,
       (time) => {
         const flooredTime = Math.floor(time);
         if (flooredTime !== lastFlooredTimeRef.current) {
@@ -69,7 +69,7 @@ function TimeDisplay() {
 
   return (
     <div className="font-mono text-muted-foreground text-sm">
-      <span ref={timeRef}>{formatTimestamp(store.getState().currentTime)}</span>{" "}
+      <span ref={timeRef}>{formatTimestamp(store.getState().playback.currentTime)}</span>{" "}
       / {formatTimestamp(duration)}
     </div>
   );
@@ -86,13 +86,13 @@ export function TimelineToolbar() {
     setZoomLevel,
   } = useClippingWorkspaceStore(
     useShallow((s) => ({
-      isPlaying: s.isPlaying,
-      isLoading: s.isLoading,
-      playbackRate: s.playbackRate,
-      zoomLevel: s.zoomLevel,
-      zoomIn: s.zoomIn,
-      zoomOut: s.zoomOut,
-      setZoomLevel: s.setZoomLevel,
+      isPlaying: s.playback.isPlaying,
+      isLoading: s.playback.isLoading,
+      playbackRate: s.playback.playbackRate,
+      zoomLevel: s.timeline.zoomLevel,
+      zoomIn: s.timeline.zoomIn,
+      zoomOut: s.timeline.zoomOut,
+      setZoomLevel: s.timeline.setZoomLevel,
     })),
   );
 

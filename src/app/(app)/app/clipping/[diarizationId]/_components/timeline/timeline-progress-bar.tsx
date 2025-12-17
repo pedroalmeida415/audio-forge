@@ -6,7 +6,7 @@ import { useClippingWorkspaceStore } from "../../_context/store.context";
 
 export function TimelineProgressBar() {
   const { seek } = usePlaybackContext();
-  const duration = useClippingWorkspaceStore((s) => s.duration);
+  const duration = useClippingWorkspaceStore((s) => s.playback.duration);
   const store = useClippingWorkspaceStore();
 
   const progressRef = useRef<HTMLDivElement>(null);
@@ -17,14 +17,14 @@ export function TimelineProgressBar() {
     if (!duration || duration <= 0) return;
 
     // Set initial position
-    const initialTime = store.getState().currentTime;
+    const initialTime = store.getState().playback.currentTime;
     if (filledRef.current) {
       const percentage = (initialTime / duration) * 100;
       filledRef.current.style.width = `${percentage}%`;
     }
 
     const unsubscribe = store.subscribe(
-      (state) => state.currentTime,
+      (state) => state.playback.currentTime,
       (time) => {
         if (filledRef.current) {
           const percentage = (time / duration) * 100;
@@ -75,7 +75,7 @@ export function TimelineProgressBar() {
     document.addEventListener("pointerup", handlePointerUp);
   };
 
-  const currentTime = store.getState().currentTime;
+  const currentTime = store.getState().playback.currentTime;
 
   return (
     <div
@@ -86,7 +86,7 @@ export function TimelineProgressBar() {
       className="h-2 w-full cursor-pointer bg-muted"
       onClick={handleClick}
       onKeyDown={(e) => {
-        const time = store.getState().currentTime;
+        const time = store.getState().playback.currentTime;
         if (e.key === "ArrowLeft") seek(Math.max(0, time - 5));
         if (e.key === "ArrowRight") seek(Math.min(duration, time + 5));
       }}

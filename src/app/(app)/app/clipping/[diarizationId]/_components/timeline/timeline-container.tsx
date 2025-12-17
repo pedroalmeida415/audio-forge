@@ -50,13 +50,13 @@ export function TimelineContainer() {
     speakerCollections,
   } = useClippingWorkspaceStore(
     useShallow((s) => ({
-      duration: s.duration,
-      zoomLevel: s.zoomLevel,
-      containerWidth: s.containerWidth,
-      segmentsById: s.segmentsById,
-      selectedSegmentId: s.selectedSegmentId,
-      selectedSpeaker: s.selectedSpeaker,
-      speakerCollections: s.speakerCollections,
+      duration: s.playback.duration,
+      zoomLevel: s.timeline.zoomLevel,
+      containerWidth: s.timeline.containerWidth,
+      segmentsById: s.segments.segmentsById,
+      selectedSegmentId: s.segments.selectedSegmentId,
+      selectedSpeaker: s.segments.selectedSpeaker,
+      speakerCollections: s.segments.speakerCollections,
     })),
   );
 

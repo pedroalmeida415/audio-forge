@@ -17,9 +17,9 @@ const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 export function TimelineWaveform() {
   const store = useClippingWorkspaceStore();
   const { audioDataBufferRef } = usePlaybackContext();
-  const duration = useClippingWorkspaceStore((s) => s.duration);
-  const zoomLevel = useClippingWorkspaceStore((s) => s.zoomLevel);
-  const containerWidth = useClippingWorkspaceStore((s) => s.containerWidth);
+  const duration = useClippingWorkspaceStore((s) => s.playback.duration);
+  const zoomLevel = useClippingWorkspaceStore((s) => s.timeline.zoomLevel);
+  const containerWidth = useClippingWorkspaceStore((s) => s.timeline.containerWidth);
 
   const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -40,14 +40,14 @@ export function TimelineWaveform() {
     if (!duration || duration <= 0) return;
 
     // Set initial position
-    const initialTime = store.getState().currentTime;
+    const initialTime = store.getState().playback.currentTime;
     if (playedWrapperRef.current) {
       const percentage = (initialTime / duration) * 100;
       playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
     }
 
     const unsubscribe = store.subscribe(
-      (state) => state.currentTime,
+      (state) => state.playback.currentTime,
       (time) => {
         if (playedWrapperRef.current) {
           const percentage = (time / duration) * 100;

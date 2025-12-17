@@ -5,7 +5,7 @@ import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { SegmentsTable } from "./segments-table";
 
 export function TableView() {
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
+  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

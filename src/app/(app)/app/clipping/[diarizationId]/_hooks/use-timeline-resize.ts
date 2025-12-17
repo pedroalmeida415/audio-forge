@@ -16,7 +16,7 @@ export function useTimelineResize() {
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
-        store.getState().setContainerWidth(containerRef.current.offsetWidth);
+        store.getState().timeline.setContainerWidth(containerRef.current.offsetWidth);
       }
     };
 

@@ -6,11 +6,11 @@ import { useClippingWorkspaceStore } from "../../_context/store.context";
 
 export function BulkActions() {
   const selectedSegmentIds = useClippingWorkspaceStore(
-    (s) => s.selectedSegmentIds,
+    (s) => s.segments.selectedSegmentIds,
   );
-  const markAsReviewed = useClippingWorkspaceStore((s) => s.markAsReviewed);
+  const markAsReviewed = useClippingWorkspaceStore((s) => s.segments.markAsReviewed);
   const archiveSelectedSegments = useClippingWorkspaceStore(
-    (s) => s.archiveSelectedSegments,
+    (s) => s.segments.archiveSelectedSegments,
   );
 
   const selectedIds = Array.from(selectedSegmentIds);

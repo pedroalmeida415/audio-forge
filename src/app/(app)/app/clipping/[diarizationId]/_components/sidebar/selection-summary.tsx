@@ -5,9 +5,9 @@ import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { getSelectedSegmentsData } from "../../_utils/segment-utils";
 
 export function SelectionSummary() {
-  const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
+  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
   const selectedSegmentIds = useClippingWorkspaceStore(
-    (s) => s.selectedSegmentIds,
+    (s) => s.segments.selectedSegmentIds,
   );
 
   const selectionData = getSelectedSegmentsData(segmentsById, selectedSegmentIds);
