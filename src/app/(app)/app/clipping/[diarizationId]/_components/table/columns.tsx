@@ -20,7 +20,7 @@ import { formatDuration, formatTimestamp } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
 import type { SegmentWithId } from "../../_store/clipping-workspace-store";
 import {
-  ALERT_THRESHOLDS,
+  DURATION_THRESHOLDS,
   getSegmentDuration,
 } from "../../_utils/segment-utils";
 
@@ -126,9 +126,9 @@ function DurationCell({
   duration: number;
 }) {
   const variant =
-    duration > ALERT_THRESHOLDS.TOO_LONG
+    duration > DURATION_THRESHOLDS.TOO_LONG
       ? "warning"
-      : duration < ALERT_THRESHOLDS.TOO_SHORT
+      : duration < DURATION_THRESHOLDS.TOO_SHORT
         ? "danger"
         : "normal";
 

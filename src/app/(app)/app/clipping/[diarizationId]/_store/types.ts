@@ -17,8 +17,6 @@ export interface SegmentWithId extends DiarizationSegment {
   isReviewed?: boolean;
 }
 
-export type SegmentAlertType = "too_long" | "too_short" | "no_text";
-
 export type ViewMode = "table" | "focus";
 
 export type SpeakerCollections = Record<
@@ -27,9 +25,7 @@ export type SpeakerCollections = Record<
 >;
 
 export interface FilterConfig {
-  alerts: SegmentAlertType[];
   reviewed: boolean | null;
-  search: string;
 }
 
 export interface SpeakerMetadata {
@@ -79,10 +75,7 @@ export interface TimelineSlice {
 
 export interface UISlice {
   viewMode: ViewMode;
-  filters: FilterConfig;
   setViewMode: (mode: ViewMode) => void;
-  setFilters: (filters: Partial<FilterConfig>) => void;
-  clearFilters: () => void;
 }
 
 // ============================================================================

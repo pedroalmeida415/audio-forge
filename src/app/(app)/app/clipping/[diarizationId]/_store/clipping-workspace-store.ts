@@ -133,7 +133,6 @@ export type {
   DiarizationData,
   DiarizationSegment,
   FilterConfig,
-  SegmentAlertType,
   SegmentWithId,
   SpeakerCollections,
   SpeakerMetadata,

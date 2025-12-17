@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
+import type { FilterConfig } from "../../_store/types";
 import { filterSegments, getUniqueSpeakers } from "../../_utils/segment-utils";
 import { createColumns, type TableSegment } from "./columns";
 
@@ -60,7 +61,6 @@ export function SegmentsTable() {
   const selectedSegmentIds = useClippingStore(
     (s) => s.segments.selectedSegmentIds,
   );
-  const filters = useClippingStore((s) => s.ui.filters);
   const setSelectedSegmentIds = useClippingStore(
     (s) => s.segments.setSelectedSegmentIds,
   );
@@ -69,8 +69,11 @@ export function SegmentsTable() {
 
   const playbackContext = usePlayback();
 
-  // TanStack Table sorting state (local only - not shared across components)
+  // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [filters, _setFilters] = useState<FilterConfig>({
+    reviewed: null,
+  });
 
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
   // Memoized because it's used as a dependency for tableData

@@ -1,21 +1,20 @@
 import type {
   FilterConfig,
-  SegmentAlertType,
   SegmentWithId,
   SpeakerCollections,
 } from "../_store/clipping-workspace-store";
 
 // ============================================================================
-// Alert Thresholds
+// Duration Thresholds (used for visual styling)
 // ============================================================================
 
-export const ALERT_THRESHOLDS = {
+export const DURATION_THRESHOLDS = {
   TOO_LONG: 15, // seconds
   TOO_SHORT: 1, // seconds
 } as const;
 
 // ============================================================================
-// Alert Functions
+// Segment Utilities
 // ============================================================================
 
 /**
@@ -23,47 +22,6 @@ export const ALERT_THRESHOLDS = {
  */
 export function getSegmentDuration(segment: SegmentWithId): number {
   return segment.end - segment.start;
-}
-
-/**
- * Get alerts for a segment based on its properties
- */
-export function getSegmentAlerts(segment: SegmentWithId): SegmentAlertType[] {
-  const alerts: SegmentAlertType[] = [];
-  const duration = getSegmentDuration(segment);
-
-  if (duration > ALERT_THRESHOLDS.TOO_LONG) {
-    alerts.push("too_long");
-  }
-
-  if (duration < ALERT_THRESHOLDS.TOO_SHORT) {
-    alerts.push("too_short");
-  }
-
-  // No text alert - for now, all segments have no transcription
-  // In the future, check segment.transcription
-  alerts.push("no_text");
-
-  return alerts;
-}
-
-/**
- * Check if a segment has a specific alert type
- */
-export function segmentHasAlert(
-  segment: SegmentWithId,
-  alertType: SegmentAlertType,
-): boolean {
-  return getSegmentAlerts(segment).includes(alertType);
-}
-
-/**
- * Check if a segment has any alerts
- */
-export function segmentHasAnyAlert(segment: SegmentWithId): boolean {
-  const alerts = getSegmentAlerts(segment);
-  // Filter out "no_text" since all segments currently have it
-  return alerts.some((a) => a !== "no_text");
 }
 
 // ============================================================================
@@ -89,17 +47,6 @@ export function filterSegments(
       return false;
     }
 
-    // Filter by alerts
-    if (filters.alerts.length > 0) {
-      const segmentAlerts = getSegmentAlerts(segment);
-      const hasMatchingAlert = filters.alerts.some((alert) =>
-        segmentAlerts.includes(alert),
-      );
-      if (!hasMatchingAlert) {
-        return false;
-      }
-    }
-
     // Filter by reviewed status
     if (filters.reviewed !== null) {
       const isReviewed = segment.isReviewed ?? false;
@@ -108,22 +55,8 @@ export function filterSegments(
       }
     }
 
-    // Filter by search text (placeholder - would search transcription)
-    if (filters.search.trim()) {
-      // For now, no transcription to search
-      // In the future: return segment.transcription?.toLowerCase().includes(filters.search.toLowerCase())
-      return true;
-    }
-
     return true;
   });
-}
-
-/**
- * Get visible segments (non-deleted only)
- */
-export function getVisibleSegments(segments: SegmentWithId[]): SegmentWithId[] {
-  return segments.filter((s) => !s.isDeleted);
 }
 
 // ============================================================================
@@ -136,7 +69,6 @@ export interface SegmentStats {
   reviewedCount: number;
   totalDuration: number;
   avgDuration: number;
-  alertCounts: Record<SegmentAlertType, number>;
 }
 
 /**
@@ -153,19 +85,6 @@ export function calculateStats(segments: SegmentWithId[]): SegmentStats {
 
   const reviewedCount = visibleSegments.filter((s) => s.isReviewed).length;
 
-  const alertCounts: Record<SegmentAlertType, number> = {
-    too_long: 0,
-    too_short: 0,
-    no_text: 0,
-  };
-
-  for (const segment of visibleSegments) {
-    const alerts = getSegmentAlerts(segment);
-    for (const alert of alerts) {
-      alertCounts[alert]++;
-    }
-  }
-
   return {
     speakerCount: speakers.size,
     segmentCount: visibleSegments.length,
@@ -173,7 +92,6 @@ export function calculateStats(segments: SegmentWithId[]): SegmentStats {
     totalDuration,
     avgDuration:
       visibleSegments.length > 0 ? totalDuration / visibleSegments.length : 0,
-    alertCounts,
   };
 }
 
@@ -225,32 +143,6 @@ export function getSelectedSegmentsData(
     segments,
     totalDuration,
     avgLength: segments.length > 0 ? totalDuration / segments.length : 0,
-  };
-}
-
-// ============================================================================
-// Filter Counts
-// ============================================================================
-
-/**
- * Get counts for each filter option
- */
-export function getFilterCounts(
-  segments: SegmentWithId[],
-  selectedSpeaker: string | null,
-): Record<string, number> {
-  const visibleSegments = segments
-    .filter((s) => !s.isDeleted)
-    .filter((s) => !selectedSpeaker || s.speaker === selectedSpeaker);
-
-  return {
-    unreviewed: visibleSegments.filter((s) => !s.isReviewed).length,
-    hasAlerts: visibleSegments.filter((s) => segmentHasAnyAlert(s)).length,
-    tooLong: visibleSegments.filter((s) => segmentHasAlert(s, "too_long"))
-      .length,
-    tooShort: visibleSegments.filter((s) => segmentHasAlert(s, "too_short"))
-      .length,
-    noText: visibleSegments.filter((s) => segmentHasAlert(s, "no_text")).length,
   };
 }
 
