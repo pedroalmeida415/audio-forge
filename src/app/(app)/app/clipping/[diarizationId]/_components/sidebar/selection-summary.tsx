@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { formatDuration } from "~/lib/time-utils";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { getSelectedSegmentsData } from "../../_utils/segment-utils";
@@ -11,9 +10,7 @@ export function SelectionSummary() {
     (s) => s.selectedSegmentIds,
   );
 
-  const selectionData = useMemo(() => {
-    return getSelectedSegmentsData(segmentsById, selectedSegmentIds);
-  }, [segmentsById, selectedSegmentIds]);
+  const selectionData = getSelectedSegmentsData(segmentsById, selectedSegmentIds);
 
   if (selectedSegmentIds.size === 0) {
     return null;

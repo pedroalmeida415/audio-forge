@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import { usePlaybackContext } from "../../_context/playback.context";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
@@ -14,7 +14,7 @@ import {
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
-export const TimelineWaveform = memo(function TimelineWaveform() {
+export function TimelineWaveform() {
   const store = useClippingWorkspaceStore();
   const { audioDataBufferRef } = usePlaybackContext();
   const duration = useClippingWorkspaceStore((s) => s.duration);
@@ -33,9 +33,7 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
     visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
 
   // Calculate total width based on duration and zoom
-  const totalWidth = useMemo(() => {
-    return Math.max(1, duration * pixelsPerSecond);
-  }, [duration, pixelsPerSecond]);
+  const totalWidth = Math.max(1, duration * pixelsPerSecond);
 
   // Subscribe to time updates for direct DOM manipulation (bypasses React)
   useEffect(() => {
@@ -86,17 +84,17 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
   }, [duration]);
 
   // Prepare peaks for display based on current zoom level
-  const displayPeaks = useMemo(() => {
+  const displayPeaks = (() => {
     if (!waveformData) return null;
 
     // Calculate how many peaks we want based on current width (2px per bar minimum)
     const targetPeaks = Math.max(100, Math.floor(totalWidth / 2));
     const downsampled = downsamplePeaks(waveformData.peaks, targetPeaks);
     return normalizePeaks(downsampled);
-  }, [waveformData, totalWidth]);
+  })();
 
   // Generate SVG path from peaks
-  const waveformPath = useMemo(() => {
+  const waveformPath = (() => {
     if (!displayPeaks || displayPeaks.length === 0) return "";
 
     const height = 80;
@@ -133,7 +131,7 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
     }
 
     return pathCommands.join(" ");
-  }, [displayPeaks, totalWidth]);
+  })();
 
   if (isLoading || (!displayPeaks && !error)) {
     return (
@@ -188,4 +186,4 @@ export const TimelineWaveform = memo(function TimelineWaveform() {
       </div>
     </div>
   );
-});
+}

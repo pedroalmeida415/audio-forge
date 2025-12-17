@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/shallow";
 import { usePlaybackContext } from "../../_context/playback.context";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
@@ -72,42 +71,35 @@ export function TimelineContainer() {
   const totalWidth = Math.max(duration * pixelsPerSecond, containerWidth);
 
   // Generate timestamp marks
-  const timestampMarks = useMemo(() => {
-    const marks: { time: number; major: boolean }[] = [];
+  const timestampMarks: { time: number; major: boolean }[] = [];
 
-    let majorInterval: number;
-    let minorInterval: number;
+  let majorInterval: number;
+  let minorInterval: number;
 
-    if (zoomLevel >= 200) {
-      majorInterval = 2;
-      minorInterval = 0.5;
-    } else if (zoomLevel >= 100) {
-      majorInterval = 5;
-      minorInterval = 1;
-    } else if (zoomLevel >= 50) {
-      majorInterval = 10;
-      minorInterval = 2;
-    } else {
-      majorInterval = 30;
-      minorInterval = 5;
-    }
+  if (zoomLevel >= 200) {
+    majorInterval = 2;
+    minorInterval = 0.5;
+  } else if (zoomLevel >= 100) {
+    majorInterval = 5;
+    minorInterval = 1;
+  } else if (zoomLevel >= 50) {
+    majorInterval = 10;
+    minorInterval = 2;
+  } else {
+    majorInterval = 30;
+    minorInterval = 5;
+  }
 
-    const maxTime = Math.max(duration, visibleTimespan);
+  const maxTime = Math.max(duration, visibleTimespan);
 
-    for (let t = 0; t <= maxTime; t += minorInterval) {
-      marks.push({
-        time: t,
-        major: t % majorInterval === 0,
-      });
-    }
+  for (let t = 0; t <= maxTime; t += minorInterval) {
+    timestampMarks.push({
+      time: t,
+      major: t % majorInterval === 0,
+    });
+  }
 
-    return marks;
-  }, [duration, zoomLevel, visibleTimespan]);
-
-  const timeToPixels = useCallback(
-    (time: number) => time * pixelsPerSecond,
-    [pixelsPerSecond],
-  );
+  const timeToPixels = (time: number) => time * pixelsPerSecond;
 
   return (
     <div

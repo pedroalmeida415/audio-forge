@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import type { RouterOutputs } from "~/trpc/react";
 
 type ClipFromRouter = RouterOutputs["clips"]["listByCollection"][number];
@@ -84,62 +84,60 @@ export function useCollectionState({ clips }: UseCollectionStateProps) {
   const [filters, setFiltersState] = useState<FilterState>(DEFAULT_FILTERS);
   const [sort, setSortState] = useState<SortState>(DEFAULT_SORT);
 
-  const filteredClips = useMemo(() => {
-    return clips
-      .filter((clip) => {
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase();
-          const matchesTranscript = clip.transcript
-            ?.toLowerCase()
-            .includes(query);
-          if (!matchesTranscript) return false;
-        }
+  const filteredClips = clips
+    .filter((clip) => {
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesTranscript = clip.transcript
+          ?.toLowerCase()
+          .includes(query);
+        if (!matchesTranscript) return false;
+      }
 
-        if (clip.mosScore !== null) {
-          if (
-            clip.mosScore < filters.mosRange[0] ||
-            clip.mosScore > filters.mosRange[1]
-          ) {
-            return false;
-          }
-        }
-
+      if (clip.mosScore !== null) {
         if (
-          clip.duration < filters.lengthRange[0] ||
-          clip.duration > filters.lengthRange[1]
+          clip.mosScore < filters.mosRange[0] ||
+          clip.mosScore > filters.mosRange[1]
         ) {
           return false;
         }
+      }
 
-        if (filters.hasTranscription !== null) {
-          const hasTranscript = !!clip.transcript;
-          if (filters.hasTranscription !== hasTranscript) return false;
-        }
+      if (
+        clip.duration < filters.lengthRange[0] ||
+        clip.duration > filters.lengthRange[1]
+      ) {
+        return false;
+      }
 
-        return true;
-      })
-      .sort((a, b) => {
-        const direction = sort.direction === "asc" ? 1 : -1;
-        switch (sort.field) {
-          case "date":
-            return (
-              direction * (a.createdAt.getTime() - b.createdAt.getTime())
-            );
-          case "mosScore":
-            return direction * ((a.mosScore ?? 0) - (b.mosScore ?? 0));
-          case "length":
-            return direction * (a.duration - b.duration);
-          default:
-            return 0;
-        }
-      });
-  }, [clips, searchQuery, filters, sort]);
+      if (filters.hasTranscription !== null) {
+        const hasTranscript = !!clip.transcript;
+        if (filters.hasTranscription !== hasTranscript) return false;
+      }
 
-  const setActiveClip = useCallback((id: string | null) => {
+      return true;
+    })
+    .sort((a, b) => {
+      const direction = sort.direction === "asc" ? 1 : -1;
+      switch (sort.field) {
+        case "date":
+          return (
+            direction * (a.createdAt.getTime() - b.createdAt.getTime())
+          );
+        case "mosScore":
+          return direction * ((a.mosScore ?? 0) - (b.mosScore ?? 0));
+        case "length":
+          return direction * (a.duration - b.duration);
+        default:
+          return 0;
+      }
+    });
+
+  const setActiveClip = (id: string | null) => {
     setActiveClipId((prev) => (prev === id ? null : id));
-  }, []);
+  };
 
-  const toggleClipSelection = useCallback((id: string) => {
+  const toggleClipSelection = (id: string) => {
     setSelectedClipIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -149,61 +147,52 @@ export function useCollectionState({ clips }: UseCollectionStateProps) {
       }
       return next;
     });
-  }, []);
+  };
 
-  const selectAll = useCallback(() => {
+  const selectAll = () => {
     setSelectedClipIds(new Set(filteredClips.map((c) => c.id)));
-  }, [filteredClips]);
+  };
 
-  const deselectAll = useCallback(() => {
+  const deselectAll = () => {
     setSelectedClipIds(new Set());
-  }, []);
+  };
 
-  const setFilters = useCallback((newFilters: Partial<FilterState>) => {
+  const setFilters = (newFilters: Partial<FilterState>) => {
     setFiltersState((prev) => ({ ...prev, ...newFilters }));
-  }, []);
+  };
 
-  const resetFilters = useCallback(() => {
+  const resetFilters = () => {
     setFiltersState(DEFAULT_FILTERS);
-  }, []);
+  };
 
-  const setSort = useCallback((newSort: SortState) => {
+  const setSort = (newSort: SortState) => {
     setSortState(newSort);
-  }, []);
+  };
 
-  const activeClip = useMemo(
-    () => clips.find((c) => c.id === activeClipId) ?? null,
-    [clips, activeClipId]
-  );
+  const activeClip = clips.find((c) => c.id === activeClipId) ?? null;
 
-  const selectedClips = useMemo(
-    () => clips.filter((c) => selectedClipIds.has(c.id)),
-    [clips, selectedClipIds]
-  );
+  const selectedClips = clips.filter((c) => selectedClipIds.has(c.id));
 
   const hasActiveOrSelected =
     activeClipId !== null || selectedClipIds.size > 0;
   const isMultiSelect = selectedClipIds.size > 1;
 
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (
-      filters.mosRange[0] !== DEFAULT_FILTERS.mosRange[0] ||
-      filters.mosRange[1] !== DEFAULT_FILTERS.mosRange[1]
-    ) {
-      count++;
-    }
-    if (
-      filters.lengthRange[0] !== DEFAULT_FILTERS.lengthRange[0] ||
-      filters.lengthRange[1] !== DEFAULT_FILTERS.lengthRange[1]
-    ) {
-      count++;
-    }
-    if (filters.hasTranscription !== null) {
-      count++;
-    }
-    return count;
-  }, [filters]);
+  let activeFilterCount = 0;
+  if (
+    filters.mosRange[0] !== DEFAULT_FILTERS.mosRange[0] ||
+    filters.mosRange[1] !== DEFAULT_FILTERS.mosRange[1]
+  ) {
+    activeFilterCount++;
+  }
+  if (
+    filters.lengthRange[0] !== DEFAULT_FILTERS.lengthRange[0] ||
+    filters.lengthRange[1] !== DEFAULT_FILTERS.lengthRange[1]
+  ) {
+    activeFilterCount++;
+  }
+  if (filters.hasTranscription !== null) {
+    activeFilterCount++;
+  }
 
   return {
     activeClipId,

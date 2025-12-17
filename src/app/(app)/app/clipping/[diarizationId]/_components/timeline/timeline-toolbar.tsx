@@ -8,7 +8,7 @@ import {
   Play,
   Plus,
 } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useShallow } from "zustand/shallow";
 import { Button } from "~/components/ui/button";
 import {
@@ -36,7 +36,7 @@ const PLAYBACK_RATES = [
 ];
 
 // Separate component for time display that updates via subscription
-const TimeDisplay = memo(function TimeDisplay() {
+function TimeDisplay() {
   const store = useClippingWorkspaceStore();
   const duration = useClippingWorkspaceStore((s) => s.duration);
   const timeRef = useRef<HTMLSpanElement>(null);
@@ -73,9 +73,9 @@ const TimeDisplay = memo(function TimeDisplay() {
       / {formatTimestamp(duration)}
     </div>
   );
-});
+}
 
-export const TimelineToolbar = memo(function TimelineToolbar() {
+export function TimelineToolbar() {
   const {
     isPlaying,
     isLoading,
@@ -194,4 +194,4 @@ export const TimelineToolbar = memo(function TimelineToolbar() {
       </div>
     </div>
   );
-});
+}

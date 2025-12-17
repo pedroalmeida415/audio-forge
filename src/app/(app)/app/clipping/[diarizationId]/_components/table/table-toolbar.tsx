@@ -1,7 +1,6 @@
 "use client";
 
 import { Search, X } from "lucide-react";
-import { useMemo } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -41,16 +40,10 @@ export function TableToolbar() {
   const clearFilters = useClippingWorkspaceStore((s) => s.clearFilters);
 
   // Get unique speakers
-  const speakers = useMemo(() => {
-    const segments = Object.values(segmentsById);
-    return getUniqueSpeakers(segments);
-  }, [segmentsById]);
+  const speakers = getUniqueSpeakers(Object.values(segmentsById));
 
   // Get filter counts
-  const filterCounts = useMemo(() => {
-    const segments = Object.values(segmentsById);
-    return getFilterCounts(segments, selectedSpeaker);
-  }, [segmentsById, selectedSpeaker]);
+  const filterCounts = getFilterCounts(Object.values(segmentsById), selectedSpeaker);
 
   // Check if any filters are active
   const hasActiveFilters =

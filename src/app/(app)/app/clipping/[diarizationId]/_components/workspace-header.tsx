@@ -2,7 +2,6 @@
 
 import { ArrowLeft, Focus, ScissorsIcon, Table2 } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Select,
@@ -31,14 +30,8 @@ export function WorkspaceHeader() {
     (s) => s.speakerCollections,
   );
 
-  const speakers = useMemo(() => {
-    return getUniqueSpeakers(Object.values(segmentsById));
-  }, [segmentsById]);
-
-  const speakerColorIndex = useMemo(() => {
-    if (!selectedSpeaker) return -1;
-    return speakers.indexOf(selectedSpeaker);
-  }, [speakers, selectedSpeaker]);
+  const speakers = getUniqueSpeakers(Object.values(segmentsById));
+  const speakerColorIndex = selectedSpeaker ? speakers.indexOf(selectedSpeaker) : -1;
 
   return (
     <div className="flex items-center justify-between border-b bg-background px-4 py-2">

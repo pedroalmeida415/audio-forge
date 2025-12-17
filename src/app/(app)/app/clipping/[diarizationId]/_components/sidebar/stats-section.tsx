@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import {
   calculateStats,
@@ -11,21 +10,12 @@ export function StatsSection() {
   const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
   const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
 
-  const stats = useMemo(() => {
-    let segments = Object.values(segmentsById);
-    if (selectedSpeaker) {
-      segments = segments.filter((s) => s.speaker === selectedSpeaker);
-    }
-    return calculateStats(segments);
-  }, [segmentsById, selectedSpeaker]);
-
-  const distribution = useMemo(() => {
-    let segments = Object.values(segmentsById);
-    if (selectedSpeaker) {
-      segments = segments.filter((s) => s.speaker === selectedSpeaker);
-    }
-    return getDurationDistribution(segments);
-  }, [segmentsById, selectedSpeaker]);
+  let segments = Object.values(segmentsById);
+  if (selectedSpeaker) {
+    segments = segments.filter((s) => s.speaker === selectedSpeaker);
+  }
+  const stats = calculateStats(segments);
+  const distribution = getDurationDistribution(segments);
 
   const maxDistribution = Math.max(...distribution, 1);
   const reviewedPercent =

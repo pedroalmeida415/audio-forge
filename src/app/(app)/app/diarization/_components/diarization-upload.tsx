@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Loader2, Music, Upload } from "lucide-react";
 import { api } from "~/trpc/react";
@@ -37,13 +37,13 @@ export function DiarizationUpload() {
     },
   });
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = (acceptedFiles: File[]) => {
     const audioFile = acceptedFiles[0];
     if (audioFile) {
       setFile(audioFile);
       setUploadProgress(0);
     }
-  }, []);
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

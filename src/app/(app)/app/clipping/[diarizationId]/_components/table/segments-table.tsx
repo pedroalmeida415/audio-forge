@@ -8,21 +8,20 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlaybackContext } from "../../_context/playback.context";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { filterSegments, getUniqueSpeakers } from "../../_utils/segment-utils";
 import { createColumns, type TableSegment } from "./columns";
 
-// Memoized table row component to prevent unnecessary re-renders
 interface TableRowProps {
   row: Row<TableSegment>;
   isSelected: boolean;
   onRowClick: (rowId: string) => void;
 }
 
-const TableRow = memo(function TableRow({
+function TableRow({
   row,
   isSelected,
   onRowClick,
@@ -51,7 +50,7 @@ const TableRow = memo(function TableRow({
       ))}
     </tr>
   );
-});
+}
 
 export function SegmentsTable() {
   // Get store API for direct state access (avoids stale closures)
@@ -72,14 +71,6 @@ export function SegmentsTable() {
 
   const playbackContext = usePlaybackContext();
 
-  // Stable callback reference for handleSegmentPlay
-  const handleSegmentPlay = useCallback(
-    (segmentId: string) => {
-      playbackContext.handleSegmentPlay(segmentId);
-    },
-    [playbackContext],
-  );
-
   // TanStack Table sorting state
   const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -99,82 +90,60 @@ export function SegmentsTable() {
   }, [sorting, setSortBy]);
 
   // Get speaker order for color assignment
-  const speakerOrder = useMemo(() => {
-    const segments = Object.values(segmentsById);
-    return getUniqueSpeakers(segments);
-  }, [segmentsById]);
+  const speakerOrder = getUniqueSpeakers(Object.values(segmentsById));
 
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
-  const speakerIndexMap = useMemo(
-    () => new Map(speakerOrder.map((speaker, idx) => [speaker, idx])),
-    [speakerOrder],
-  );
+  const speakerIndexMap = new Map(speakerOrder.map((speaker, idx) => [speaker, idx]));
 
   // Prepare table data
-  const tableData = useMemo(() => {
-    const allSegments = Object.values(segmentsById);
-    const filtered = filterSegments(allSegments, filters, selectedSpeaker);
-    const sortedByTime = [...filtered].sort((a, b) => a.start - b.start);
+  const allSegments = Object.values(segmentsById);
+  const filtered = filterSegments(allSegments, filters, selectedSpeaker);
+  const sortedByTime = [...filtered].sort((a, b) => a.start - b.start);
+  const tableData: TableSegment[] = sortedByTime.map((segment, idx) => ({
+    ...segment,
+    index: idx,
+    colorIndex: speakerIndexMap.get(segment.speaker) ?? -1,
+  }));
 
-    const withMetadata: TableSegment[] = sortedByTime.map((segment, idx) => ({
-      ...segment,
-      index: idx,
-      colorIndex: speakerIndexMap.get(segment.speaker) ?? -1,
-    }));
-
-    return withMetadata;
-  }, [segmentsById, filters, selectedSpeaker, speakerIndexMap]);
-
-  // Stable callback for changing speaker
-  const handleChangeSpeaker = useCallback((segmentId: string) => {
+  // Callback for changing speaker
+  const handleChangeSpeaker = (segmentId: string) => {
     console.log("Change speaker for:", segmentId);
-  }, []);
+  };
 
-  // Column definitions - all callbacks are stable references
-  const columns = useMemo(
-    () =>
-      createColumns({
-        onPlay: handleSegmentPlay,
-        onChangeSpeaker: handleChangeSpeaker,
-        onDelete: archiveSegment,
-      }),
-    [handleSegmentPlay, handleChangeSpeaker, archiveSegment],
-  );
+  // Column definitions
+  const columns = createColumns({
+    onPlay: playbackContext.handleSegmentPlay,
+    onChangeSpeaker: handleChangeSpeaker,
+    onDelete: archiveSegment,
+  });
 
-  // Memoize row selection state
-  const rowSelection = useMemo(
-    () =>
-      Object.fromEntries(
-        Array.from(selectedSegmentIds).map((id) => [id, true]),
-      ),
-    [selectedSegmentIds],
+  // Row selection state
+  const rowSelection = Object.fromEntries(
+    Array.from(selectedSegmentIds).map((id) => [id, true]),
   );
 
   // Handle row selection change - uses store.getState() to avoid rowSelection dependency
-  const handleRowSelectionChange = useCallback(
-    (
-      updater:
-        | ((old: Record<string, boolean>) => Record<string, boolean>)
-        | Record<string, boolean>,
-    ) => {
-      if (typeof updater === "function") {
-        // Get current selection directly from store to avoid stale closure
-        const currentIds = store.getState().selectedSegmentIds;
-        const currentRowSelection = Object.fromEntries(
-          Array.from(currentIds).map((id) => [id, true]),
-        );
-        const newSelection = updater(currentRowSelection);
-        setSelectedSegmentIds(
-          new Set(Object.keys(newSelection).filter((k) => newSelection[k])),
-        );
-      } else {
-        setSelectedSegmentIds(
-          new Set(Object.keys(updater).filter((k) => updater[k])),
-        );
-      }
-    },
-    [store, setSelectedSegmentIds],
-  );
+  const handleRowSelectionChange = (
+    updater:
+      | ((old: Record<string, boolean>) => Record<string, boolean>)
+      | Record<string, boolean>,
+  ) => {
+    if (typeof updater === "function") {
+      // Get current selection directly from store to avoid stale closure
+      const currentIds = store.getState().selectedSegmentIds;
+      const currentRowSelection = Object.fromEntries(
+        Array.from(currentIds).map((id) => [id, true]),
+      );
+      const newSelection = updater(currentRowSelection);
+      setSelectedSegmentIds(
+        new Set(Object.keys(newSelection).filter((k) => newSelection[k])),
+      );
+    } else {
+      setSelectedSegmentIds(
+        new Set(Object.keys(updater).filter((k) => updater[k])),
+      );
+    }
+  };
 
   // Create table instance
   const table = useReactTable({

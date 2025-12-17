@@ -1,10 +1,10 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePlaybackContext } from "../../_context/playback.context";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 
-export const TimelineProgressBar = memo(function TimelineProgressBar() {
+export function TimelineProgressBar() {
   const { seek } = usePlaybackContext();
   const duration = useClippingWorkspaceStore((s) => s.duration);
   const store = useClippingWorkspaceStore();
@@ -36,50 +36,44 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
     return unsubscribe;
   }, [store, duration]);
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!progressRef.current || duration <= 0) return;
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current || duration <= 0) return;
 
-      const rect = progressRef.current.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const percentage = clickX / rect.width;
+    const rect = progressRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const percentage = clickX / rect.width;
+    const newTime = percentage * duration;
+
+    seek(Math.max(0, Math.min(newTime, duration)));
+  };
+
+  const handleDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!progressRef.current || duration <= 0) return;
+
+    e.preventDefault();
+    const rect = progressRef.current.getBoundingClientRect();
+
+    const updatePosition = (clientX: number) => {
+      const clickX = clientX - rect.left;
+      const percentage = Math.max(0, Math.min(1, clickX / rect.width));
       const newTime = percentage * duration;
+      seek(newTime);
+    };
 
-      seek(Math.max(0, Math.min(newTime, duration)));
-    },
-    [duration, seek],
-  );
+    updatePosition(e.clientX);
 
-  const handleDrag = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!progressRef.current || duration <= 0) return;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      updatePosition(moveEvent.clientX);
+    };
 
-      e.preventDefault();
-      const rect = progressRef.current.getBoundingClientRect();
+    const handlePointerUp = () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
 
-      const updatePosition = (clientX: number) => {
-        const clickX = clientX - rect.left;
-        const percentage = Math.max(0, Math.min(1, clickX / rect.width));
-        const newTime = percentage * duration;
-        seek(newTime);
-      };
-
-      updatePosition(e.clientX);
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        updatePosition(moveEvent.clientX);
-      };
-
-      const handlePointerUp = () => {
-        document.removeEventListener("pointermove", handlePointerMove);
-        document.removeEventListener("pointerup", handlePointerUp);
-      };
-
-      document.addEventListener("pointermove", handlePointerMove);
-      document.addEventListener("pointerup", handlePointerUp);
-    },
-    [duration, seek],
-  );
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+  };
 
   const currentTime = store.getState().currentTime;
 
@@ -104,4 +98,4 @@ export const TimelineProgressBar = memo(function TimelineProgressBar() {
       <div className="h-full bg-primary will-change-[width]" ref={filledRef} />
     </div>
   );
-});
+}

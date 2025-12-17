@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { cn } from "~/lib/utils";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { calculateStats } from "../../_utils/segment-utils";
@@ -9,13 +8,11 @@ export function ExportReadinessSection() {
   const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
   const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
 
-  const stats = useMemo(() => {
-    let segments = Object.values(segmentsById);
-    if (selectedSpeaker) {
-      segments = segments.filter((s) => s.speaker === selectedSpeaker);
-    }
-    return calculateStats(segments);
-  }, [segmentsById, selectedSpeaker]);
+  let segments = Object.values(segmentsById);
+  if (selectedSpeaker) {
+    segments = segments.filter((s) => s.speaker === selectedSpeaker);
+  }
+  const stats = calculateStats(segments);
 
   const percentage =
     stats.segmentCount > 0

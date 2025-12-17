@@ -1,6 +1,6 @@
 "use client";
 
-import type { CellContext, ColumnDef, Row, Table } from "@tanstack/react-table";
+import type { ColumnDef, Row, Table } from "@tanstack/react-table";
 import {
   ArrowDown,
   ArrowUp,
@@ -9,7 +9,6 @@ import {
   Trash2,
   User,
 } from "lucide-react";
-import { memo, useCallback } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -46,11 +45,11 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 }
 
 // ============================================================================
-// Memoized Cell Components
+// Cell Components
 // ============================================================================
 
 // Header checkbox for select all
-const SelectAllCheckbox = memo(function SelectAllCheckbox({
+function SelectAllCheckbox({
   table,
 }: {
   table: Table<TableSegment>;
@@ -59,87 +58,69 @@ const SelectAllCheckbox = memo(function SelectAllCheckbox({
     table.getIsAllPageRowsSelected() ||
     (table.getIsSomePageRowsSelected() && "indeterminate");
 
-  const handleChange = useCallback(
-    (value: boolean | "indeterminate") => {
-      table.toggleAllPageRowsSelected(!!value);
-    },
-    [table],
-  );
-
   return (
     <Checkbox
       checked={checked}
-      onCheckedChange={handleChange}
+      onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
       aria-label="Select all"
       className="translate-y-[2px]"
     />
   );
-});
+}
 
 // Row checkbox cell
-const SelectCell = memo(function SelectCell({
+function SelectCell({
   row,
   isSelected,
 }: {
   row: Row<TableSegment>;
   isSelected: boolean;
 }) {
-  const handleChange = useCallback(
-    (value: boolean | "indeterminate") => {
-      row.toggleSelected(!!value);
-    },
-    [row],
-  );
-
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-  }, []);
-
   return (
     <Checkbox
       checked={isSelected}
-      onCheckedChange={handleChange}
-      onClick={handleClick}
+      onCheckedChange={(value) => row.toggleSelected(!!value)}
+      onClick={(e) => e.stopPropagation()}
       aria-label="Select row"
       className="translate-y-[2px]"
     />
   );
-});
+}
 
 // Index cell
-const IndexCell = memo(function IndexCell({ index }: { index: number }) {
+function IndexCell({ index }: { index: number }) {
   return (
     <span className="block text-center font-mono text-muted-foreground text-xs">
       {String(index + 1).padStart(3, "0")}
     </span>
   );
-});
+}
 
 // Play button cell
-const PlayCell = memo(function PlayCell({
+function PlayCell({
   segmentId,
   onPlay,
 }: {
   segmentId: string;
   onPlay: (id: string) => void;
 }) {
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onPlay(segmentId);
-    },
-    [segmentId, onPlay],
-  );
-
   return (
-    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleClick}>
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7"
+      onClick={(e) => {
+        e.stopPropagation();
+        onPlay(segmentId);
+      }}
+    >
       <Play className="h-3.5 w-3.5" />
     </Button>
   );
-});
+}
 
 // Duration cell with color coding
-const DurationCell = memo(function DurationCell({
+function DurationCell({
   duration,
 }: {
   duration: number;
@@ -163,10 +144,10 @@ const DurationCell = memo(function DurationCell({
       {formatDuration(duration)}
     </span>
   );
-});
+}
 
 // Reviewed status cell
-const ReviewedCell = memo(function ReviewedCell({
+function ReviewedCell({
   isReviewed,
 }: {
   isReviewed: boolean;
@@ -184,10 +165,10 @@ const ReviewedCell = memo(function ReviewedCell({
       </span>
     </div>
   );
-});
+}
 
 // Actions cell with tooltips
-const ActionsCell = memo(function ActionsCell({
+function ActionsCell({
   segmentId,
   onChangeSpeaker,
   onDelete,
@@ -196,22 +177,6 @@ const ActionsCell = memo(function ActionsCell({
   onChangeSpeaker: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const handleChangeSpeaker = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onChangeSpeaker(segmentId);
-    },
-    [segmentId, onChangeSpeaker],
-  );
-
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onDelete(segmentId);
-    },
-    [segmentId, onDelete],
-  );
-
   return (
     <div className="flex gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
       <Tooltip>
@@ -220,7 +185,10 @@ const ActionsCell = memo(function ActionsCell({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={handleChangeSpeaker}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChangeSpeaker(segmentId);
+            }}
           >
             <User className="h-3.5 w-3.5" />
           </Button>
@@ -234,7 +202,10 @@ const ActionsCell = memo(function ActionsCell({
             variant="ghost"
             size="icon"
             className="h-7 w-7 hover:bg-red-500/20 hover:text-red-500"
-            onClick={handleDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(segmentId);
+            }}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -243,7 +214,7 @@ const ActionsCell = memo(function ActionsCell({
       </Tooltip>
     </div>
   );
-});
+}
 
 // ============================================================================
 // Column Definitions

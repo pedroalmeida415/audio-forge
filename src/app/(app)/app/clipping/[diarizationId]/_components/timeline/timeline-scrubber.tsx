@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
@@ -10,7 +10,7 @@ interface TimelineScrubberProps {
   onDrag: (clientX: number, rect: DOMRect) => void;
 }
 
-export const TimelineScrubber = memo(function TimelineScrubber({
+export function TimelineScrubber({
   onDrag,
 }: TimelineScrubberProps) {
   const store = useClippingWorkspaceStore();
@@ -54,32 +54,29 @@ export const TimelineScrubber = memo(function TimelineScrubber({
     return unsubscribe;
   }, [store]);
 
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-      // Get the scrollable container (parent of the timeline content div)
-      const scrollContainer = scrubberRef.current?.parentElement?.parentElement;
-      if (!scrollContainer) return;
+    // Get the scrollable container (parent of the timeline content div)
+    const scrollContainer = scrubberRef.current?.parentElement?.parentElement;
+    if (!scrollContainer) return;
 
-      const rect = scrollContainer.getBoundingClientRect();
-      onDrag(e.clientX, rect);
+    const rect = scrollContainer.getBoundingClientRect();
+    onDrag(e.clientX, rect);
 
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        onDrag(moveEvent.clientX, rect);
-      };
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      onDrag(moveEvent.clientX, rect);
+    };
 
-      const handlePointerUp = () => {
-        document.removeEventListener("pointermove", handlePointerMove);
-        document.removeEventListener("pointerup", handlePointerUp);
-      };
+    const handlePointerUp = () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
 
-      document.addEventListener("pointermove", handlePointerMove);
-      document.addEventListener("pointerup", handlePointerUp);
-    },
-    [onDrag],
-  );
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+  };
 
   return (
     <div
@@ -101,4 +98,4 @@ export const TimelineScrubber = memo(function TimelineScrubber({
       </svg>
     </div>
   );
-});
+}

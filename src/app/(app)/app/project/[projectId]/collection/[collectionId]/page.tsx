@@ -3,7 +3,7 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { use, useMemo } from "react";
+import { use } from "react";
 import { api } from "~/trpc/react";
 import { ClipList } from "./_component/clip-list";
 import { Sidebar } from "./_component/sidebar";
@@ -32,7 +32,7 @@ export default function CollectionDetailPage({
     collectionId,
   });
 
-  const enrichedClips = useMemo(() => enrichClipsWithMockData(clips), [clips]);
+  const enrichedClips = enrichClipsWithMockData(clips);
 
   const {
     activeClipId,
