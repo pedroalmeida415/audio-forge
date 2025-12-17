@@ -8,7 +8,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
@@ -97,50 +97,63 @@ export function SegmentsTable() {
     }));
   }, [segmentsById, filters, selectedSpeaker, speakerIndexMap]);
 
-  // Callback for changing speaker
-  const handleChangeSpeaker = (segmentId: string) => {
+  // Callback for changing speaker - memoized for TanStack Table reference stability
+  const handleChangeSpeaker = useCallback((segmentId: string) => {
     console.log("Change speaker for:", segmentId);
-  };
+  }, []);
 
-  // Column definitions
-  const columns = createColumns({
-    onPlay: playbackContext.handleSegmentPlay,
-    onChangeSpeaker: handleChangeSpeaker,
-    onDelete: archiveSegment,
-  });
-
-  // Row selection state
-  const rowSelection = Object.fromEntries(
-    Array.from(selectedSegmentIds).map((id) => [id, true]),
+  // Column definitions - memoized because TanStack Table relies on reference equality
+  // Without this, table recalculates row models on every render
+  const columns = useMemo(
+    () =>
+      createColumns({
+        onPlay: playbackContext.handleSegmentPlay,
+        onChangeSpeaker: handleChangeSpeaker,
+        onDelete: archiveSegment,
+      }),
+    [playbackContext.handleSegmentPlay, handleChangeSpeaker, archiveSegment],
   );
 
-  // Handle row selection change - uses store.getState() to avoid rowSelection dependency
-  const handleRowSelectionChange = (
-    updater:
-      | ((old: Record<string, boolean>) => Record<string, boolean>)
-      | Record<string, boolean>,
-  ) => {
-    // Get current selection directly from store to avoid stale closure
-    const currentIds = store.getState().segments.selectedSegmentIds;
-    const currentRowSelection = Object.fromEntries(
-      Array.from(currentIds).map((id) => [id, true]),
-    );
+  // Row selection state - memoized for TanStack Table reference stability
+  const rowSelection = useMemo(
+    () =>
+      Object.fromEntries(
+        Array.from(selectedSegmentIds).map((id) => [id, true]),
+      ),
+    [selectedSegmentIds],
+  );
 
-    const newSelection =
-      typeof updater === "function" ? updater(currentRowSelection) : updater;
+  // Handle row selection change - memoized for TanStack Table reference stability
+  // Uses store.getState() to avoid stale closures
+  const handleRowSelectionChange = useCallback(
+    (
+      updater:
+        | ((old: Record<string, boolean>) => Record<string, boolean>)
+        | Record<string, boolean>,
+    ) => {
+      // Get current selection directly from store to avoid stale closure
+      const currentIds = store.getState().segments.selectedSegmentIds;
+      const currentRowSelection = Object.fromEntries(
+        Array.from(currentIds).map((id) => [id, true]),
+      );
 
-    const newSelectedIds = Object.keys(newSelection).filter(
-      (k) => newSelection[k],
-    );
+      const newSelection =
+        typeof updater === "function" ? updater(currentRowSelection) : updater;
 
-    // Only update if selection actually changed
-    if (
-      newSelectedIds.length !== currentIds.size ||
-      !newSelectedIds.every((id) => currentIds.has(id))
-    ) {
-      setSelectedSegmentIds(new Set(newSelectedIds));
-    }
-  };
+      const newSelectedIds = Object.keys(newSelection).filter(
+        (k) => newSelection[k],
+      );
+
+      // Only update if selection actually changed
+      if (
+        newSelectedIds.length !== currentIds.size ||
+        !newSelectedIds.every((id) => currentIds.has(id))
+      ) {
+        setSelectedSegmentIds(new Set(newSelectedIds));
+      }
+    },
+    [store, setSelectedSegmentIds],
+  );
 
   // Create table instance
   const table = useReactTable({
