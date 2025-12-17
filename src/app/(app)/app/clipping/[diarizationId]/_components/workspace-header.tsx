@@ -15,7 +15,10 @@ import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { useClippingWorkspaceStore } from "../_context/store.context";
 import type { ViewMode } from "../_store/clipping-workspace-store";
-import { getSpeakerDisplayName, getUniqueSpeakers } from "../_utils/segment-utils";
+import {
+  getSpeakerDisplayName,
+  getUniqueSpeakers,
+} from "../_utils/segment-utils";
 
 export function WorkspaceHeader() {
   const fileName = useClippingWorkspaceStore((s) => s.fileName);
@@ -48,12 +51,12 @@ export function WorkspaceHeader() {
         <h1 className="font-medium text-sm">{fileName}</h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center rounded-md bg-muted">
         <Select
           value={selectedSpeaker ?? ""}
           onValueChange={(value) => selectSpeaker(value || null)}
         >
-          <SelectTrigger className="h-9 w-[160px] rounded-lg bg-muted text-xs">
+          <SelectTrigger className="h-10 max-w-40 rounded-lg bg-muted">
             <SelectValue placeholder="Select speaker">
               {selectedSpeaker && (
                 <span className="flex items-center gap-2">
@@ -94,7 +97,7 @@ export function WorkspaceHeader() {
           value={viewMode}
           onValueChange={(value) => setViewMode(value as ViewMode)}
         >
-          <TabsList className="h-9">
+          <TabsList className="h-10 py-1">
             <TabsTrigger value="table" className="gap-1.5 px-3 text-xs">
               <Table2 className="h-3.5 w-3.5" />
               Table
@@ -113,7 +116,7 @@ export function WorkspaceHeader() {
 
       {/* Generate Clips button moved to table toolbar */}
       <div className="flex flex-1 justify-end">
-        <Button size="sm" className="h-9" disabled>
+        <Button size="sm" className="h-10" disabled>
           <ScissorsIcon className="mr-1.5 h-3.5 w-3.5" />
           Generate Clips
         </Button>

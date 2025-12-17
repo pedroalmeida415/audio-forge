@@ -1,6 +1,9 @@
+import { enableMapSet } from "immer";
 import { subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { createStore } from "zustand/vanilla";
+
+enableMapSet();
 
 // ============================================================================
 // Types
@@ -200,7 +203,9 @@ export function createClippingWorkspaceStore(
   initialData: ClippingWorkspaceStoreInitialData,
 ) {
   const { diarization } = initialData;
-  const segmentsById = createSegmentsWithIds(diarization.output?.segments ?? []);
+  const segmentsById = createSegmentsWithIds(
+    diarization.output?.segments ?? [],
+  );
   const speakerCollections = diarization.speakerCollections ?? {};
   const fileName =
     diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
@@ -328,9 +333,7 @@ export function createClippingWorkspaceStore(
               segment.isDeleted = true;
             }
             // Remove from selection if selected
-            const newSelection = new Set(state.selectedSegmentIds);
-            newSelection.delete(segmentId);
-            return { selectedSegmentIds: newSelection };
+            state.selectedSegmentIds.delete(segmentId);
           }),
         archiveSelectedSegments: () =>
           set((state) => {
@@ -338,9 +341,9 @@ export function createClippingWorkspaceStore(
               const segment = state.segmentsById[segmentId];
               if (segment) {
                 segment.isDeleted = true;
+                state.selectedSegmentIds.delete(segmentId);
               }
             }
-            return { selectedSegmentIds: new Set() };
           }),
         restoreSegment: (segmentId) =>
           set((state) => {

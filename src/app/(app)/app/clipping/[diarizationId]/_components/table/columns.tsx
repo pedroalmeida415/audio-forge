@@ -89,22 +89,17 @@ export function createColumns(options: {
       id: "play",
       header: "",
       cell: ({ row }) => (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation();
-                options.onPlay(row.original.id);
-              }}
-            >
-              <Play className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Play segment</TooltipContent>
-        </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={(e) => {
+            e.stopPropagation();
+            options.onPlay(row.original.id);
+          }}
+        >
+          <Play className="h-3.5 w-3.5" />
+        </Button>
       ),
       enableSorting: false,
       size: 40,
