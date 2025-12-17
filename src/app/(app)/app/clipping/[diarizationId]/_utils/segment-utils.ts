@@ -2,7 +2,6 @@ import type {
   FilterConfig,
   SegmentAlertType,
   SegmentWithId,
-  SortConfig,
   SpeakerCollections,
 } from "../_store/clipping-workspace-store";
 
@@ -125,51 +124,6 @@ export function filterSegments(
  */
 export function getVisibleSegments(segments: SegmentWithId[]): SegmentWithId[] {
   return segments.filter((s) => !s.isDeleted);
-}
-
-// ============================================================================
-// Sorting Functions
-// ============================================================================
-
-/**
- * Sort segments based on sort configuration
- */
-export function sortSegments(
-  segments: SegmentWithId[],
-  sortBy: SortConfig | null,
-): SegmentWithId[] {
-  if (!sortBy) {
-    // Default sort: by start time
-    return [...segments].sort((a, b) => a.start - b.start);
-  }
-
-  const sorted = [...segments];
-  const { column, direction } = sortBy;
-  const multiplier = direction === "asc" ? 1 : -1;
-
-  sorted.sort((a, b) => {
-    switch (column) {
-      case "duration": {
-        const durationA = getSegmentDuration(a);
-        const durationB = getSegmentDuration(b);
-        return (durationA - durationB) * multiplier;
-      }
-      case "reviewed": {
-        const reviewedA = a.isReviewed ? 1 : 0;
-        const reviewedB = b.isReviewed ? 1 : 0;
-        return (reviewedA - reviewedB) * multiplier;
-      }
-      case "alerts": {
-        const alertsA = getSegmentAlerts(a).length;
-        const alertsB = getSegmentAlerts(b).length;
-        return (alertsA - alertsB) * multiplier;
-      }
-      default:
-        return 0;
-    }
-  });
-
-  return sorted;
 }
 
 // ============================================================================

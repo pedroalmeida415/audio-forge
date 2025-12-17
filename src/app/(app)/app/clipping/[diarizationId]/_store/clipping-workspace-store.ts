@@ -135,7 +135,6 @@ export type {
   FilterConfig,
   SegmentAlertType,
   SegmentWithId,
-  SortConfig,
   SpeakerCollections,
   SpeakerMetadata,
   ViewMode,

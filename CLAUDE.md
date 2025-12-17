@@ -57,7 +57,27 @@ src/
 
 ### Key Patterns
 
-**React Compiler**: The project uses the experimental React Compiler (`babel-plugin-react-compiler`). Do NOT use `useCallback`, `useMemo`, or `memo()` — the compiler handles memoization automatically (unless necessary in manual memoizations for dependecies of `useEffect`).
+**React Compiler**: The project uses the experimental React Compiler (`babel-plugin-react-compiler`). Generally, do NOT use `useCallback`, `useMemo`, or `memo()` — the compiler handles memoization automatically.
+
+**Exception - Manual memoization is required when:**
+- Passing data to libraries that rely on **referential equality** (not just value equality)
+- Dependencies of `useEffect` that need stable references
+- Input to custom hooks that internally depend on reference stability
+
+**Example - TanStack Table:** The `useReactTable` hook internally tracks data changes by reference. If you pass `data` that is recreated on every render (e.g., from `.map()` or `.filter()`), TanStack Table sees "new" data each time, triggers auto-reset behavior, which causes re-renders, creating an infinite loop. Solution: wrap the data computation in `useMemo`:
+
+```typescript
+// ❌ BAD - creates new array/objects every render
+const tableData = segments.map(s => ({ ...s, extra: computeExtra(s) }));
+
+// ✅ GOOD - stable reference when dependencies haven't changed
+const tableData = useMemo(() =>
+  segments.map(s => ({ ...s, extra: computeExtra(s) })),
+  [segments]
+);
+```
+
+This applies to other libraries with similar patterns (React Query, some animation libraries, etc.).
 
 **tRPC Procedures**: Use `publicProcedure` or `protectedProcedure` from `~/server/api/trpc`. Context includes `db` and `session`.
 

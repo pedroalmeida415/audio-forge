@@ -26,11 +26,6 @@ export type SpeakerCollections = Record<
   { collectionId: string; collectionName: string }
 >;
 
-export interface SortConfig {
-  column: "duration" | "reviewed" | "alerts";
-  direction: "asc" | "desc";
-}
-
 export interface FilterConfig {
   alerts: SegmentAlertType[];
   reviewed: boolean | null;
@@ -84,10 +79,8 @@ export interface TimelineSlice {
 
 export interface UISlice {
   viewMode: ViewMode;
-  sortBy: SortConfig | null;
   filters: FilterConfig;
   setViewMode: (mode: ViewMode) => void;
-  setSortBy: (config: SortConfig | null) => void;
   setFilters: (filters: Partial<FilterConfig>) => void;
   clearFilters: () => void;
 }

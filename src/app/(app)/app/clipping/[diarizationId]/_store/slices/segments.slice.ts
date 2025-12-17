@@ -1,4 +1,8 @@
-import type { SegmentsInitialData, SegmentsSlice, SliceCreator } from "../types";
+import type {
+  SegmentsInitialData,
+  SegmentsSlice,
+  SliceCreator,
+} from "../types";
 
 export const createSegmentsSlice =
   (initialData: SegmentsInitialData): SliceCreator<SegmentsSlice> =>

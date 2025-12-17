@@ -8,7 +8,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
@@ -61,7 +61,6 @@ export function SegmentsTable() {
     (s) => s.segments.selectedSegmentIds,
   );
   const filters = useClippingStore((s) => s.ui.filters);
-  const setSortBy = useClippingStore((s) => s.ui.setSortBy);
   const setSelectedSegmentIds = useClippingStore(
     (s) => s.segments.setSelectedSegmentIds,
   );
@@ -70,41 +69,30 @@ export function SegmentsTable() {
 
   const playbackContext = usePlayback();
 
-  // TanStack Table sorting state
+  // TanStack Table sorting state (local only - not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  // Sync store sortBy with TanStack sorting
-  useEffect(() => {
-    if (sorting.length > 0) {
-      const sort = sorting[0];
-      if (sort) {
-        setSortBy({
-          column: sort.id as "duration" | "reviewed" | "alerts",
-          direction: sort.desc ? "desc" : "asc",
-        });
-      }
-    } else {
-      setSortBy(null);
-    }
-  }, [sorting, setSortBy]);
-
-  // Get speaker order for color assignment
-  const speakerOrder = getUniqueSpeakers(Object.values(segmentsById));
-
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
-  const speakerIndexMap = new Map(
-    speakerOrder.map((speaker, idx) => [speaker, idx]),
-  );
+  // Memoized because it's used as a dependency for tableData
+  const speakerIndexMap = useMemo(() => {
+    const speakerOrder = getUniqueSpeakers(Object.values(segmentsById));
+    return new Map(speakerOrder.map((speaker, idx) => [speaker, idx]));
+  }, [segmentsById]);
 
-  // Prepare table data
-  const allSegments = Object.values(segmentsById);
-  const filtered = filterSegments(allSegments, filters, selectedSpeaker);
-  const sortedByTime = [...filtered].sort((a, b) => a.start - b.start);
-  const tableData: TableSegment[] = sortedByTime.map((segment, idx) => ({
-    ...segment,
-    index: idx,
-    colorIndex: speakerIndexMap.get(segment.speaker) ?? -1,
-  }));
+  // Prepare table data - memoized to prevent TanStack Table from seeing "new" data
+  // on every render, which would trigger auto-reset behavior and cause infinite loops.
+  // Note: React Compiler doesn't handle this case correctly, likely because
+  // useReactTable internally depends on referential stability of data.
+  const tableData = useMemo(() => {
+    const allSegments = Object.values(segmentsById);
+    const filtered = filterSegments(allSegments, filters, selectedSpeaker);
+    const sortedByTime = [...filtered].sort((a, b) => a.start - b.start);
+    return sortedByTime.map((segment, idx) => ({
+      ...segment,
+      index: idx,
+      colorIndex: speakerIndexMap.get(segment.speaker) ?? -1,
+    }));
+  }, [segmentsById, filters, selectedSpeaker, speakerIndexMap]);
 
   // Callback for changing speaker
   const handleChangeSpeaker = (segmentId: string) => {
@@ -129,20 +117,25 @@ export function SegmentsTable() {
       | ((old: Record<string, boolean>) => Record<string, boolean>)
       | Record<string, boolean>,
   ) => {
-    if (typeof updater === "function") {
-      // Get current selection directly from store to avoid stale closure
-      const currentIds = store.getState().segments.selectedSegmentIds;
-      const currentRowSelection = Object.fromEntries(
-        Array.from(currentIds).map((id) => [id, true]),
-      );
-      const newSelection = updater(currentRowSelection);
-      setSelectedSegmentIds(
-        new Set(Object.keys(newSelection).filter((k) => newSelection[k])),
-      );
-    } else {
-      setSelectedSegmentIds(
-        new Set(Object.keys(updater).filter((k) => updater[k])),
-      );
+    // Get current selection directly from store to avoid stale closure
+    const currentIds = store.getState().segments.selectedSegmentIds;
+    const currentRowSelection = Object.fromEntries(
+      Array.from(currentIds).map((id) => [id, true]),
+    );
+
+    const newSelection =
+      typeof updater === "function" ? updater(currentRowSelection) : updater;
+
+    const newSelectedIds = Object.keys(newSelection).filter(
+      (k) => newSelection[k],
+    );
+
+    // Only update if selection actually changed
+    if (
+      newSelectedIds.length !== currentIds.size ||
+      !newSelectedIds.every((id) => currentIds.has(id))
+    ) {
+      setSelectedSegmentIds(new Set(newSelectedIds));
     }
   };
 
