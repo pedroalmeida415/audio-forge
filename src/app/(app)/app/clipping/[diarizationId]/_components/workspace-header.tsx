@@ -19,8 +19,11 @@ import {
   getUniqueSpeakers,
 } from "../_utils/segment-utils";
 
-export function WorkspaceHeader() {
-  const fileName = useClippingWorkspaceStore((s) => s.fileName);
+interface WorkspaceHeaderProps {
+  fileName: string;
+}
+
+export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
   const viewMode = useClippingWorkspaceStore((s) => s.viewMode);
   const setViewMode = useClippingWorkspaceStore((s) => s.setViewMode);
   const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
@@ -31,7 +34,9 @@ export function WorkspaceHeader() {
   );
 
   const speakers = getUniqueSpeakers(Object.values(segmentsById));
-  const speakerColorIndex = selectedSpeaker ? speakers.indexOf(selectedSpeaker) : -1;
+  const speakerColorIndex = selectedSpeaker
+    ? speakers.indexOf(selectedSpeaker)
+    : -1;
 
   return (
     <div className="flex items-center justify-between border-b bg-background px-4 py-2">

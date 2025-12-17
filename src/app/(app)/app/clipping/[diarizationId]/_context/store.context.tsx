@@ -2,6 +2,7 @@
 
 import { createContext, type ReactNode, use, useState } from "react";
 import { useStore } from "zustand";
+import { api } from "~/trpc/react";
 import {
   type ClippingWorkspaceStore,
   type ClippingWorkspaceStoreApi,
@@ -30,7 +31,11 @@ export function ClippingWorkspaceStoreProvider({
   children,
   initialData,
 }: ClippingWorkspaceStoreProviderProps) {
-  const [store] = useState(() => createClippingWorkspaceStore(initialData));
+  const trpcUtils = api.useUtils();
+
+  const [store] = useState(() =>
+    createClippingWorkspaceStore(initialData, trpcUtils),
+  );
 
   return (
     <ClippingWorkspaceStoreContext.Provider value={store}>
