@@ -8,12 +8,12 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import type { FilterConfig } from "../../_store/types";
-import { filterSegments, getUniqueSpeakers } from "../../_utils/segment-utils";
+import { getUniqueSpeakers } from "../../_utils/segment-utils";
 import { createColumns, type TableSegment } from "./columns";
 
 interface TableRowProps {
@@ -22,35 +22,48 @@ interface TableRowProps {
   onRowClick: (rowId: string) => void;
 }
 
-function TableRow({ row, isSelected, onRowClick }: TableRowProps) {
-  return (
-    <tr
-      className={cn(
-        "group/row cursor-pointer border-border/50 border-b transition-colors",
-        isSelected && "bg-primary/5",
-        !isSelected && "hover:bg-muted/50",
-      )}
-      onClick={() => onRowClick(row.id)}
-    >
-      {row.getVisibleCells().map((cell) => (
-        <td
-          key={cell.id}
-          className={cn(
-            "px-3 py-2",
-            cell.column.id === "transcription" && "w-full",
-          )}
-          style={
-            cell.column.id !== "transcription"
-              ? { width: cell.column.getSize() }
-              : undefined
-          }
-        >
-          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-        </td>
-      ))}
-    </tr>
-  );
-}
+// Memoized with custom comparison to prevent re-renders when only sort order changes.
+// TanStack Table creates new Row wrapper objects on every state change, but
+// the underlying data (row.original) is stable. We only re-render if:
+// - The actual segment data changed
+// - Selection state changed
+// - The click handler changed
+const TableRow = memo(
+  function TableRow({ row, isSelected, onRowClick }: TableRowProps) {
+    return (
+      <tr
+        className={cn(
+          "group/row cursor-pointer border-border/50 border-b transition-colors",
+          isSelected && "bg-primary/5",
+          !isSelected && "hover:bg-muted/50",
+        )}
+        onClick={() => onRowClick(row.id)}
+      >
+        {row.getVisibleCells().map((cell) => (
+          <td
+            key={cell.id}
+            className={cn(
+              "px-3 py-2",
+              cell.column.id === "transcription" && "w-full",
+            )}
+            style={
+              cell.column.id !== "transcription"
+                ? { width: cell.column.getSize() }
+                : undefined
+            }
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </td>
+        ))}
+      </tr>
+    );
+  },
+  (prev, next) =>
+    prev.row.id === next.row.id &&
+    prev.row.original === next.row.original &&
+    prev.isSelected === next.isSelected &&
+    prev.onRowClick === next.onRowClick,
+);
 
 export function SegmentsTable() {
   // Get store API for direct state access (avoids stale closures)
@@ -67,7 +80,7 @@ export function SegmentsTable() {
   const archiveSegment = useClippingStore((s) => s.segments.archiveSegment);
   const selectSegment = useClippingStore((s) => s.segments.selectSegment);
 
-  const playbackContext = usePlayback();
+  const { handleSegmentPlay } = usePlayback();
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -76,26 +89,60 @@ export function SegmentsTable() {
   });
 
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
-  // Memoized because it's used as a dependency for tableData
   const speakerIndexMap = useMemo(() => {
     const speakerOrder = getUniqueSpeakers(Object.values(segmentsById));
     return new Map(speakerOrder.map((speaker, idx) => [speaker, idx]));
   }, [segmentsById]);
 
-  // Prepare table data - memoized to prevent TanStack Table from seeing "new" data
-  // on every render, which would trigger auto-reset behavior and cause infinite loops.
-  // Note: React Compiler doesn't handle this case correctly, likely because
-  // useReactTable internally depends on referential stability of data.
-  const tableData = useMemo(() => {
+  // Pre-group segments by speaker - only recomputes when segmentsById changes.
+  // Each speaker's segments are pre-sorted by start time and pre-transformed
+  // to TableSegment format. This avoids filtering/sorting all 302 segments
+  // on every speaker selection change.
+  const segmentsBySpeaker = useMemo(() => {
+    const map = new Map<string, TableSegment[]>();
     const allSegments = Object.values(segmentsById);
-    const filtered = filterSegments(allSegments, filters, selectedSpeaker);
-    const sortedByTime = [...filtered].sort((a, b) => a.start - b.start);
-    return sortedByTime.map((segment, idx) => ({
-      ...segment,
-      index: idx,
-      colorIndex: speakerIndexMap.get(segment.speaker) ?? -1,
-    }));
-  }, [segmentsById, filters, selectedSpeaker, speakerIndexMap]);
+
+    // Group by speaker (using base SegmentWithId type first)
+    const groupedRaw = new Map<string, typeof allSegments>();
+    for (const segment of allSegments) {
+      if (segment.isDeleted) continue;
+      const list = groupedRaw.get(segment.speaker) || [];
+      list.push(segment);
+      groupedRaw.set(segment.speaker, list);
+    }
+
+    // Sort each group by start time and transform to TableSegment
+    for (const [speaker, segments] of groupedRaw) {
+      segments.sort((a, b) => a.start - b.start);
+      const colorIndex = speakerIndexMap.get(speaker) ?? -1;
+      const tableSegments: TableSegment[] = segments.map((segment, i) => ({
+        ...segment,
+        index: i,
+        colorIndex,
+      }));
+      map.set(speaker, tableSegments);
+    }
+
+    return map;
+  }, [segmentsById, speakerIndexMap]);
+
+  // Get table data for selected speaker - fast O(1) lookup into pre-computed map
+  // Only creates new array reference when speaker actually changes
+  const tableData = useMemo(() => {
+    if (!selectedSpeaker) return [];
+
+    // Apply additional filters if needed
+    const segments = segmentsBySpeaker.get(selectedSpeaker) || [];
+    if (filters.reviewed === null) {
+      return segments;
+    }
+
+    // Only filter if reviewed filter is active
+    return segments.filter((s) => {
+      const isReviewed = s.isReviewed ?? false;
+      return filters.reviewed === isReviewed;
+    });
+  }, [selectedSpeaker, segmentsBySpeaker, filters.reviewed]);
 
   // Callback for changing speaker - memoized for TanStack Table reference stability
   const handleChangeSpeaker = useCallback((segmentId: string) => {
@@ -107,11 +154,11 @@ export function SegmentsTable() {
   const columns = useMemo(
     () =>
       createColumns({
-        onPlay: playbackContext.handleSegmentPlay,
+        onPlay: handleSegmentPlay,
         onChangeSpeaker: handleChangeSpeaker,
         onDelete: archiveSegment,
       }),
-    [playbackContext.handleSegmentPlay, handleChangeSpeaker, archiveSegment],
+    [handleSegmentPlay, handleChangeSpeaker, archiveSegment],
   );
 
   // Row selection state - memoized for TanStack Table reference stability
