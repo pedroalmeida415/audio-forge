@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { CellContext, ColumnDef, Row, Table } from "@tanstack/react-table";
 import {
   ArrowDown,
   ArrowUp,
@@ -9,6 +9,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import { memo, useCallback } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -30,12 +31,223 @@ export interface TableSegment extends SegmentWithId {
   colorIndex: number;
 }
 
+// Table meta type for passing stable callbacks
+export interface TableMeta {
+  onPlay: (segmentId: string) => void;
+  onChangeSpeaker: (segmentId: string) => void;
+  onDelete: (segmentId: string) => void;
+}
+
 // Get sort icon based on column state
 function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
   if (isSorted === "asc") return <ArrowUp className="ml-1 h-3 w-3" />;
   if (isSorted === "desc") return <ArrowDown className="ml-1 h-3 w-3" />;
   return <ArrowUpDown className="ml-1 h-3 w-3 opacity-50" />;
 }
+
+// ============================================================================
+// Memoized Cell Components
+// ============================================================================
+
+// Header checkbox for select all
+const SelectAllCheckbox = memo(function SelectAllCheckbox({
+  table,
+}: {
+  table: Table<TableSegment>;
+}) {
+  const checked =
+    table.getIsAllPageRowsSelected() ||
+    (table.getIsSomePageRowsSelected() && "indeterminate");
+
+  const handleChange = useCallback(
+    (value: boolean | "indeterminate") => {
+      table.toggleAllPageRowsSelected(!!value);
+    },
+    [table],
+  );
+
+  return (
+    <Checkbox
+      checked={checked}
+      onCheckedChange={handleChange}
+      aria-label="Select all"
+      className="translate-y-[2px]"
+    />
+  );
+});
+
+// Row checkbox cell
+const SelectCell = memo(function SelectCell({
+  row,
+  isSelected,
+}: {
+  row: Row<TableSegment>;
+  isSelected: boolean;
+}) {
+  const handleChange = useCallback(
+    (value: boolean | "indeterminate") => {
+      row.toggleSelected(!!value);
+    },
+    [row],
+  );
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  return (
+    <Checkbox
+      checked={isSelected}
+      onCheckedChange={handleChange}
+      onClick={handleClick}
+      aria-label="Select row"
+      className="translate-y-[2px]"
+    />
+  );
+});
+
+// Index cell
+const IndexCell = memo(function IndexCell({ index }: { index: number }) {
+  return (
+    <span className="block text-center font-mono text-muted-foreground text-xs">
+      {String(index + 1).padStart(3, "0")}
+    </span>
+  );
+});
+
+// Play button cell
+const PlayCell = memo(function PlayCell({
+  segmentId,
+  onPlay,
+}: {
+  segmentId: string;
+  onPlay: (id: string) => void;
+}) {
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onPlay(segmentId);
+    },
+    [segmentId, onPlay],
+  );
+
+  return (
+    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleClick}>
+      <Play className="h-3.5 w-3.5" />
+    </Button>
+  );
+});
+
+// Duration cell with color coding
+const DurationCell = memo(function DurationCell({
+  duration,
+}: {
+  duration: number;
+}) {
+  const variant =
+    duration > ALERT_THRESHOLDS.TOO_LONG
+      ? "warning"
+      : duration < ALERT_THRESHOLDS.TOO_SHORT
+        ? "danger"
+        : "normal";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded px-2 py-0.5 font-mono text-xs",
+        variant === "normal" && "bg-muted text-muted-foreground",
+        variant === "warning" && "bg-amber-500/20 text-amber-500",
+        variant === "danger" && "bg-red-500/20 text-red-500",
+      )}
+    >
+      {formatDuration(duration)}
+    </span>
+  );
+});
+
+// Reviewed status cell
+const ReviewedCell = memo(function ReviewedCell({
+  isReviewed,
+}: {
+  isReviewed: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div
+        className={cn(
+          "h-2 w-2 rounded-full",
+          isReviewed ? "bg-green-500" : "bg-muted-foreground/30",
+        )}
+      />
+      <span className="text-muted-foreground text-xs">
+        {isReviewed ? "Yes" : "No"}
+      </span>
+    </div>
+  );
+});
+
+// Actions cell with tooltips
+const ActionsCell = memo(function ActionsCell({
+  segmentId,
+  onChangeSpeaker,
+  onDelete,
+}: {
+  segmentId: string;
+  onChangeSpeaker: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const handleChangeSpeaker = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onChangeSpeaker(segmentId);
+    },
+    [segmentId, onChangeSpeaker],
+  );
+
+  const handleDelete = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onDelete(segmentId);
+    },
+    [segmentId, onDelete],
+  );
+
+  return (
+    <div className="flex gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={handleChangeSpeaker}
+          >
+            <User className="h-3.5 w-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Change speaker</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 hover:bg-red-500/20 hover:text-red-500"
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Delete segment</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+});
+
+// ============================================================================
+// Column Definitions
+// ============================================================================
 
 export function createColumns(options: {
   onPlay: (segmentId: string) => void;
@@ -46,25 +258,9 @@ export function createColumns(options: {
     // Checkbox column
     {
       id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-          className="translate-y-[2px]"
-        />
-      ),
+      header: ({ table }) => <SelectAllCheckbox table={table} />,
       cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label="Select row"
-          className="translate-y-[2px]"
-        />
+        <SelectCell row={row} isSelected={row.getIsSelected()} />
       ),
       enableSorting: false,
       enableHiding: false,
@@ -76,11 +272,7 @@ export function createColumns(options: {
       id: "index",
       accessorFn: (row) => row.index,
       header: () => <span className="block text-center">#</span>,
-      cell: ({ row }) => (
-        <span className="block text-center font-mono text-muted-foreground text-xs">
-          {String(row.original.index + 1).padStart(3, "0")}
-        </span>
-      ),
+      cell: ({ row }) => <IndexCell index={row.original.index} />,
       size: 50,
     },
 
@@ -89,17 +281,7 @@ export function createColumns(options: {
       id: "play",
       header: "",
       cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={(e) => {
-            e.stopPropagation();
-            options.onPlay(row.original.id);
-          }}
-        >
-          <Play className="h-3.5 w-3.5" />
-        </Button>
+        <PlayCell segmentId={row.original.id} onPlay={options.onPlay} />
       ),
       enableSorting: false,
       size: 40,
@@ -115,7 +297,6 @@ export function createColumns(options: {
           No transcription
         </span>
       ),
-      // No size - will expand to fill available space
     },
 
     // Start time column
@@ -159,28 +340,9 @@ export function createColumns(options: {
           <SortIcon isSorted={column.getIsSorted()} />
         </Button>
       ),
-      cell: ({ row }) => {
-        const duration = getSegmentDuration(row.original);
-        const variant =
-          duration > ALERT_THRESHOLDS.TOO_LONG
-            ? "warning"
-            : duration < ALERT_THRESHOLDS.TOO_SHORT
-              ? "danger"
-              : "normal";
-
-        return (
-          <span
-            className={cn(
-              "inline-flex rounded px-2 py-0.5 font-mono text-xs",
-              variant === "normal" && "bg-muted text-muted-foreground",
-              variant === "warning" && "bg-amber-500/20 text-amber-500",
-              variant === "danger" && "bg-red-500/20 text-red-500",
-            )}
-          >
-            {formatDuration(duration)}
-          </span>
-        );
-      },
+      cell: ({ row }) => (
+        <DurationCell duration={getSegmentDuration(row.original)} />
+      ),
       size: 90,
     },
 
@@ -199,22 +361,9 @@ export function createColumns(options: {
           <SortIcon isSorted={column.getIsSorted()} />
         </Button>
       ),
-      cell: ({ row }) => {
-        const isReviewed = row.original.isReviewed ?? false;
-        return (
-          <div className="flex items-center gap-1.5">
-            <div
-              className={cn(
-                "h-2 w-2 rounded-full",
-                isReviewed ? "bg-green-500" : "bg-muted-foreground/30",
-              )}
-            />
-            <span className="text-muted-foreground text-xs">
-              {isReviewed ? "Yes" : "No"}
-            </span>
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <ReviewedCell isReviewed={row.original.isReviewed ?? false} />
+      ),
       size: 90,
     },
 
@@ -222,45 +371,13 @@ export function createColumns(options: {
     {
       id: "actions",
       header: "",
-      cell: ({ row }) => {
-        return (
-          <div className="flex gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    options.onChangeSpeaker(row.original.id);
-                  }}
-                >
-                  <User className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Change speaker</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 hover:bg-red-500/20 hover:text-red-500"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    options.onDelete(row.original.id);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Delete segment</TooltipContent>
-            </Tooltip>
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <ActionsCell
+          segmentId={row.original.id}
+          onChangeSpeaker={options.onChangeSpeaker}
+          onDelete={options.onDelete}
+        />
+      ),
       size: 80,
       enableSorting: false,
       enableHiding: false,

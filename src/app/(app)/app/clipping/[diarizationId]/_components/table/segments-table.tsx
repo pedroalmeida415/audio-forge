@@ -4,17 +4,59 @@ import {
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
+  type Row,
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlaybackContext } from "../../_context/playback.context";
 import { useClippingWorkspaceStore } from "../../_context/store.context";
 import { filterSegments, getUniqueSpeakers } from "../../_utils/segment-utils";
 import { createColumns, type TableSegment } from "./columns";
 
+// Memoized table row component to prevent unnecessary re-renders
+interface TableRowProps {
+  row: Row<TableSegment>;
+  isSelected: boolean;
+  onRowClick: (rowId: string) => void;
+}
+
+const TableRow = memo(function TableRow({
+  row,
+  isSelected,
+  onRowClick,
+}: TableRowProps) {
+  return (
+    <tr
+      className={cn(
+        "group/row cursor-pointer border-border/50 border-b transition-colors",
+        isSelected && "bg-primary/5",
+        !isSelected && "hover:bg-muted/50",
+      )}
+      onClick={() => onRowClick(row.id)}
+    >
+      {row.getVisibleCells().map((cell) => (
+        <td
+          key={cell.id}
+          className={cn("px-3 py-2", cell.column.id === "transcription" && "w-full")}
+          style={
+            cell.column.id !== "transcription"
+              ? { width: cell.column.getSize() }
+              : undefined
+          }
+        >
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </td>
+      ))}
+    </tr>
+  );
+});
+
 export function SegmentsTable() {
+  // Get store API for direct state access (avoids stale closures)
+  const store = useClippingWorkspaceStore();
+
   const segmentsById = useClippingWorkspaceStore((s) => s.segmentsById);
   const selectedSpeaker = useClippingWorkspaceStore((s) => s.selectedSpeaker);
   const selectedSegmentIds = useClippingWorkspaceStore(
@@ -28,7 +70,15 @@ export function SegmentsTable() {
   const archiveSegment = useClippingWorkspaceStore((s) => s.archiveSegment);
   const selectSegment = useClippingWorkspaceStore((s) => s.selectSegment);
 
-  const { handleSegmentPlay } = usePlaybackContext();
+  const playbackContext = usePlaybackContext();
+
+  // Stable callback reference for handleSegmentPlay
+  const handleSegmentPlay = useCallback(
+    (segmentId: string) => {
+      playbackContext.handleSegmentPlay(segmentId);
+    },
+    [playbackContext],
+  );
 
   // TanStack Table sorting state
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -54,6 +104,12 @@ export function SegmentsTable() {
     return getUniqueSpeakers(segments);
   }, [segmentsById]);
 
+  // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
+  const speakerIndexMap = useMemo(
+    () => new Map(speakerOrder.map((speaker, idx) => [speaker, idx])),
+    [speakerOrder],
+  );
+
   // Prepare table data
   const tableData = useMemo(() => {
     const allSegments = Object.values(segmentsById);
@@ -63,23 +119,26 @@ export function SegmentsTable() {
     const withMetadata: TableSegment[] = sortedByTime.map((segment, idx) => ({
       ...segment,
       index: idx,
-      colorIndex: speakerOrder.indexOf(segment.speaker),
+      colorIndex: speakerIndexMap.get(segment.speaker) ?? -1,
     }));
 
     return withMetadata;
-  }, [segmentsById, filters, selectedSpeaker, speakerOrder]);
+  }, [segmentsById, filters, selectedSpeaker, speakerIndexMap]);
 
-  // Column definitions
+  // Stable callback for changing speaker
+  const handleChangeSpeaker = useCallback((segmentId: string) => {
+    console.log("Change speaker for:", segmentId);
+  }, []);
+
+  // Column definitions - all callbacks are stable references
   const columns = useMemo(
     () =>
       createColumns({
         onPlay: handleSegmentPlay,
-        onChangeSpeaker: (segmentId) => {
-          console.log("Change speaker for:", segmentId);
-        },
+        onChangeSpeaker: handleChangeSpeaker,
         onDelete: archiveSegment,
       }),
-    [handleSegmentPlay, archiveSegment],
+    [handleSegmentPlay, handleChangeSpeaker, archiveSegment],
   );
 
   // Memoize row selection state
@@ -91,20 +150,30 @@ export function SegmentsTable() {
     [selectedSegmentIds],
   );
 
-  // Handle row selection change
+  // Handle row selection change - uses store.getState() to avoid rowSelection dependency
   const handleRowSelectionChange = useCallback(
     (
       updater:
         | ((old: Record<string, boolean>) => Record<string, boolean>)
         | Record<string, boolean>,
     ) => {
-      const newSelection =
-        typeof updater === "function" ? updater(rowSelection) : updater;
-      setSelectedSegmentIds(
-        new Set(Object.keys(newSelection).filter((k) => newSelection[k])),
-      );
+      if (typeof updater === "function") {
+        // Get current selection directly from store to avoid stale closure
+        const currentIds = store.getState().selectedSegmentIds;
+        const currentRowSelection = Object.fromEntries(
+          Array.from(currentIds).map((id) => [id, true]),
+        );
+        const newSelection = updater(currentRowSelection);
+        setSelectedSegmentIds(
+          new Set(Object.keys(newSelection).filter((k) => newSelection[k])),
+        );
+      } else {
+        setSelectedSegmentIds(
+          new Set(Object.keys(updater).filter((k) => updater[k])),
+        );
+      }
     },
-    [rowSelection, setSelectedSegmentIds],
+    [store, setSelectedSegmentIds],
   );
 
   // Create table instance
@@ -157,35 +226,12 @@ export function SegmentsTable() {
           <tbody>
             {table.getRowModel().rows.length > 0 ? (
               table.getRowModel().rows.map((row) => (
-                <tr
+                <TableRow
                   key={row.id}
-                  className={cn(
-                    "group/row cursor-pointer border-b border-border/50 transition-colors",
-                    row.getIsSelected() && "bg-primary/5",
-                    !row.getIsSelected() && "hover:bg-muted/50",
-                  )}
-                  onClick={() => selectSegment(row.id)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className={cn(
-                        "px-3 py-2",
-                        cell.column.id === "transcription" && "w-full",
-                      )}
-                      style={
-                        cell.column.id !== "transcription"
-                          ? { width: cell.column.getSize() }
-                          : undefined
-                      }
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                  row={row}
+                  isSelected={row.getIsSelected()}
+                  onRowClick={selectSegment}
+                />
               ))
             ) : (
               <tr>
