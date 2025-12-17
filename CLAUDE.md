@@ -57,6 +57,8 @@ src/
 
 ### Key Patterns
 
+**React Compiler**: The project uses the experimental React Compiler (`babel-plugin-react-compiler`). Do NOT use `useCallback`, `useMemo`, or `memo()` — the compiler handles memoization automatically (unless necessary in manual memoizations for dependecies of `useEffect`).
+
 **tRPC Procedures**: Use `publicProcedure` or `protectedProcedure` from `~/server/api/trpc`. Context includes `db` and `session`.
 
 **Effect Services**: Services use Effect.js Context.Tag pattern. Combine with `ServicesLive` layer from `~/services`.
