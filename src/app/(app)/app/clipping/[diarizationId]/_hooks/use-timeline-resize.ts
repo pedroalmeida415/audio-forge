@@ -1,22 +1,24 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useClippingWorkspaceStore } from "../_context/store.context";
+import { useClippingStore } from "../_context/store.context";
 
 /**
  * Hook that manages timeline container ref and updates containerWidth in store.
  * Uses ResizeObserver to track container size changes.
  *
- * Must be rendered within ClippingWorkspaceStoreProvider.
+ * Must be rendered within ClippingStoreProvider.
  */
 export function useTimelineResize() {
-  const store = useClippingWorkspaceStore();
+  const store = useClippingStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
-        store.getState().timeline.setContainerWidth(containerRef.current.offsetWidth);
+        store
+          .getState()
+          .timeline.setContainerWidth(containerRef.current.offsetWidth);
       }
     };
 

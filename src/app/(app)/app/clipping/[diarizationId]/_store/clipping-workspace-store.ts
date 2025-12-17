@@ -11,7 +11,7 @@ import {
   TIMELINE_CONSTANTS,
 } from "./slices";
 import type {
-  ClippingWorkspaceStore,
+  ClippingStore,
   DiarizationData,
   DiarizationSegment,
   SegmentWithId,
@@ -43,12 +43,12 @@ function createSegmentsWithIds(
 // Store Factory
 // ============================================================================
 
-export interface ClippingWorkspaceStoreInitialData {
+export interface ClippingStoreInitialData {
   diarization: DiarizationData;
 }
 
-export function createClippingWorkspaceStore(
-  initialData: ClippingWorkspaceStoreInitialData,
+export function createClippingStore(
+  initialData: ClippingStoreInitialData,
   trpcUtils: ReturnType<typeof api.useUtils>,
 ) {
   const { diarization } = initialData;
@@ -64,7 +64,7 @@ export function createClippingWorkspaceStore(
     speakerCollections,
   };
 
-  const store = createStore<ClippingWorkspaceStore>()(
+  const store = createStore<ClippingStore>()(
     subscribeWithSelector(
       immer((...args) => ({
         playback: createPlaybackSlice(...args),
@@ -104,7 +104,10 @@ export function createClippingWorkspaceStore(
       if (context?.previousMapping) {
         store
           .getState()
-          .segments.setSpeakerCollection(newData.speaker, context.previousMapping);
+          .segments.setSpeakerCollection(
+            newData.speaker,
+            context.previousMapping,
+          );
       }
     },
     onSettled: (_, __, context, res) => {
@@ -118,9 +121,7 @@ export function createClippingWorkspaceStore(
   return store;
 }
 
-export type ClippingWorkspaceStoreApi = ReturnType<
-  typeof createClippingWorkspaceStore
->;
+export type ClippingStoreApi = ReturnType<typeof createClippingStore>;
 
 // ============================================================================
 // Re-exports
@@ -128,7 +129,7 @@ export type ClippingWorkspaceStoreApi = ReturnType<
 
 export { TIMELINE_CONSTANTS };
 export type {
-  ClippingWorkspaceStore,
+  ClippingStore,
   DiarizationData,
   DiarizationSegment,
   FilterConfig,

@@ -131,7 +131,7 @@ export interface SegmentsSlice {
 // Combined Store
 // ============================================================================
 
-export interface ClippingWorkspaceStore {
+export interface ClippingStore {
   playback: PlaybackSlice;
   timeline: TimelineSlice;
   ui: UISlice;
@@ -143,7 +143,7 @@ export interface ClippingWorkspaceStore {
 // ============================================================================
 
 export type SliceCreator<T> = StateCreator<
-  ClippingWorkspaceStore,
+  ClippingStore,
   [["zustand/immer", never]],
   [],
   T

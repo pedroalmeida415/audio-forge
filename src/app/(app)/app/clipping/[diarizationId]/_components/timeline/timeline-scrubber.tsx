@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
@@ -10,13 +10,11 @@ interface TimelineScrubberProps {
   onDrag: (clientX: number, rect: DOMRect) => void;
 }
 
-export function TimelineScrubber({
-  onDrag,
-}: TimelineScrubberProps) {
-  const store = useClippingWorkspaceStore();
+export function TimelineScrubber({ onDrag }: TimelineScrubberProps) {
+  const store = useClippingStore();
   // Subscribe to zoom/container changes via React (infrequent updates)
-  const zoomLevel = useClippingWorkspaceStore((s) => s.timeline.zoomLevel);
-  const containerWidth = useClippingWorkspaceStore((s) => s.timeline.containerWidth);
+  const zoomLevel = useClippingStore((s) => s.timeline.zoomLevel);
+  const containerWidth = useClippingStore((s) => s.timeline.containerWidth);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
 

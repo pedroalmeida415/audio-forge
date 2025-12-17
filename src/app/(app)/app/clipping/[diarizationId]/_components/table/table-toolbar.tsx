@@ -12,7 +12,7 @@ import {
 } from "~/components/ui/select";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 import type { SegmentAlertType } from "../../_store/clipping-workspace-store";
 import { getFilterCounts, getUniqueSpeakers } from "../../_utils/segment-utils";
 
@@ -32,18 +32,21 @@ const QUICK_FILTERS: QuickFilter[] = [
 ];
 
 export function TableToolbar() {
-  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
-  const filters = useClippingWorkspaceStore((s) => s.ui.filters);
-  const selectSpeaker = useClippingWorkspaceStore((s) => s.segments.selectSpeaker);
-  const setFilters = useClippingWorkspaceStore((s) => s.ui.setFilters);
-  const clearFilters = useClippingWorkspaceStore((s) => s.ui.clearFilters);
+  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
+  const filters = useClippingStore((s) => s.ui.filters);
+  const selectSpeaker = useClippingStore((s) => s.segments.selectSpeaker);
+  const setFilters = useClippingStore((s) => s.ui.setFilters);
+  const clearFilters = useClippingStore((s) => s.ui.clearFilters);
 
   // Get unique speakers
   const speakers = getUniqueSpeakers(Object.values(segmentsById));
 
   // Get filter counts
-  const filterCounts = getFilterCounts(Object.values(segmentsById), selectedSpeaker);
+  const filterCounts = getFilterCounts(
+    Object.values(segmentsById),
+    selectedSpeaker,
+  );
 
   // Check if any filters are active
   const hasActiveFilters =

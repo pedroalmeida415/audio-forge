@@ -67,7 +67,7 @@ src/
 
 **Path Alias**: Use `~/` to import from `src/` directory.
 
-**Clipping Workspace State**: Complex audio editing state managed via Zustand store factory (`createClippingWorkspaceStore`) with React Context for scoped instances.
+**Clipping Workspace State**: Complex audio editing state managed via Zustand store factory (`createClippingStore`) with React Context for scoped instances.
 
 ### Domain Model
 - **Project** → has many **Collections** → has many **Clips**

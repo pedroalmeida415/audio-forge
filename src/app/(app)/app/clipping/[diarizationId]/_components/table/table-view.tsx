@@ -1,11 +1,11 @@
 "use client";
 
 import { Users } from "lucide-react";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 import { SegmentsTable } from "./segments-table";
 
 export function TableView() {
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
+  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

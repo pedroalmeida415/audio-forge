@@ -18,7 +18,7 @@ import {
 } from "~/components/ui/popover";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 
 interface CollectionComboboxProps {
   speaker: string;
@@ -35,10 +35,10 @@ export function CollectionCombobox({
 }: CollectionComboboxProps) {
   const [open, setOpen] = useState(false);
 
-  const speakerCollections = useClippingWorkspaceStore(
+  const speakerCollections = useClippingStore(
     (s) => s.segments.speakerCollections,
   );
-  const updateSpeakerCollection = useClippingWorkspaceStore(
+  const updateSpeakerCollection = useClippingStore(
     (s) => s.segments.setSpeakerCollection,
   );
 

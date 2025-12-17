@@ -1,8 +1,8 @@
 "use client";
 
 import { useShallow } from "zustand/shallow";
-import { usePlaybackContext } from "../../_context/playback.context";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { usePlayback } from "../../_context/playback.context";
+import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 import { TimelineProgressBar } from "./timeline-progress-bar";
@@ -39,7 +39,7 @@ export function TimelineContainer() {
     handleScrubberDrag,
     handleTimelineClick,
     scrollContainerRef,
-  } = usePlaybackContext();
+  } = usePlayback();
   const {
     duration,
     zoomLevel,
@@ -48,7 +48,7 @@ export function TimelineContainer() {
     selectedSegmentId,
     selectedSpeaker,
     speakerCollections,
-  } = useClippingWorkspaceStore(
+  } = useClippingStore(
     useShallow((s) => ({
       duration: s.playback.duration,
       zoomLevel: s.timeline.zoomLevel,

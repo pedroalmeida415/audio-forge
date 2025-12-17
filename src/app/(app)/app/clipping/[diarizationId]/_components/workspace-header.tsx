@@ -12,7 +12,7 @@ import {
 } from "~/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { getSpeakerColor } from "~/lib/speaker-colors";
-import { useClippingWorkspaceStore } from "../_context/store.context";
+import { useClippingStore } from "../_context/store.context";
 import type { ViewMode } from "../_store/clipping-workspace-store";
 import {
   getSpeakerDisplayName,
@@ -24,12 +24,12 @@ interface WorkspaceHeaderProps {
 }
 
 export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
-  const viewMode = useClippingWorkspaceStore((s) => s.ui.viewMode);
-  const setViewMode = useClippingWorkspaceStore((s) => s.ui.setViewMode);
-  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
-  const selectSpeaker = useClippingWorkspaceStore((s) => s.segments.selectSpeaker);
-  const speakerCollections = useClippingWorkspaceStore(
+  const viewMode = useClippingStore((s) => s.ui.viewMode);
+  const setViewMode = useClippingStore((s) => s.ui.setViewMode);
+  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
+  const selectSpeaker = useClippingStore((s) => s.segments.selectSpeaker);
+  const speakerCollections = useClippingStore(
     (s) => s.segments.speakerCollections,
   );
 

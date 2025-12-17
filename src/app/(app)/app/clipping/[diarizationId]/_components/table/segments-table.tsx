@@ -10,8 +10,8 @@ import {
 } from "@tanstack/react-table";
 import { useEffect, useState } from "react";
 import { cn } from "~/lib/utils";
-import { usePlaybackContext } from "../../_context/playback.context";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { usePlayback } from "../../_context/playback.context";
+import { useClippingStore } from "../../_context/store.context";
 import { filterSegments, getUniqueSpeakers } from "../../_utils/segment-utils";
 import { createColumns, type TableSegment } from "./columns";
 
@@ -21,11 +21,7 @@ interface TableRowProps {
   onRowClick: (rowId: string) => void;
 }
 
-function TableRow({
-  row,
-  isSelected,
-  onRowClick,
-}: TableRowProps) {
+function TableRow({ row, isSelected, onRowClick }: TableRowProps) {
   return (
     <tr
       className={cn(
@@ -38,7 +34,10 @@ function TableRow({
       {row.getVisibleCells().map((cell) => (
         <td
           key={cell.id}
-          className={cn("px-3 py-2", cell.column.id === "transcription" && "w-full")}
+          className={cn(
+            "px-3 py-2",
+            cell.column.id === "transcription" && "w-full",
+          )}
           style={
             cell.column.id !== "transcription"
               ? { width: cell.column.getSize() }
@@ -54,22 +53,22 @@ function TableRow({
 
 export function SegmentsTable() {
   // Get store API for direct state access (avoids stale closures)
-  const store = useClippingWorkspaceStore();
+  const store = useClippingStore();
 
-  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
-  const selectedSegmentIds = useClippingWorkspaceStore(
+  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
+  const selectedSegmentIds = useClippingStore(
     (s) => s.segments.selectedSegmentIds,
   );
-  const filters = useClippingWorkspaceStore((s) => s.ui.filters);
-  const setSortBy = useClippingWorkspaceStore((s) => s.ui.setSortBy);
-  const setSelectedSegmentIds = useClippingWorkspaceStore(
+  const filters = useClippingStore((s) => s.ui.filters);
+  const setSortBy = useClippingStore((s) => s.ui.setSortBy);
+  const setSelectedSegmentIds = useClippingStore(
     (s) => s.segments.setSelectedSegmentIds,
   );
-  const archiveSegment = useClippingWorkspaceStore((s) => s.segments.archiveSegment);
-  const selectSegment = useClippingWorkspaceStore((s) => s.segments.selectSegment);
+  const archiveSegment = useClippingStore((s) => s.segments.archiveSegment);
+  const selectSegment = useClippingStore((s) => s.segments.selectSegment);
 
-  const playbackContext = usePlaybackContext();
+  const playbackContext = usePlayback();
 
   // TanStack Table sorting state
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -93,7 +92,9 @@ export function SegmentsTable() {
   const speakerOrder = getUniqueSpeakers(Object.values(segmentsById));
 
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
-  const speakerIndexMap = new Map(speakerOrder.map((speaker, idx) => [speaker, idx]));
+  const speakerIndexMap = new Map(
+    speakerOrder.map((speaker, idx) => [speaker, idx]),
+  );
 
   // Prepare table data
   const allSegments = Object.values(segmentsById);
@@ -194,14 +195,16 @@ export function SegmentsTable() {
           </thead>
           <tbody>
             {table.getRowModel().rows.length > 0 ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  row={row}
-                  isSelected={row.getIsSelected()}
-                  onRowClick={selectSegment}
-                />
-              ))
+              table
+                .getRowModel()
+                .rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    row={row}
+                    isSelected={row.getIsSelected()}
+                    onRowClick={selectSegment}
+                  />
+                ))
             ) : (
               <tr>
                 <td

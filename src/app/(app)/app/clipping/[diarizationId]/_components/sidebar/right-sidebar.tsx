@@ -3,16 +3,16 @@
 import { Users } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 import { BulkActions } from "./bulk-actions";
 import { CollectionCombobox } from "./collection-combobox";
 import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
 
 export function RightSidebar() {
-  const diarizationId = useClippingWorkspaceStore((s) => s.segments.diarizationId);
-  const projectId = useClippingWorkspaceStore((s) => s.segments.projectId);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
+  const diarizationId = useClippingStore((s) => s.segments.diarizationId);
+  const projectId = useClippingStore((s) => s.segments.projectId);
+  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

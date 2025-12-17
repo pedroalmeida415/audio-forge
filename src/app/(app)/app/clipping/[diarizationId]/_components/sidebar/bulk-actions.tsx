@@ -2,14 +2,14 @@
 
 import { Check, Trash2, User } from "lucide-react";
 import { Button } from "~/components/ui/button";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 
 export function BulkActions() {
-  const selectedSegmentIds = useClippingWorkspaceStore(
+  const selectedSegmentIds = useClippingStore(
     (s) => s.segments.selectedSegmentIds,
   );
-  const markAsReviewed = useClippingWorkspaceStore((s) => s.segments.markAsReviewed);
-  const archiveSelectedSegments = useClippingWorkspaceStore(
+  const markAsReviewed = useClippingStore((s) => s.segments.markAsReviewed);
+  const archiveSelectedSegments = useClippingStore(
     (s) => s.segments.archiveSelectedSegments,
   );
 

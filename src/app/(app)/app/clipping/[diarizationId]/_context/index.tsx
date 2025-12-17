@@ -1,6 +1,6 @@
 import type { DiarizationData } from "../_store/clipping-workspace-store";
 import { PlaybackProvider } from "./playback.context";
-import { ClippingWorkspaceStoreProvider } from "./store.context";
+import { ClippingStoreProvider } from "./store.context";
 
 export interface ClippingWorkspaceInitialData {
   diarization: DiarizationData;
@@ -17,10 +17,10 @@ export default function ClippingWorkspaceProviders({
   const { audioDataBuffer, diarization } = initialData;
 
   return (
-    <ClippingWorkspaceStoreProvider initialData={{ diarization }}>
+    <ClippingStoreProvider initialData={{ diarization }}>
       <PlaybackProvider initialData={{ audioDataBuffer }}>
         {children}
       </PlaybackProvider>
-    </ClippingWorkspaceStoreProvider>
+    </ClippingStoreProvider>
   );
 }

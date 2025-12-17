@@ -1,16 +1,19 @@
 "use client";
 
 import { formatDuration } from "~/lib/time-utils";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 import { getSelectedSegmentsData } from "../../_utils/segment-utils";
 
 export function SelectionSummary() {
-  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
-  const selectedSegmentIds = useClippingWorkspaceStore(
+  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
+  const selectedSegmentIds = useClippingStore(
     (s) => s.segments.selectedSegmentIds,
   );
 
-  const selectionData = getSelectedSegmentsData(segmentsById, selectedSegmentIds);
+  const selectionData = getSelectedSegmentsData(
+    segmentsById,
+    selectedSegmentIds,
+  );
 
   if (selectedSegmentIds.size === 0) {
     return null;

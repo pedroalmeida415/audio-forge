@@ -4,43 +4,41 @@ import { createContext, type ReactNode, use, useState } from "react";
 import { useStore } from "zustand";
 import { api } from "~/trpc/react";
 import {
-  type ClippingWorkspaceStore,
-  type ClippingWorkspaceStoreApi,
-  type ClippingWorkspaceStoreInitialData,
-  createClippingWorkspaceStore,
+  type ClippingStore,
+  type ClippingStoreApi,
+  type ClippingStoreInitialData,
+  createClippingStore,
 } from "../_store/clipping-workspace-store";
 
 // ============================================================================
 // Context
 // ============================================================================
 
-const ClippingWorkspaceStoreContext = createContext<
-  ClippingWorkspaceStoreApi | undefined
->(undefined);
+const ClippingStoreContext = createContext<ClippingStoreApi | undefined>(
+  undefined,
+);
 
 // ============================================================================
 // Provider
 // ============================================================================
 
-interface ClippingWorkspaceStoreProviderProps {
+interface ClippingStoreProviderProps {
   children: ReactNode;
-  initialData: ClippingWorkspaceStoreInitialData;
+  initialData: ClippingStoreInitialData;
 }
 
-export function ClippingWorkspaceStoreProvider({
+export function ClippingStoreProvider({
   children,
   initialData,
-}: ClippingWorkspaceStoreProviderProps) {
+}: ClippingStoreProviderProps) {
   const trpcUtils = api.useUtils();
 
-  const [store] = useState(() =>
-    createClippingWorkspaceStore(initialData, trpcUtils),
-  );
+  const [store] = useState(() => createClippingStore(initialData, trpcUtils));
 
   return (
-    <ClippingWorkspaceStoreContext.Provider value={store}>
+    <ClippingStoreContext.Provider value={store}>
       {children}
-    </ClippingWorkspaceStoreContext.Provider>
+    </ClippingStoreContext.Provider>
   );
 }
 
@@ -56,25 +54,21 @@ export function ClippingWorkspaceStoreProvider({
  *
  * @example
  * // With selector - returns selected state, triggers re-render on change
- * const isPlaying = useClippingWorkspaceStore((s) => s.isPlaying);
+ * const isPlaying = useClippingStore((s) => s.isPlaying);
  *
  * @example
  * // Without selector - returns store API for direct access/subscribe
- * const store = useClippingWorkspaceStore();
+ * const store = useClippingStore();
  * store.subscribe((state) => state.currentTime, (time) => { ... });
  */
-export function useClippingWorkspaceStore<T>(
-  selector: (store: ClippingWorkspaceStore) => T,
-): T;
-export function useClippingWorkspaceStore(): ClippingWorkspaceStoreApi;
-export function useClippingWorkspaceStore<T>(
-  selector?: (store: ClippingWorkspaceStore) => T,
-) {
-  const store = use(ClippingWorkspaceStoreContext);
+export function useClippingStore<T>(selector: (store: ClippingStore) => T): T;
+export function useClippingStore(): ClippingStoreApi;
+export function useClippingStore<T>(selector?: (store: ClippingStore) => T) {
+  const store = use(ClippingStoreContext);
 
   if (!store) {
     throw new Error(
-      "useClippingWorkspaceStore must be used within ClippingWorkspaceStoreProvider",
+      "useClippingStore must be used within ClippingStoreProvider",
     );
   }
 

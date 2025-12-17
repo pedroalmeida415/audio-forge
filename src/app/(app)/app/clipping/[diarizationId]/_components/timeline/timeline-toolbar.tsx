@@ -20,8 +20,8 @@ import {
 } from "~/components/ui/select";
 import { Slider } from "~/components/ui/slider";
 import { formatTimestamp } from "~/lib/time-utils";
-import { usePlaybackContext } from "../../_context/playback.context";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { usePlayback } from "../../_context/playback.context";
+import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
@@ -37,8 +37,8 @@ const PLAYBACK_RATES = [
 
 // Separate component for time display that updates via subscription
 function TimeDisplay() {
-  const store = useClippingWorkspaceStore();
-  const duration = useClippingWorkspaceStore((s) => s.playback.duration);
+  const store = useClippingStore();
+  const duration = useClippingStore((s) => s.playback.duration);
   const timeRef = useRef<HTMLSpanElement>(null);
   const lastFlooredTimeRef = useRef(-1);
 
@@ -69,7 +69,9 @@ function TimeDisplay() {
 
   return (
     <div className="font-mono text-muted-foreground text-sm">
-      <span ref={timeRef}>{formatTimestamp(store.getState().playback.currentTime)}</span>{" "}
+      <span ref={timeRef}>
+        {formatTimestamp(store.getState().playback.currentTime)}
+      </span>{" "}
       / {formatTimestamp(duration)}
     </div>
   );
@@ -84,7 +86,7 @@ export function TimelineToolbar() {
     zoomIn,
     zoomOut,
     setZoomLevel,
-  } = useClippingWorkspaceStore(
+  } = useClippingStore(
     useShallow((s) => ({
       isPlaying: s.playback.isPlaying,
       isLoading: s.playback.isLoading,
@@ -97,7 +99,7 @@ export function TimelineToolbar() {
   );
 
   const { handleNavigateSegment, togglePlayback, setPlaybackRate } =
-    usePlaybackContext();
+    usePlayback();
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">

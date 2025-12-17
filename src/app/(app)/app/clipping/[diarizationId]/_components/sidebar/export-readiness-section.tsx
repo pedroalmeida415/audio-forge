@@ -1,12 +1,12 @@
 "use client";
 
 import { cn } from "~/lib/utils";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { useClippingStore } from "../../_context/store.context";
 import { calculateStats } from "../../_utils/segment-utils";
 
 export function ExportReadinessSection() {
-  const segmentsById = useClippingWorkspaceStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingWorkspaceStore((s) => s.segments.selectedSpeaker);
+  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
+  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
 
   let segments = Object.values(segmentsById);
   if (selectedSpeaker) {

@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
-import { usePlaybackContext } from "../../_context/playback.context";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { usePlayback } from "../../_context/playback.context";
+import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
 import {
   downsamplePeaks,
@@ -15,11 +15,11 @@ import {
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export function TimelineWaveform() {
-  const store = useClippingWorkspaceStore();
-  const { audioDataBufferRef } = usePlaybackContext();
-  const duration = useClippingWorkspaceStore((s) => s.playback.duration);
-  const zoomLevel = useClippingWorkspaceStore((s) => s.timeline.zoomLevel);
-  const containerWidth = useClippingWorkspaceStore((s) => s.timeline.containerWidth);
+  const store = useClippingStore();
+  const { audioDataBufferRef } = usePlayback();
+  const duration = useClippingStore((s) => s.playback.duration);
+  const zoomLevel = useClippingStore((s) => s.timeline.zoomLevel);
+  const containerWidth = useClippingStore((s) => s.timeline.containerWidth);
 
   const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
   const [isLoading, setIsLoading] = useState(false);

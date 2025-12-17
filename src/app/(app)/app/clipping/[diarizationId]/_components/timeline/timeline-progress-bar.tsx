@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePlaybackContext } from "../../_context/playback.context";
-import { useClippingWorkspaceStore } from "../../_context/store.context";
+import { usePlayback } from "../../_context/playback.context";
+import { useClippingStore } from "../../_context/store.context";
 
 export function TimelineProgressBar() {
-  const { seek } = usePlaybackContext();
-  const duration = useClippingWorkspaceStore((s) => s.playback.duration);
-  const store = useClippingWorkspaceStore();
+  const { seek } = usePlayback();
+  const duration = useClippingStore((s) => s.playback.duration);
+  const store = useClippingStore();
 
   const progressRef = useRef<HTMLDivElement>(null);
   const filledRef = useRef<HTMLDivElement>(null);
