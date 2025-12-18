@@ -184,7 +184,7 @@ export function TimelineSegmentsBar({
               className={cn(
                 "absolute top-0 left-0 h-full w-2 cursor-ew-resize",
                 "opacity-0 transition-opacity group-hover:opacity-100",
-                isDragging && dragState.field === "start" && "opacity-100",
+                isDragging && dragState?.field === "start" && "opacity-100",
               )}
               onMouseDown={(e) =>
                 handleDragStartWithListeners(
@@ -218,7 +218,7 @@ export function TimelineSegmentsBar({
               className={cn(
                 "absolute top-0 right-0 h-full w-2 cursor-ew-resize",
                 "opacity-0 transition-opacity group-hover:opacity-100",
-                isDragging && dragState.field === "end" && "opacity-100",
+                isDragging && dragState?.field === "end" && "opacity-100",
               )}
               onMouseDown={(e) =>
                 handleDragStartWithListeners(e, segment.id, "end", segment.end)
