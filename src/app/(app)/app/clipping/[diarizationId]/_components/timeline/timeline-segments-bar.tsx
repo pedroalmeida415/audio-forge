@@ -15,13 +15,16 @@ interface Segment {
 
 interface TimelineSegmentsBarProps {
   segments: Segment[];
-  selectedSegmentId: string | null;
+  activeSegmentId: string | null;
   selectedSpeaker: string | null;
   speakerCollections: SpeakerCollections;
   timeToPixels: (time: number) => number;
   pixelsToTime: (pixels: number) => number;
   onSegmentClick: (segmentId: string) => void;
-  onUpdateSegmentTime: (
+  // Called during drag for optimistic UI update (updates local store)
+  onDragUpdate: (segmentId: string, start: number, end: number) => void;
+  // Called on drag end to persist changes (triggers mutation)
+  onCommitUpdate: (
     segmentId: string,
     field: "start" | "end",
     newTime: number,
@@ -34,13 +37,14 @@ const MIN_SEGMENT_DURATION = 0.1;
 
 export function TimelineSegmentsBar({
   segments,
-  selectedSegmentId,
+  activeSegmentId,
   selectedSpeaker,
   speakerCollections,
   timeToPixels,
   pixelsToTime,
   onSegmentClick,
-  onUpdateSegmentTime,
+  onDragUpdate,
+  onCommitUpdate,
   getSpeakerColorIndex,
 }: TimelineSegmentsBarProps) {
   // Track active drag state
@@ -49,12 +53,31 @@ export function TimelineSegmentsBar({
     field: "start" | "end";
     initialTime: number;
     initialMouseX: number;
+    currentTime: number; // Track current value for commit
   } | null>(null);
 
   // Ref to prevent click events from firing after drag
   const wasDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Use refs to store current drag state for event handlers (avoids stale closures)
+  const dragStateRef = useRef(dragState);
+  dragStateRef.current = dragState;
+
+  // Use refs for callbacks to avoid recreating handlers
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+
+  const pixelsToTimeRef = useRef(pixelsToTime);
+  pixelsToTimeRef.current = pixelsToTime;
+
+  const onDragUpdateRef = useRef(onDragUpdate);
+  onDragUpdateRef.current = onDragUpdate;
+
+  const onCommitUpdateRef = useRef(onCommitUpdate);
+  onCommitUpdateRef.current = onCommitUpdate;
+
+  // Start drag - initializes state and attaches event listeners
   const handleDragStart = useCallback(
     (
       e: React.MouseEvent,
@@ -64,77 +87,76 @@ export function TimelineSegmentsBar({
     ) => {
       e.stopPropagation();
       e.preventDefault();
-      setDragState({
+
+      const newDragState = {
         segmentId,
         field,
         initialTime,
         initialMouseX: e.clientX,
-      });
-    },
-    [],
-  );
+        currentTime: initialTime,
+      };
+      setDragState(newDragState);
+      dragStateRef.current = newDragState;
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!dragState || !containerRef.current) return;
+      // Define handlers that use refs (not closures over state)
+      const moveHandler = (ev: MouseEvent) => {
+        const state = dragStateRef.current;
+        if (!state) return;
 
-      wasDragging.current = true;
-      const deltaX = e.clientX - dragState.initialMouseX;
-      const deltaTime = pixelsToTime(deltaX) - pixelsToTime(0);
-      let newTime = dragState.initialTime + deltaTime;
+        wasDragging.current = true;
+        const deltaX = ev.clientX - state.initialMouseX;
+        const deltaTime =
+          pixelsToTimeRef.current(deltaX) - pixelsToTimeRef.current(0);
+        let newTime = state.initialTime + deltaTime;
 
-      // Find the segment being dragged
-      const segment = segments.find((s) => s.id === dragState.segmentId);
-      if (!segment) return;
+        // Find the segment being dragged
+        const segment = segmentsRef.current.find((s) => s.id === state.segmentId);
+        if (!segment) return;
 
-      // Clamp to valid range
-      if (dragState.field === "start") {
-        // Start time: min 0, max end - MIN_SEGMENT_DURATION
-        newTime = Math.max(
-          0,
-          Math.min(newTime, segment.end - MIN_SEGMENT_DURATION),
-        );
-      } else {
-        // End time: min start + MIN_SEGMENT_DURATION
-        newTime = Math.max(segment.start + MIN_SEGMENT_DURATION, newTime);
-      }
+        // Clamp to valid range
+        let newStart = segment.start;
+        let newEnd = segment.end;
+        if (state.field === "start") {
+          newTime = Math.max(
+            0,
+            Math.min(newTime, segment.end - MIN_SEGMENT_DURATION),
+          );
+          newStart = newTime;
+        } else {
+          newTime = Math.max(segment.start + MIN_SEGMENT_DURATION, newTime);
+          newEnd = newTime;
+        }
 
-      onUpdateSegmentTime(dragState.segmentId, dragState.field, newTime);
-    },
-    [dragState, segments, pixelsToTime, onUpdateSegmentTime],
-  );
+        // Update local store for visual feedback (no mutation yet)
+        onDragUpdateRef.current(state.segmentId, newStart, newEnd);
 
-  const handleMouseUp = useCallback(() => {
-    if (dragState) {
-      setDragState(null);
-      // Reset wasDragging after a short delay to allow click prevention
-      setTimeout(() => {
-        wasDragging.current = false;
-      }, 10);
-    }
-  }, [dragState]);
+        // Track current time for commit
+        dragStateRef.current = { ...state, currentTime: newTime };
+      };
 
-  // Attach global mouse listeners when dragging
-  const handleDragStartWithListeners = useCallback(
-    (
-      e: React.MouseEvent,
-      segmentId: string,
-      field: "start" | "end",
-      initialTime: number,
-    ) => {
-      handleDragStart(e, segmentId, field, initialTime);
-
-      const moveHandler = (ev: MouseEvent) => handleMouseMove(ev);
       const upHandler = () => {
-        handleMouseUp();
+        const state = dragStateRef.current;
+        if (state && state.currentTime !== state.initialTime) {
+          // Only commit if value actually changed
+          onCommitUpdateRef.current(state.segmentId, state.field, state.currentTime);
+        }
+
+        setDragState(null);
+        dragStateRef.current = null;
+
         document.removeEventListener("mousemove", moveHandler);
         document.removeEventListener("mouseup", upHandler);
+
+        // Reset wasDragging after a short delay to allow click prevention
+        setTimeout(() => {
+          wasDragging.current = false;
+        }, 10);
       };
 
       document.addEventListener("mousemove", moveHandler);
       document.addEventListener("mouseup", upHandler);
     },
-    [handleDragStart, handleMouseMove, handleMouseUp],
+    [],
   );
 
   const handleSegmentClick = useCallback(
@@ -153,7 +175,7 @@ export function TimelineSegmentsBar({
         const color = getSpeakerColor(colorIndex);
         const left = timeToPixels(segment.start);
         const width = timeToPixels(segment.end) - left;
-        const isSelected = segment.id === selectedSegmentId;
+        const isActive = segment.id === activeSegmentId;
         const isDragging = dragState?.segmentId === segment.id;
         // Dim segments that don't belong to the selected speaker
         const isDimmed =
@@ -163,7 +185,7 @@ export function TimelineSegmentsBar({
           <button
             className={cn(
               "group absolute top-1 h-6 overflow-hidden rounded border text-left transition-all",
-              isSelected
+              isActive
                 ? "z-10 ring-2 ring-primary ring-offset-1 ring-offset-background"
                 : "hover:brightness-110",
               isDimmed && "opacity-25 grayscale",
@@ -187,12 +209,7 @@ export function TimelineSegmentsBar({
                 isDragging && dragState?.field === "start" && "opacity-100",
               )}
               onMouseDown={(e) =>
-                handleDragStartWithListeners(
-                  e,
-                  segment.id,
-                  "start",
-                  segment.start,
-                )
+                handleDragStart(e, segment.id, "start", segment.start)
               }
               style={{
                 backgroundColor: isDimmed
@@ -221,7 +238,7 @@ export function TimelineSegmentsBar({
                 isDragging && dragState?.field === "end" && "opacity-100",
               )}
               onMouseDown={(e) =>
-                handleDragStartWithListeners(e, segment.id, "end", segment.end)
+                handleDragStart(e, segment.id, "end", segment.end)
               }
               style={{
                 backgroundColor: isDimmed

@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { ScrollArea } from "~/components/ui/scroll-area";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
@@ -64,31 +65,33 @@ export function ChangeSpeakerDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-2 py-2">
-          {speakers.map((speaker) => {
-            const colorIndex = speakerIndexMap.get(speaker) ?? 0;
-            const color = getSpeakerColor(colorIndex);
-            const displayName = getSpeakerDisplayName(
-              speaker,
-              speakerCollections,
-            );
+        <ScrollArea className="max-h-[400px]">
+          <div className="grid gap-2 py-2 pr-4">
+            {speakers.map((speaker) => {
+              const colorIndex = speakerIndexMap.get(speaker) ?? 0;
+              const color = getSpeakerColor(colorIndex);
+              const displayName = getSpeakerDisplayName(
+                speaker,
+                speakerCollections,
+              );
 
-            return (
-              <button
-                key={speaker}
-                type="button"
-                onClick={() => handleSelectSpeaker(speaker)}
-                className="flex items-center gap-3 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
-              >
-                <div
-                  className="h-4 w-4 shrink-0 rounded-full"
-                  style={{ backgroundColor: color.border }}
-                />
-                <span className="font-medium">{displayName}</span>
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={speaker}
+                  type="button"
+                  onClick={() => handleSelectSpeaker(speaker)}
+                  className="flex items-center gap-3 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
+                >
+                  <div
+                    className="h-4 w-4 shrink-0 rounded-full"
+                    style={{ backgroundColor: color.border }}
+                  />
+                  <span className="font-medium">{displayName}</span>
+                </button>
+              );
+            })}
+          </div>
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );

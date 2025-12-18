@@ -1,21 +1,9 @@
 "use client";
 
 import type { ColumnDef, Row, Table } from "@tanstack/react-table";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Play,
-  Trash2,
-  User,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Play } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "~/components/ui/tooltip";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
 import type { SegmentWithId } from "../../_store/clipping-workspace-store";
@@ -31,13 +19,6 @@ export interface TableSegment extends SegmentWithId {
   colorIndex: number;
 }
 
-// Table meta type for passing stable callbacks
-export interface TableMeta {
-  onPlay: (segmentId: string) => void;
-  onChangeSpeaker: (segmentId: string) => void;
-  onDelete: (segmentId: string) => void;
-}
-
 // Get sort icon based on column state
 function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
   if (isSorted === "asc") return <ArrowUp className="ml-1 h-3 w-3" />;
@@ -49,34 +30,42 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 // Cell Components
 // ============================================================================
 
-// Header checkbox for select all
-function SelectAllCheckbox({ table }: { table: Table<TableSegment> }) {
-  const checked =
-    table.getIsAllPageRowsSelected() ||
-    (table.getIsSomePageRowsSelected() && "indeterminate");
+// Header checkbox for select all - uses direct store action
+function SelectAllCheckbox({
+  isAllSelected,
+  isSomeSelected,
+  onToggleAll,
+}: {
+  isAllSelected: boolean;
+  isSomeSelected: boolean;
+  onToggleAll: (selectAll: boolean) => void;
+}) {
+  const checked = isAllSelected || (isSomeSelected && "indeterminate");
 
   return (
     <Checkbox
       checked={checked}
-      onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+      onCheckedChange={(value) => onToggleAll(!!value)}
       aria-label="Select all"
       className="translate-y-[2px]"
     />
   );
 }
 
-// Row checkbox cell
+// Row checkbox cell - uses direct store action
 function SelectCell({
-  row,
+  segmentId,
   isSelected,
+  onToggle,
 }: {
-  row: Row<TableSegment>;
+  segmentId: string;
   isSelected: boolean;
+  onToggle: (segmentId: string) => void;
 }) {
   return (
     <Checkbox
       checked={isSelected}
-      onCheckedChange={(value) => row.toggleSelected(!!value)}
+      onCheckedChange={() => onToggle(segmentId)}
       onClick={(e) => e.stopPropagation()}
       aria-label="Select row"
       className="translate-y-[2px]"
@@ -156,71 +145,36 @@ function ReviewedCell({ isReviewed }: { isReviewed: boolean }) {
   );
 }
 
-// Actions cell with tooltips
-function ActionsCell({
-  segmentId,
-  onChangeSpeaker,
-  onDelete,
-}: {
-  segmentId: string;
-  onChangeSpeaker: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <div className="flex gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={(e) => {
-              e.stopPropagation();
-              onChangeSpeaker(segmentId);
-            }}
-          >
-            <User className="h-3.5 w-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Change speaker</TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 hover:bg-red-500/20 hover:text-red-500"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(segmentId);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Delete segment</TooltipContent>
-      </Tooltip>
-    </div>
-  );
-}
-
 // ============================================================================
 // Column Definitions
 // ============================================================================
 
 export function createColumns(options: {
   onPlay: (segmentId: string) => void;
-  onChangeSpeaker: (segmentId: string) => void;
-  onDelete: (segmentId: string) => void;
+  // Selection callbacks (bypasses TanStack Table's built-in selection)
+  selectedSegmentIds: Set<string>;
+  onToggleSelection: (segmentId: string) => void;
+  onToggleAll: (selectAll: boolean) => void;
+  isAllSelected: boolean;
+  isSomeSelected: boolean;
 }): ColumnDef<TableSegment>[] {
   return [
     // Checkbox column
     {
       id: "select",
-      header: ({ table }) => <SelectAllCheckbox table={table} />,
+      header: () => (
+        <SelectAllCheckbox
+          isAllSelected={options.isAllSelected}
+          isSomeSelected={options.isSomeSelected}
+          onToggleAll={options.onToggleAll}
+        />
+      ),
       cell: ({ row }) => (
-        <SelectCell row={row} isSelected={row.getIsSelected()} />
+        <SelectCell
+          segmentId={row.original.id}
+          isSelected={options.selectedSegmentIds.has(row.original.id)}
+          onToggle={options.onToggleSelection}
+        />
       ),
       enableSorting: false,
       enableHiding: false,
@@ -332,22 +286,6 @@ export function createColumns(options: {
         <ReviewedCell isReviewed={row.original.isReviewed ?? false} />
       ),
       size: 90,
-    },
-
-    // Actions column (shows on hover)
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => (
-        <ActionsCell
-          segmentId={row.original.id}
-          onChangeSpeaker={options.onChangeSpeaker}
-          onDelete={options.onDelete}
-        />
-      ),
-      size: 80,
-      enableSorting: false,
-      enableHiding: false,
     },
   ];
 }

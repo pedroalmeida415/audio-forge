@@ -47,26 +47,37 @@ export function TimelineContainer() {
     zoomLevel,
     containerWidth,
     segmentsById,
-    selectedSegmentId,
+    activeSegmentId,
     selectedSpeaker,
     speakerCollections,
     diarizationId,
+    updateSegmentTimes,
   } = useClippingStore(
     useShallow((s) => ({
       duration: s.playback.duration,
       zoomLevel: s.timeline.zoomLevel,
       containerWidth: s.timeline.containerWidth,
       segmentsById: s.segments.segmentsById,
-      selectedSegmentId: s.segments.selectedSegmentId,
+      activeSegmentId: s.segments.activeSegmentId,
       selectedSpeaker: s.segments.selectedSpeaker,
       speakerCollections: s.segments.speakerCollections,
       diarizationId: s.segments.diarizationId,
+      updateSegmentTimes: s.segments.updateSegmentTimes,
     })),
   );
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
 
-  const handleUpdateSegmentTime = useCallback(
+  // Called during drag for immediate visual feedback (local store update only)
+  const handleDragUpdate = useCallback(
+    (segmentId: string, start: number, end: number) => {
+      updateSegmentTimes(segmentId, start, end);
+    },
+    [updateSegmentTimes],
+  );
+
+  // Called on drag end to persist changes (triggers mutation)
+  const handleCommitUpdate = useCallback(
     (segmentId: string, field: "start" | "end", newTime: number) => {
       updateSegmentsMutation.mutate({
         diarizationId,
@@ -157,10 +168,11 @@ export function TimelineContainer() {
                 getSpeakerColorIndex(segments, speaker)
               }
               onSegmentClick={handleTimelineSegmentClick}
-              onUpdateSegmentTime={handleUpdateSegmentTime}
+              onDragUpdate={handleDragUpdate}
+              onCommitUpdate={handleCommitUpdate}
               pixelsToTime={pixelsToTime}
               segments={segments}
-              selectedSegmentId={selectedSegmentId}
+              activeSegmentId={activeSegmentId}
               selectedSpeaker={selectedSpeaker}
               speakerCollections={speakerCollections}
               timeToPixels={timeToPixels}

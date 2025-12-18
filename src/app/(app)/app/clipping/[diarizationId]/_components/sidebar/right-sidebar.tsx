@@ -4,7 +4,7 @@ import { Users } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
 import { useClippingStore } from "../../_context/store.context";
-import { BulkActions } from "./bulk-actions";
+import { SegmentActions } from "./bulk-actions";
 import { CollectionCombobox } from "./collection-combobox";
 import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
@@ -40,8 +40,8 @@ export function RightSidebar() {
           {/* Selection Summary - shows when items selected */}
           <SelectionSummary />
 
-          {/* Bulk Actions - shows when items selected */}
-          <BulkActions />
+          {/* Actions - for active or selected segments */}
+          <SegmentActions />
         </div>
       </ScrollArea>
 

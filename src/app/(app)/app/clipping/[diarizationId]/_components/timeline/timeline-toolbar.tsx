@@ -9,7 +9,7 @@ import {
   Plus,
   Scissors,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import { Button } from "~/components/ui/button";
 import {
@@ -96,7 +96,6 @@ export function TimelineToolbar() {
     zoomOut,
     setZoomLevel,
     activeSegmentId,
-    segmentsById,
     diarizationId,
   } = useClippingStore(
     useShallow((s) => ({
@@ -108,7 +107,6 @@ export function TimelineToolbar() {
       zoomOut: s.timeline.zoomOut,
       setZoomLevel: s.timeline.setZoomLevel,
       activeSegmentId: s.segments.activeSegmentId,
-      segmentsById: s.segments.segmentsById,
       diarizationId: s.segments.diarizationId,
     })),
   );
@@ -118,13 +116,49 @@ export function TimelineToolbar() {
 
   const splitSegmentMutation = api.diarization.splitSegment.useMutation();
 
-  // Determine if split is possible: active segment exists and playhead is within it
-  const activeSegment = activeSegmentId ? segmentsById[activeSegmentId] : null;
-  const currentTime = store.getState().playback.currentTime;
-  const canSplit =
-    activeSegment &&
-    currentTime > activeSegment.start &&
-    currentTime < activeSegment.end;
+  // Track if split is possible via subscription (updates as playhead moves)
+  const [canSplit, setCanSplit] = useState(false);
+
+  useEffect(() => {
+    // Check if split is possible based on current state
+    const checkCanSplit = () => {
+      const { activeSegmentId, segmentsById } = store.getState().segments;
+      const currentTime = store.getState().playback.currentTime;
+
+      if (!activeSegmentId) {
+        setCanSplit(false);
+        return;
+      }
+
+      const activeSegment = segmentsById[activeSegmentId];
+      if (!activeSegment) {
+        setCanSplit(false);
+        return;
+      }
+
+      const isWithinSegment =
+        currentTime > activeSegment.start && currentTime < activeSegment.end;
+      setCanSplit(isWithinSegment);
+    };
+
+    // Initial check
+    checkCanSplit();
+
+    // Subscribe to both currentTime and activeSegmentId changes
+    const unsubTime = store.subscribe(
+      (state) => state.playback.currentTime,
+      checkCanSplit,
+    );
+    const unsubActive = store.subscribe(
+      (state) => state.segments.activeSegmentId,
+      checkCanSplit,
+    );
+
+    return () => {
+      unsubTime();
+      unsubActive();
+    };
+  }, [store]);
 
   const handleSplit = () => {
     if (!activeSegmentId || !canSplit) return;

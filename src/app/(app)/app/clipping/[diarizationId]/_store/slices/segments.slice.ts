@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   SegmentsInitialData,
   SegmentsSlice,
@@ -53,6 +52,8 @@ export const createSegmentsSlice =
           newSet.add(segmentId);
         }
         state.segments.selectedSegmentIds = newSet;
+        // Deactivate active segment when making a selection
+        state.segments.activeSegmentId = null;
       }),
 
     selectAllSegments: () =>
@@ -65,6 +66,8 @@ export const createSegmentsSlice =
           .filter((s) => s.speaker === state.segments.selectedSpeaker)
           .map((s) => s.id);
         state.segments.selectedSegmentIds = new Set(visibleSegmentIds);
+        // Deactivate active segment when making a selection
+        state.segments.activeSegmentId = null;
       }),
 
     clearSelection: () =>
@@ -169,7 +172,7 @@ export const createSegmentsSlice =
         if (splitTime <= segment.start || splitTime >= segment.end) return;
 
         // Generate new ID for the second segment
-        secondId = randomUUID();
+        secondId = crypto.randomUUID();
         firstId = segment.id;
 
         // Create new segment from split point to original end
