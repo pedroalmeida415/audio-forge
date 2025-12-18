@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "~/server/db";
-import { diarizations } from "~/server/db/schema";
+import { type DiarizationSegment, diarizations } from "~/server/db/schema";
 
 // Pyannote webhook payload schema
 const webhookPayloadSchema = z.object({
@@ -49,8 +50,15 @@ export async function POST(request: NextRequest) {
 
     // Update based on status
     if (payload.status === "succeeded" && payload.output) {
-      // Map segments directly (no ID needed, use array index)
-      const segments = payload.output.diarization;
+      // Add UUIDs and default values to each segment
+      const segments: DiarizationSegment[] = payload.output.diarization.map(
+        (segment) => ({
+          ...segment,
+          id: randomUUID(),
+          isDeleted: false,
+          isReviewed: false,
+        }),
+      );
 
       await db
         .update(diarizations)

@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import type {
   SegmentsInitialData,
   SegmentsSlice,
+  SegmentWithId,
   SliceCreator,
 } from "../types";
 
@@ -16,6 +18,8 @@ export const createSegmentsSlice =
     selectedSpeaker: null,
     selectedSegmentId: null,
     selectedSegmentIds: new Set<string>(),
+    // Active segment (distinct from selection)
+    activeSegmentId: null,
 
     // Selection actions
     selectSpeaker: (speaker) =>
@@ -71,6 +75,19 @@ export const createSegmentsSlice =
     setSelectedSegmentIds: (ids) =>
       set((state) => {
         state.segments.selectedSegmentIds = ids;
+      }),
+
+    // Active segment action
+    setActiveSegment: (segmentId) =>
+      set((state) => {
+        state.segments.activeSegmentId = segmentId;
+        // If segment is in a different speaker, switch to that speaker view
+        if (segmentId) {
+          const segment = state.segments.segmentsById[segmentId];
+          if (segment && segment.speaker !== state.segments.selectedSpeaker) {
+            state.segments.selectedSpeaker = segment.speaker;
+          }
+        }
       }),
 
     // Segment mutations
@@ -129,6 +146,76 @@ export const createSegmentsSlice =
           if (segment) {
             segment.speaker = newSpeaker;
           }
+        }
+      }),
+
+    // Time and split mutations
+    updateSegmentTimes: (segmentId, start, end) =>
+      set((state) => {
+        const segment = state.segments.segmentsById[segmentId];
+        if (segment) {
+          segment.start = Math.max(0, start);
+          segment.end = Math.max(segment.start + 0.1, end);
+        }
+      }),
+
+    splitSegment: (segmentId, splitTime) => {
+      let firstId = "";
+      let secondId = "";
+
+      set((state) => {
+        const segment = state.segments.segmentsById[segmentId];
+        if (!segment) return;
+        if (splitTime <= segment.start || splitTime >= segment.end) return;
+
+        // Generate new ID for the second segment
+        secondId = randomUUID();
+        firstId = segment.id;
+
+        // Create new segment from split point to original end
+        const newSegment: SegmentWithId = {
+          ...segment,
+          id: secondId,
+          start: splitTime,
+          end: segment.end,
+          isReviewed: false,
+        };
+
+        // Update original segment's end to split point
+        segment.end = splitTime;
+
+        // Add new segment to store
+        state.segments.segmentsById[secondId] = newSegment;
+
+        // Set the new segment as active
+        state.segments.activeSegmentId = secondId;
+      });
+
+      return { firstId, secondId };
+    },
+
+    // Rollback helpers (for optimistic updates)
+    restoreSegmentData: (segmentId, data) =>
+      set((state) => {
+        state.segments.segmentsById[segmentId] = data;
+      }),
+
+    undoSplit: (firstId, secondId, original) =>
+      set((state) => {
+        // Remove the second segment
+        delete state.segments.segmentsById[secondId];
+        // Restore the original segment
+        state.segments.segmentsById[firstId] = original;
+        // Reset active segment if it was the removed one
+        if (state.segments.activeSegmentId === secondId) {
+          state.segments.activeSegmentId = firstId;
+        }
+      }),
+
+    bulkRestoreSegments: (segments) =>
+      set((state) => {
+        for (const { id, data } of segments) {
+          state.segments.segmentsById[id] = data;
         }
       }),
 

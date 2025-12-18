@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback } from "react";
 import { useShallow } from "zustand/shallow";
+import { api } from "~/trpc/react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
@@ -48,6 +50,7 @@ export function TimelineContainer() {
     selectedSegmentId,
     selectedSpeaker,
     speakerCollections,
+    diarizationId,
   } = useClippingStore(
     useShallow((s) => ({
       duration: s.playback.duration,
@@ -57,7 +60,21 @@ export function TimelineContainer() {
       selectedSegmentId: s.segments.selectedSegmentId,
       selectedSpeaker: s.segments.selectedSpeaker,
       speakerCollections: s.segments.speakerCollections,
+      diarizationId: s.segments.diarizationId,
     })),
+  );
+
+  const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
+
+  const handleUpdateSegmentTime = useCallback(
+    (segmentId: string, field: "start" | "end", newTime: number) => {
+      updateSegmentsMutation.mutate({
+        diarizationId,
+        segmentIds: segmentId,
+        updates: { [field]: newTime },
+      });
+    },
+    [diarizationId, updateSegmentsMutation],
   );
 
   const containerRef = useTimelineResize();
@@ -100,6 +117,8 @@ export function TimelineContainer() {
   }
 
   const timeToPixels = (time: number) => time * pixelsPerSecond;
+  const pixelsToTime = (pixels: number) =>
+    pixelsPerSecond > 0 ? pixels / pixelsPerSecond : 0;
 
   return (
     <div
@@ -138,6 +157,8 @@ export function TimelineContainer() {
                 getSpeakerColorIndex(segments, speaker)
               }
               onSegmentClick={handleTimelineSegmentClick}
+              onUpdateSegmentTime={handleUpdateSegmentTime}
+              pixelsToTime={pixelsToTime}
               segments={segments}
               selectedSegmentId={selectedSegmentId}
               selectedSpeaker={selectedSpeaker}

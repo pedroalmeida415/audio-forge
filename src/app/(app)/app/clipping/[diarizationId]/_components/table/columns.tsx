@@ -16,13 +16,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import { formatDuration, formatTimestamp } from "~/lib/time-utils";
+import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
 import type { SegmentWithId } from "../../_store/clipping-workspace-store";
 import {
   DURATION_THRESHOLDS,
   getSegmentDuration,
 } from "../../_utils/segment-utils";
+import { EditableTimeCell } from "./editable-time-cell";
 
 // Extended segment with computed fields for the table
 export interface TableSegment extends SegmentWithId {
@@ -49,11 +50,7 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 // ============================================================================
 
 // Header checkbox for select all
-function SelectAllCheckbox({
-  table,
-}: {
-  table: Table<TableSegment>;
-}) {
+function SelectAllCheckbox({ table }: { table: Table<TableSegment> }) {
   const checked =
     table.getIsAllPageRowsSelected() ||
     (table.getIsSomePageRowsSelected() && "indeterminate");
@@ -120,11 +117,7 @@ function PlayCell({
 }
 
 // Duration cell with color coding
-function DurationCell({
-  duration,
-}: {
-  duration: number;
-}) {
+function DurationCell({ duration }: { duration: number }) {
   const variant =
     duration > DURATION_THRESHOLDS.TOO_LONG
       ? "warning"
@@ -147,11 +140,7 @@ function DurationCell({
 }
 
 // Reviewed status cell
-function ReviewedCell({
-  isReviewed,
-}: {
-  isReviewed: boolean;
-}) {
+function ReviewedCell({ isReviewed }: { isReviewed: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
       <div
@@ -270,28 +259,35 @@ export function createColumns(options: {
       ),
     },
 
-    // Start time column
+    // Start time column (editable)
     {
       id: "start",
       accessorFn: (row) => row.start,
       header: "Start",
       cell: ({ row }) => (
-        <span className="font-mono text-xs">
-          {formatTimestamp(row.original.start)}
-        </span>
+        <EditableTimeCell
+          value={row.original.start}
+          segmentId={row.original.id}
+          field="start"
+          minValue={0}
+          maxValue={row.original.end - 0.1}
+        />
       ),
       size: 70,
     },
 
-    // End time column
+    // End time column (editable)
     {
       id: "end",
       accessorFn: (row) => row.end,
       header: "End",
       cell: ({ row }) => (
-        <span className="font-mono text-xs">
-          {formatTimestamp(row.original.end)}
-        </span>
+        <EditableTimeCell
+          value={row.original.end}
+          segmentId={row.original.id}
+          field="end"
+          minValue={row.original.start + 0.1}
+        />
       ),
       size: 70,
     },

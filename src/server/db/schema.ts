@@ -165,6 +165,19 @@ export const clips = pgTable(
 );
 
 /**
+ * Segment type for diarization output
+ */
+export interface DiarizationSegment {
+  id: string;
+  speaker: string;
+  start: number;
+  end: number;
+  confidence?: number;
+  isDeleted?: boolean;
+  isReviewed?: boolean;
+}
+
+/**
  * Diarizations - One diarization per audio file
  * Segments are stored as JSONB array (pure timestamp data)
  */
@@ -189,14 +202,7 @@ export const diarizations = pgTable(
 
     // Diarization segments stored as JSONB
     output: jsonb("output").$type<{
-      segments: {
-        speaker: string;
-        start: number;
-        end: number;
-        confidence?: number;
-        editedStart?: number;
-        editedEnd?: number;
-      }[];
+      segments: DiarizationSegment[];
     }>(),
 
     // Speaker-to-collection mappings stored as JSONB

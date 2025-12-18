@@ -10,34 +10,9 @@ import {
   createUISlice,
   TIMELINE_CONSTANTS,
 } from "./slices";
-import type {
-  ClippingStore,
-  DiarizationData,
-  DiarizationSegment,
-  SegmentWithId,
-} from "./types";
+import type { ClippingStore, DiarizationData, SegmentWithId } from "./types";
 
 enableMapSet();
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function createSegmentsWithIds(
-  segments: DiarizationSegment[],
-): Record<string, SegmentWithId> {
-  return segments.reduce(
-    (acc, segment, index) => {
-      const id = `${segment.speaker}-${index}-${segment.start}-${segment.end}`;
-      acc[id] = {
-        ...segment,
-        id,
-      };
-      return acc;
-    },
-    {} as Record<string, SegmentWithId>,
-  );
-}
 
 // ============================================================================
 // Store Factory
@@ -52,9 +27,17 @@ export function createClippingStore(
   trpcUtils: ReturnType<typeof api.useUtils>,
 ) {
   const { diarization } = initialData;
-  const segmentsById = createSegmentsWithIds(
-    diarization.output?.segments ?? [],
+
+  // Convert segments array to indexed record by ID (IDs now come from backend)
+  const segments = diarization.output?.segments ?? [];
+  const segmentsById = segments.reduce(
+    (acc, segment) => {
+      acc[segment.id] = segment;
+      return acc;
+    },
+    {} as Record<string, SegmentWithId>,
   );
+
   const speakerCollections = diarization.speakerCollections ?? {};
 
   const segmentsInitialData = {
@@ -110,11 +93,119 @@ export function createClippingStore(
           );
       }
     },
-    onSettled: (_, __, context, res) => {
+    onSettled: (_, __, context) => {
       // Invalidate to refetch fresh data
       void trpcUtils.diarization.getById.invalidate({
         id: context.diarizationId,
       });
+    },
+  });
+
+  // Set up mutation defaults for segment updates
+  trpcUtils.diarization.updateSegments.setMutationDefaults({
+    onMutate: async (input) => {
+      const { diarizationId, segmentIds, updates } = input;
+      const currentState = store.getState();
+
+      // Cancel any outgoing refetches
+      await trpcUtils.diarization.getById.cancel({ id: diarizationId });
+
+      // Normalize to array and snapshot previous values
+      const ids = Array.isArray(segmentIds) ? segmentIds : [segmentIds];
+      const previousSegments = ids.map((id) => ({
+        id,
+        data: { ...currentState.segments.segmentsById[id] },
+      }));
+
+      // Optimistically update each segment
+      for (const id of ids) {
+        const segment = currentState.segments.segmentsById[id];
+        if (segment) {
+          // Apply updates
+          if (updates.start !== undefined || updates.end !== undefined) {
+            currentState.segments.updateSegmentTimes(
+              id,
+              updates.start ?? segment.start,
+              updates.end ?? segment.end,
+            );
+          }
+          if (updates.speaker !== undefined) {
+            currentState.segments.changeSpeaker([id], updates.speaker);
+          }
+          if (updates.isDeleted !== undefined) {
+            if (updates.isDeleted) {
+              currentState.segments.archiveSegment(id);
+            } else {
+              currentState.segments.restoreSegment(id);
+            }
+          }
+          if (updates.isReviewed !== undefined) {
+            if (updates.isReviewed) {
+              currentState.segments.markAsReviewed([id]);
+            } else {
+              currentState.segments.markAsUnreviewed([id]);
+            }
+          }
+        }
+      }
+
+      return { previousSegments, diarizationId };
+    },
+    onError: (_err, _input, context) => {
+      // Rollback on error
+      if (context?.previousSegments) {
+        store.getState().segments.bulkRestoreSegments(context.previousSegments);
+      }
+    },
+    onSettled: (_, __, context) => {
+      if (context?.diarizationId) {
+        void trpcUtils.diarization.getById.invalidate({
+          id: context.diarizationId,
+        });
+      }
+    },
+  });
+
+  // Set up mutation defaults for segment splitting
+  trpcUtils.diarization.splitSegment.setMutationDefaults({
+    onMutate: async (input) => {
+      const { diarizationId, segmentId, splitTime } = input;
+      const currentState = store.getState();
+
+      // Cancel any outgoing refetches
+      await trpcUtils.diarization.getById.cancel({ id: diarizationId });
+
+      // Snapshot original segment before split
+      const originalSegment = {
+        ...currentState.segments.segmentsById[segmentId],
+      };
+
+      // Optimistically split the segment
+      const { firstId, secondId } = currentState.segments.splitSegment(
+        segmentId,
+        splitTime,
+      );
+
+      return { originalSegment, diarizationId, firstId, secondId };
+    },
+    onError: (_err, _input, context) => {
+      // Rollback: undo the split
+      if (context?.originalSegment && context.firstId && context.secondId) {
+        store
+          .getState()
+          .segments.undoSplit(
+            context.firstId,
+            context.secondId,
+            context.originalSegment,
+          );
+      }
+    },
+    onSettled: (_, __, context) => {
+      if (context?.diarizationId) {
+        void trpcUtils.diarization.getById.invalidate({
+          id: context.diarizationId,
+        });
+      }
     },
   });
 

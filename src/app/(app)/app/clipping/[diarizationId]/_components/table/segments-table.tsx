@@ -8,17 +8,20 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
+import { api } from "~/trpc/react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import type { FilterConfig } from "../../_store/types";
 import { getUniqueSpeakers } from "../../_utils/segment-utils";
+import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 import { createColumns, type TableSegment } from "./columns";
 
 interface TableRowProps {
   row: Row<TableSegment>;
   isSelected: boolean;
+  isActive: boolean;
   onRowClick: (rowId: string) => void;
 }
 
@@ -27,16 +30,19 @@ interface TableRowProps {
 // the underlying data (row.original) is stable. We only re-render if:
 // - The actual segment data changed
 // - Selection state changed
+// - Active state changed
 // - The click handler changed
 const TableRow = memo(
-  function TableRow({ row, isSelected, onRowClick }: TableRowProps) {
+  function TableRow({ row, isSelected, isActive, onRowClick }: TableRowProps) {
     return (
       <tr
         className={cn(
           "group/row cursor-pointer border-border/50 border-b transition-colors",
-          isSelected && "bg-primary/5",
-          !isSelected && "hover:bg-muted/50",
+          isActive && "ring-2 ring-primary ring-inset",
+          isSelected && !isActive && "bg-primary/5",
+          !isSelected && !isActive && "hover:bg-muted/50",
         )}
+        data-segment-id={row.original.id}
         onClick={() => onRowClick(row.id)}
       >
         {row.getVisibleCells().map((cell) => (
@@ -62,6 +68,7 @@ const TableRow = memo(
     prev.row.id === next.row.id &&
     prev.row.original === next.row.original &&
     prev.isSelected === next.isSelected &&
+    prev.isActive === next.isActive &&
     prev.onRowClick === next.onRowClick,
 );
 
@@ -77,16 +84,26 @@ export function SegmentsTable() {
   const setSelectedSegmentIds = useClippingStore(
     (s) => s.segments.setSelectedSegmentIds,
   );
-  const archiveSegment = useClippingStore((s) => s.segments.archiveSegment);
-  const selectSegment = useClippingStore((s) => s.segments.selectSegment);
+  const diarizationId = useClippingStore((s) => s.segments.diarizationId);
+  const activeSegmentId = useClippingStore((s) => s.segments.activeSegmentId);
+  const setActiveSegment = useClippingStore((s) => s.segments.setActiveSegment);
 
   const { handleSegmentPlay } = usePlayback();
+
+  const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filters, _setFilters] = useState<FilterConfig>({
     reviewed: null,
   });
+  const [changeSpeakerDialogOpen, setChangeSpeakerDialogOpen] = useState(false);
+  const [changeSpeakerTargetId, setChangeSpeakerTargetId] = useState<
+    string | null
+  >(null);
+
+  // Ref for scrollable table container
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
   const speakerIndexMap = useMemo(() => {
@@ -144,10 +161,47 @@ export function SegmentsTable() {
     });
   }, [selectedSpeaker, segmentsBySpeaker, filters.reviewed]);
 
-  // Callback for changing speaker - memoized for TanStack Table reference stability
+  // Scroll to active segment when it changes (bi-directional navigation)
+  useEffect(() => {
+    const unsubscribe = store.subscribe(
+      (state) => state.segments.activeSegmentId,
+      (activeId) => {
+        if (!activeId || !tableContainerRef.current) return;
+
+        // Find the row element by data-segment-id attribute
+        const row = tableContainerRef.current.querySelector(
+          `tr[data-segment-id="${activeId}"]`,
+        );
+
+        if (row) {
+          row.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      },
+    );
+
+    return unsubscribe;
+  }, [store]);
+
+  // Callback for changing speaker - opens dialog
   const handleChangeSpeaker = useCallback((segmentId: string) => {
-    console.log("Change speaker for:", segmentId);
+    setChangeSpeakerTargetId(segmentId);
+    setChangeSpeakerDialogOpen(true);
   }, []);
+
+  // Callback for deleting segment - uses mutation
+  const handleDelete = useCallback(
+    (segmentId: string) => {
+      updateSegmentsMutation.mutate({
+        diarizationId,
+        segmentIds: segmentId,
+        updates: { isDeleted: true },
+      });
+    },
+    [diarizationId, updateSegmentsMutation],
+  );
 
   // Column definitions - memoized because TanStack Table relies on reference equality
   // Without this, table recalculates row models on every render
@@ -156,9 +210,9 @@ export function SegmentsTable() {
       createColumns({
         onPlay: handleSegmentPlay,
         onChangeSpeaker: handleChangeSpeaker,
-        onDelete: archiveSegment,
+        onDelete: handleDelete,
       }),
-    [handleSegmentPlay, handleChangeSpeaker, archiveSegment],
+    [handleSegmentPlay, handleChangeSpeaker, handleDelete],
   );
 
   // Row selection state - memoized for TanStack Table reference stability
@@ -220,7 +274,7 @@ export function SegmentsTable() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex-1 overflow-auto">
+      <div ref={tableContainerRef} className="flex-1 overflow-auto">
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -258,7 +312,8 @@ export function SegmentsTable() {
                     key={row.id}
                     row={row}
                     isSelected={row.getIsSelected()}
-                    onRowClick={selectSegment}
+                    isActive={row.id === activeSegmentId}
+                    onRowClick={setActiveSegment}
                   />
                 ))
             ) : (
@@ -274,6 +329,14 @@ export function SegmentsTable() {
           </tbody>
         </table>
       </div>
+
+      {changeSpeakerTargetId && (
+        <ChangeSpeakerDialog
+          open={changeSpeakerDialogOpen}
+          onOpenChange={setChangeSpeakerDialogOpen}
+          targetSegmentIds={[changeSpeakerTargetId]}
+        />
+      )}
     </div>
   );
 }

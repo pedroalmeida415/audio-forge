@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   Plus,
+  Scissors,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useShallow } from "zustand/shallow";
@@ -19,7 +20,13 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { Slider } from "~/components/ui/slider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { formatTimestamp } from "~/lib/time-utils";
+import { api } from "~/trpc/react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
@@ -78,6 +85,8 @@ function TimeDisplay() {
 }
 
 export function TimelineToolbar() {
+  const store = useClippingStore();
+
   const {
     isPlaying,
     isLoading,
@@ -86,6 +95,9 @@ export function TimelineToolbar() {
     zoomIn,
     zoomOut,
     setZoomLevel,
+    activeSegmentId,
+    segmentsById,
+    diarizationId,
   } = useClippingStore(
     useShallow((s) => ({
       isPlaying: s.playback.isPlaying,
@@ -95,11 +107,34 @@ export function TimelineToolbar() {
       zoomIn: s.timeline.zoomIn,
       zoomOut: s.timeline.zoomOut,
       setZoomLevel: s.timeline.setZoomLevel,
+      activeSegmentId: s.segments.activeSegmentId,
+      segmentsById: s.segments.segmentsById,
+      diarizationId: s.segments.diarizationId,
     })),
   );
 
   const { handleNavigateSegment, togglePlayback, setPlaybackRate } =
     usePlayback();
+
+  const splitSegmentMutation = api.diarization.splitSegment.useMutation();
+
+  // Determine if split is possible: active segment exists and playhead is within it
+  const activeSegment = activeSegmentId ? segmentsById[activeSegmentId] : null;
+  const currentTime = store.getState().playback.currentTime;
+  const canSplit =
+    activeSegment &&
+    currentTime > activeSegment.start &&
+    currentTime < activeSegment.end;
+
+  const handleSplit = () => {
+    if (!activeSegmentId || !canSplit) return;
+    const splitTime = store.getState().playback.currentTime;
+    splitSegmentMutation.mutate({
+      diarizationId,
+      segmentId: activeSegmentId,
+      splitTime,
+    });
+  };
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">
@@ -122,6 +157,27 @@ export function TimelineToolbar() {
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Split button */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              disabled={!canSplit || splitSegmentMutation.isPending}
+              onClick={handleSplit}
+              size="icon"
+              variant="ghost"
+            >
+              <Scissors className="h-4 w-4" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {canSplit
+            ? "Split segment at playhead"
+            : "Move playhead inside a segment to split"}
+        </TooltipContent>
+      </Tooltip>
 
       {/* Play/Pause button */}
       <Button

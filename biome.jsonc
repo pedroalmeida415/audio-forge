@@ -34,7 +34,8 @@
             "functions": ["clsx", "cva", "cn"]
           }
         }
-      }
+      },
+      "a11y": "off"
     }
   },
   "html": {

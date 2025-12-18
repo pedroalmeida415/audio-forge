@@ -4,18 +4,11 @@ import type { StateCreator } from "zustand";
 // Domain Types
 // ============================================================================
 
-export interface DiarizationSegment {
-  speaker: string;
-  start: number;
-  end: number;
-  confidence?: number;
-}
+// Re-export from schema for consistency
+export type { DiarizationSegment } from "~/server/db/schema";
 
-export interface SegmentWithId extends DiarizationSegment {
-  id: string;
-  isDeleted?: boolean;
-  isReviewed?: boolean;
-}
+// Alias for backward compatibility (segments now always have IDs from backend)
+export type SegmentWithId = import("~/server/db/schema").DiarizationSegment;
 
 export type ViewMode = "table" | "focus";
 
@@ -92,6 +85,8 @@ export interface SegmentsSlice {
   selectedSpeaker: string | null;
   selectedSegmentId: string | null;
   selectedSegmentIds: Set<string>;
+  // Active segment (distinct from selection, used for single-segment operations)
+  activeSegmentId: string | null;
   // Selection actions
   selectSpeaker: (speaker: string | null) => void;
   selectSegment: (segmentId: string | null) => void;
@@ -99,6 +94,8 @@ export interface SegmentsSlice {
   selectAllSegments: () => void;
   clearSelection: () => void;
   setSelectedSegmentIds: (ids: Set<string>) => void;
+  // Active segment action
+  setActiveSegment: (segmentId: string | null) => void;
   // Segment mutations
   archiveSegment: (segmentId: string) => void;
   archiveSelectedSegments: () => void;
@@ -106,6 +103,22 @@ export interface SegmentsSlice {
   markAsReviewed: (segmentIds: string[]) => void;
   markAsUnreviewed: (segmentIds: string[]) => void;
   changeSpeaker: (segmentIds: string[], newSpeaker: string) => void;
+  // Time and split mutations
+  updateSegmentTimes: (segmentId: string, start: number, end: number) => void;
+  splitSegment: (
+    segmentId: string,
+    splitTime: number,
+  ) => { firstId: string; secondId: string };
+  // Rollback helpers (for optimistic updates)
+  restoreSegmentData: (segmentId: string, data: SegmentWithId) => void;
+  undoSplit: (
+    firstId: string,
+    secondId: string,
+    original: SegmentWithId,
+  ) => void;
+  bulkRestoreSegments: (
+    segments: Array<{ id: string; data: SegmentWithId }>,
+  ) => void;
   // Speaker collection mapping
   setSpeakerCollection: (
     speaker: string,

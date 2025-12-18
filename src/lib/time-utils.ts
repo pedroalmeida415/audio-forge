@@ -58,3 +58,49 @@ export function formatTimeRange(start: number, end: number): string {
 export function calculateDuration(start: number, end: number): number {
   return Math.max(0, end - start);
 }
+
+/**
+ * Parses a timestamp string to seconds
+ * Supports formats: "SS", "M:SS", "MM:SS", "H:MM:SS"
+ * Also supports decimal seconds: "1:30.5"
+ * @param timestamp - Timestamp string to parse
+ * @returns Time in seconds, or null if invalid
+ */
+export function parseTimestamp(timestamp: string): number | null {
+  const trimmed = timestamp.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(":");
+
+  // Parse each part, allowing decimal in the last part
+  const parsedParts = parts.map((p, i) => {
+    const num =
+      i === parts.length - 1 ? Number.parseFloat(p) : Number.parseInt(p, 10);
+    return num;
+  });
+
+  // Check for NaN or negative values
+  if (parsedParts.some((p) => !Number.isFinite(p) || p < 0)) return null;
+
+  // Validate ranges (minutes and seconds should be < 60 except for pure seconds)
+  if (parts.length === 1) {
+    // Pure seconds
+    return parsedParts[0];
+  }
+
+  if (parts.length === 2) {
+    // M:SS or MM:SS
+    const [minutes, seconds] = parsedParts;
+    if (seconds >= 60) return null;
+    return minutes * 60 + seconds;
+  }
+
+  if (parts.length === 3) {
+    // H:MM:SS
+    const [hours, minutes, seconds] = parsedParts;
+    if (minutes >= 60 || seconds >= 60) return null;
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
+  return null;
+}

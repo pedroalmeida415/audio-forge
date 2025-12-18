@@ -212,6 +212,38 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
   }, [store]);
 
   // ============================================================================
+  // Scroll timeline when active segment changes
+  // ============================================================================
+
+  useEffect(() => {
+    const unsubscribe = store.subscribe(
+      (state) => state.segments.activeSegmentId,
+      (activeSegmentId) => {
+        if (!activeSegmentId) return;
+        const segment = store.getState().segments.segmentsById[activeSegmentId];
+        if (!segment) return;
+
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        // Calculate segment center and scroll to it
+        const segmentCenter = (segment.start + segment.end) / 2;
+        const { zoomLevel, containerWidth } = store.getState().timeline;
+        const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+        const targetX = segmentCenter * pps;
+        const scrollLeft = targetX - containerWidth / 2;
+
+        container.scrollTo({
+          left: Math.max(0, scrollLeft),
+          behavior: "smooth",
+        });
+      },
+    );
+
+    return unsubscribe;
+  }, [store]);
+
+  // ============================================================================
   // Audio actions
   // ============================================================================
 
@@ -269,7 +301,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
   };
 
   const handleTimelineSegmentClick = (segmentId: string) => {
-    store.getState().segments.selectSegment(segmentId);
+    store.getState().segments.setActiveSegment(segmentId);
   };
 
   const handleSegmentPlay = (segmentId: string) => {
