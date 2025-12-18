@@ -1,5 +1,6 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { Users } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
@@ -10,9 +11,11 @@ import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
 
 export function RightSidebar() {
-  const diarizationId = useClippingStore((s) => s.segments.diarizationId);
-  const projectId = useClippingStore((s) => s.segments.projectId);
-  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
+  const $store = useClippingStore();
+
+  const diarizationId = useValue($store.diarizationId);
+  const projectId = useValue($store.projectId);
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

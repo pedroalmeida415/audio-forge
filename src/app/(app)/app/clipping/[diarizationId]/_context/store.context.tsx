@@ -1,20 +1,18 @@
 "use client";
 
 import { createContext, type ReactNode, use, useState } from "react";
-import { useStore } from "zustand";
 import { api } from "~/trpc/react";
 import {
-  type ClippingStore,
-  type ClippingStoreApi,
+  type $ClippingStore,
   type ClippingStoreInitialData,
   createClippingStore,
-} from "../_store/clipping-workspace-store";
+} from "../_store/clipping-store";
 
 // ============================================================================
 // Context
 // ============================================================================
 
-const ClippingStoreContext = createContext<ClippingStoreApi | undefined>(
+const ClippingStoreContext = createContext<$ClippingStore | undefined>(
   undefined,
 );
 
@@ -33,46 +31,56 @@ export function ClippingStoreProvider({
 }: ClippingStoreProviderProps) {
   const trpcUtils = api.useUtils();
 
-  const [store] = useState(() => createClippingStore(initialData, trpcUtils));
+  // useObservable returns a stable observable across renders
+  const [$store] = useState(createClippingStore(initialData, trpcUtils));
 
   return (
-    <ClippingStoreContext.Provider value={store}>
+    <ClippingStoreContext.Provider value={$store}>
       {children}
     </ClippingStoreContext.Provider>
   );
 }
 
 // ============================================================================
-// Hook (overloaded)
+// Hook
 // ============================================================================
 
 /**
- * Hook to access the clipping workspace store.
+ * Hook to access the clipping workspace store observable.
  *
- * @param selector - Optional selector function to pick specific state
- * @returns Selected state when selector provided, store API when no selector
- *
- * @example
- * // With selector - returns selected state, triggers re-render on change
- * const isPlaying = useClippingStore((s) => s.isPlaying);
+ * Returns the LegendState observable for the clipping workspace.
+ * Use with LegendState's reactivity APIs:
  *
  * @example
- * // Without selector - returns store API for direct access/subscribe
- * const store = useClippingStore();
- * store.subscribe((state) => state.currentTime, (time) => { ... });
+ * // Read reactive values with useValue
+ * const $store = useClippingStore();
+ * const isPlaying = useValue($store.playback.isPlaying);
+ *
+ * @example
+ * // Set values directly
+ * $store.playback.isPlaying.set(true);
+ *
+ * @example
+ * // Call co-located actions
+ * $store.selection.selectSegment(segmentId);
+ * $store.timeline.zoomIn();
+ * $store.segmentActions.updateTimes(segmentId, start, end);
+ *
+ * @example
+ * // Subscribe to changes with observe
+ * observe(() => {
+ *   const time = $store.playback.currentTime.get();
+ *   // DOM manipulation or side effects
+ * });
  */
-export function useClippingStore<T>(selector: (store: ClippingStore) => T): T;
-export function useClippingStore(): ClippingStoreApi;
-export function useClippingStore<T>(selector?: (store: ClippingStore) => T) {
-  const store = use(ClippingStoreContext);
+export function useClippingStore(): $ClippingStore {
+  const $store = use(ClippingStoreContext);
 
-  if (!store) {
+  if (!$store) {
     throw new Error(
       "useClippingStore must be used within ClippingStoreProvider",
     );
   }
 
-  // biome-ignore lint/correctness/useHookAtTopLevel: Overloaded hook pattern - selector is always defined in typed overload
-  // biome-ignore lint/style/noNonNullAssertion: Selector is always defined in typed overload
-  return selector ? useStore(store, selector!) : store;
+  return $store;
 }

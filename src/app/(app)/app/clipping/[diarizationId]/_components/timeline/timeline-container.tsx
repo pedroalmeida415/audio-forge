@@ -1,12 +1,12 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { useCallback } from "react";
-import { useShallow } from "zustand/shallow";
 import { api } from "~/trpc/react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { TimelineSegmentsBar } from "./timeline-segments-bar";
@@ -42,38 +42,26 @@ export function TimelineContainer() {
     handleTimelineClick,
     scrollContainerRef,
   } = usePlayback();
-  const {
-    duration,
-    zoomLevel,
-    containerWidth,
-    segmentsById,
-    activeSegmentId,
-    selectedSpeaker,
-    speakerCollections,
-    diarizationId,
-    updateSegmentTimes,
-  } = useClippingStore(
-    useShallow((s) => ({
-      duration: s.playback.duration,
-      zoomLevel: s.timeline.zoomLevel,
-      containerWidth: s.timeline.containerWidth,
-      segmentsById: s.segments.segmentsById,
-      activeSegmentId: s.segments.activeSegmentId,
-      selectedSpeaker: s.segments.selectedSpeaker,
-      speakerCollections: s.segments.speakerCollections,
-      diarizationId: s.segments.diarizationId,
-      updateSegmentTimes: s.segments.updateSegmentTimes,
-    })),
-  );
+
+  const $store = useClippingStore();
+
+  const duration = useValue($store.playback.duration);
+  const zoomLevel = useValue($store.timeline.zoomLevel);
+  const containerWidth = useValue($store.timeline.containerWidth);
+  const segments = useValue($store.segments);
+  const activeSegmentId = useValue($store.selection.activeSegmentId);
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const speakerCollections = useValue($store.speakerCollections);
+  const diarizationId = useValue($store.diarizationId);
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
 
   // Called during drag for immediate visual feedback (local store update only)
   const handleDragUpdate = useCallback(
     (segmentId: string, start: number, end: number) => {
-      updateSegmentTimes(segmentId, start, end);
+      $store.segmentActions.updateTimes(segmentId, start, end);
     },
-    [updateSegmentTimes],
+    [$store],
   );
 
   // Called on drag end to persist changes (triggers mutation)
@@ -89,8 +77,6 @@ export function TimelineContainer() {
   );
 
   const containerRef = useTimelineResize();
-
-  const segments = Object.values(segmentsById);
 
   // Derived values
   const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;

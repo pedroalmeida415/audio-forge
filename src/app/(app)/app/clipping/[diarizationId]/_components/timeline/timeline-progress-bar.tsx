@@ -1,13 +1,15 @@
 "use client";
 
+import { observe } from "@legendapp/state";
+import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef } from "react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 
 export function TimelineProgressBar() {
   const { seek } = usePlayback();
-  const duration = useClippingStore((s) => s.playback.duration);
-  const store = useClippingStore();
+  const $store = useClippingStore();
+  const duration = useValue($store.playback.duration);
 
   const progressRef = useRef<HTMLDivElement>(null);
   const filledRef = useRef<HTMLDivElement>(null);
@@ -17,24 +19,23 @@ export function TimelineProgressBar() {
     if (!duration || duration <= 0) return;
 
     // Set initial position
-    const initialTime = store.getState().playback.currentTime;
+    const initialTime = $store.playback.currentTime.peek();
     if (filledRef.current) {
       const percentage = (initialTime / duration) * 100;
       filledRef.current.style.width = `${percentage}%`;
     }
 
-    const unsubscribe = store.subscribe(
-      (state) => state.playback.currentTime,
-      (time) => {
-        if (filledRef.current) {
-          const percentage = (time / duration) * 100;
-          filledRef.current.style.width = `${percentage}%`;
-        }
-      },
-    );
+    // observe() replaces store.subscribe()
+    const dispose = observe(() => {
+      const time = $store.playback.currentTime.get();
+      if (filledRef.current) {
+        const percentage = (time / duration) * 100;
+        filledRef.current.style.width = `${percentage}%`;
+      }
+    });
 
-    return unsubscribe;
-  }, [store, duration]);
+    return dispose;
+  }, [$store, duration]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current || duration <= 0) return;
@@ -75,7 +76,7 @@ export function TimelineProgressBar() {
     document.addEventListener("pointerup", handlePointerUp);
   };
 
-  const currentTime = store.getState().playback.currentTime;
+  const currentTime = $store.playback.currentTime.peek();
 
   return (
     <div
@@ -86,7 +87,7 @@ export function TimelineProgressBar() {
       className="h-2 w-full cursor-pointer bg-muted"
       onClick={handleClick}
       onKeyDown={(e) => {
-        const time = store.getState().playback.currentTime;
+        const time = $store.playback.currentTime.peek();
         if (e.key === "ArrowLeft") seek(Math.max(0, time - 5));
         if (e.key === "ArrowRight") seek(Math.min(duration, time + 5));
       }}

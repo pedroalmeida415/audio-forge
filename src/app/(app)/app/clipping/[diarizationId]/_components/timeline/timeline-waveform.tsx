@@ -1,10 +1,12 @@
 "use client";
 
+import { observe } from "@legendapp/state";
+import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 import {
   downsamplePeaks,
   generateWaveform,
@@ -15,11 +17,11 @@ import {
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export function TimelineWaveform() {
-  const store = useClippingStore();
+  const $store = useClippingStore();
   const { audioDataBufferRef } = usePlayback();
-  const duration = useClippingStore((s) => s.playback.duration);
-  const zoomLevel = useClippingStore((s) => s.timeline.zoomLevel);
-  const containerWidth = useClippingStore((s) => s.timeline.containerWidth);
+  const duration = useValue($store.playback.duration);
+  const zoomLevel = useValue($store.timeline.zoomLevel);
+  const containerWidth = useValue($store.timeline.containerWidth);
 
   const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -40,24 +42,23 @@ export function TimelineWaveform() {
     if (!duration || duration <= 0) return;
 
     // Set initial position
-    const initialTime = store.getState().playback.currentTime;
+    const initialTime = $store.playback.currentTime.peek();
     if (playedWrapperRef.current) {
       const percentage = (initialTime / duration) * 100;
       playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
     }
 
-    const unsubscribe = store.subscribe(
-      (state) => state.playback.currentTime,
-      (time) => {
-        if (playedWrapperRef.current) {
-          const percentage = (time / duration) * 100;
-          playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
-        }
-      },
-    );
+    // observe() replaces store.subscribe()
+    const dispose = observe(() => {
+      const time = $store.playback.currentTime.get();
+      if (playedWrapperRef.current) {
+        const percentage = (time / duration) * 100;
+        playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
+      }
+    });
 
-    return unsubscribe;
-  }, [store, duration]);
+    return dispose;
+  }, [$store, duration]);
 
   // Load waveform data only once when audio URL is first available
   // biome-ignore lint/correctness/useExhaustiveDependencies: Ref should not change

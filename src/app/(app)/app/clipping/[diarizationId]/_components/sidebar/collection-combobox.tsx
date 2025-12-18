@@ -1,5 +1,6 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { Check, ChevronsUpDown, FolderOpen } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
@@ -26,8 +27,6 @@ interface CollectionComboboxProps {
   projectId: string;
 }
 
-type SpeakerMapping = { collectionId: string; collectionName: string } | null;
-
 export function CollectionCombobox({
   speaker,
   diarizationId,
@@ -35,12 +34,8 @@ export function CollectionCombobox({
 }: CollectionComboboxProps) {
   const [open, setOpen] = useState(false);
 
-  const speakerCollections = useClippingStore(
-    (s) => s.segments.speakerCollections,
-  );
-  const updateSpeakerCollection = useClippingStore(
-    (s) => s.segments.setSpeakerCollection,
-  );
+  const $store = useClippingStore();
+  const speakerCollections = useValue($store.speakerCollections);
 
   const utils = api.useUtils();
 

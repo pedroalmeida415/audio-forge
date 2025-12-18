@@ -1,5 +1,7 @@
 "use client";
 
+import { observe } from "@legendapp/state";
+import { useValue } from "@legendapp/state/react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,7 +12,6 @@ import {
   Scissors,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useShallow } from "zustand/shallow";
 import { Button } from "~/components/ui/button";
 import {
   Select,
@@ -29,7 +30,7 @@ import { formatTimestamp } from "~/lib/time-utils";
 import { api } from "~/trpc/react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 
@@ -44,40 +45,38 @@ const PLAYBACK_RATES = [
 
 // Separate component for time display that updates via subscription
 function TimeDisplay() {
-  const store = useClippingStore();
-  const duration = useClippingStore((s) => s.playback.duration);
+  const $store = useClippingStore();
+  const duration = useValue($store.playback.duration);
   const timeRef = useRef<HTMLSpanElement>(null);
   const lastFlooredTimeRef = useRef(-1);
 
   useEffect(() => {
     // Set initial time
-    const initialTime = store.getState().playback.currentTime;
+    const initialTime = $store.playback.currentTime.peek();
     lastFlooredTimeRef.current = Math.floor(initialTime);
     if (timeRef.current) {
       timeRef.current.textContent = formatTimestamp(initialTime);
     }
 
     // Only update when the floored second changes (formatTimestamp shows whole seconds)
-    const unsubscribe = store.subscribe(
-      (state) => state.playback.currentTime,
-      (time) => {
-        const flooredTime = Math.floor(time);
-        if (flooredTime !== lastFlooredTimeRef.current) {
-          lastFlooredTimeRef.current = flooredTime;
-          if (timeRef.current) {
-            timeRef.current.textContent = formatTimestamp(time);
-          }
+    const dispose = observe(() => {
+      const time = $store.playback.currentTime.get();
+      const flooredTime = Math.floor(time);
+      if (flooredTime !== lastFlooredTimeRef.current) {
+        lastFlooredTimeRef.current = flooredTime;
+        if (timeRef.current) {
+          timeRef.current.textContent = formatTimestamp(time);
         }
-      },
-    );
+      }
+    });
 
-    return unsubscribe;
-  }, [store]);
+    return dispose;
+  }, [$store]);
 
   return (
     <div className="font-mono text-muted-foreground text-sm">
       <span ref={timeRef}>
-        {formatTimestamp(store.getState().playback.currentTime)}
+        {formatTimestamp($store.playback.currentTime.peek())}
       </span>{" "}
       / {formatTimestamp(duration)}
     </div>
@@ -85,31 +84,14 @@ function TimeDisplay() {
 }
 
 export function TimelineToolbar() {
-  const store = useClippingStore();
+  const $store = useClippingStore();
 
-  const {
-    isPlaying,
-    isLoading,
-    playbackRate,
-    zoomLevel,
-    zoomIn,
-    zoomOut,
-    setZoomLevel,
-    activeSegmentId,
-    diarizationId,
-  } = useClippingStore(
-    useShallow((s) => ({
-      isPlaying: s.playback.isPlaying,
-      isLoading: s.playback.isLoading,
-      playbackRate: s.playback.playbackRate,
-      zoomLevel: s.timeline.zoomLevel,
-      zoomIn: s.timeline.zoomIn,
-      zoomOut: s.timeline.zoomOut,
-      setZoomLevel: s.timeline.setZoomLevel,
-      activeSegmentId: s.segments.activeSegmentId,
-      diarizationId: s.segments.diarizationId,
-    })),
-  );
+  const isPlaying = useValue($store.playback.isPlaying);
+  const isLoading = useValue($store.playback.isLoading);
+  const playbackRate = useValue($store.playback.playbackRate);
+  const zoomLevel = useValue($store.timeline.zoomLevel);
+  const activeSegmentId = useValue($store.selection.activeSegmentId);
+  const diarizationId = useValue($store.diarizationId);
 
   const { handleNavigateSegment, togglePlayback, setPlaybackRate } =
     usePlayback();
@@ -121,54 +103,44 @@ export function TimelineToolbar() {
 
   useEffect(() => {
     // Check if split is possible based on current state
-    const checkCanSplit = () => {
-      const { activeSegmentId, segmentsById } = store.getState().segments;
-      const currentTime = store.getState().playback.currentTime;
+    const dispose = observe(() => {
+      const currentActiveId = $store.selection.activeSegmentId.get();
+      const currentTime = $store.playback.currentTime.get();
 
-      if (!activeSegmentId) {
+      if (!currentActiveId) {
         setCanSplit(false);
         return;
       }
 
-      const activeSegment = segmentsById[activeSegmentId];
-      if (!activeSegment) {
+      const $segment = $store.segmentsById[currentActiveId];
+      if (!$segment) {
         setCanSplit(false);
         return;
       }
 
+      const activeSegment = $segment.peek();
       const isWithinSegment =
         currentTime > activeSegment.start && currentTime < activeSegment.end;
       setCanSplit(isWithinSegment);
-    };
+    });
 
-    // Initial check
-    checkCanSplit();
-
-    // Subscribe to both currentTime and activeSegmentId changes
-    const unsubTime = store.subscribe(
-      (state) => state.playback.currentTime,
-      checkCanSplit,
-    );
-    const unsubActive = store.subscribe(
-      (state) => state.segments.activeSegmentId,
-      checkCanSplit,
-    );
-
-    return () => {
-      unsubTime();
-      unsubActive();
-    };
-  }, [store]);
+    return dispose;
+  }, [$store]);
 
   const handleSplit = () => {
     if (!activeSegmentId || !canSplit) return;
-    const splitTime = store.getState().playback.currentTime;
+    const splitTime = $store.playback.currentTime.peek();
     splitSegmentMutation.mutate({
       diarizationId,
       segmentId: activeSegmentId,
       splitTime,
     });
   };
+
+  const handleZoomIn = () => $store.timeline.zoomIn();
+  const handleZoomOut = () => $store.timeline.zoomOut();
+  const handleSetZoomLevel = (level: number) =>
+    $store.timeline.setZoomLevel(level);
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">
@@ -255,7 +227,7 @@ export function TimelineToolbar() {
       <div className="flex items-center gap-2">
         <Button
           disabled={zoomLevel <= MIN_ZOOM}
-          onClick={zoomOut}
+          onClick={handleZoomOut}
           size="icon"
           variant="ghost"
         >
@@ -266,14 +238,14 @@ export function TimelineToolbar() {
           className="w-24"
           max={MAX_ZOOM}
           min={MIN_ZOOM}
-          onValueChange={([value]) => value && setZoomLevel(value)}
+          onValueChange={([value]) => value && handleSetZoomLevel(value)}
           step={5}
           value={[zoomLevel]}
         />
 
         <Button
           disabled={zoomLevel >= MAX_ZOOM}
-          onClick={zoomIn}
+          onClick={handleZoomIn}
           size="icon"
           variant="ghost"
         >

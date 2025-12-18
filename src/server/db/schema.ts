@@ -291,3 +291,5 @@ export const diarizationRelations = relations(diarizations, ({ one }) => ({
 // ============================================================================
 // TYPE EXPORTS
 // ============================================================================
+
+export type Diarization = typeof diarizations.$inferSelect;

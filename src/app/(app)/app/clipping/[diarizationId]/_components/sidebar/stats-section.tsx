@@ -1,5 +1,6 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { useClippingStore } from "../../_context/store.context";
 import {
   calculateStats,
@@ -7,10 +8,12 @@ import {
 } from "../../_utils/segment-utils";
 
 export function StatsSection() {
-  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
+  const $store = useClippingStore();
 
-  let segments = Object.values(segmentsById);
+  const allSegments = useValue($store.segments);
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+
+  let segments = allSegments;
   if (selectedSpeaker) {
     segments = segments.filter((s) => s.speaker === selectedSpeaker);
   }

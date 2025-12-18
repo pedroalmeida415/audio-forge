@@ -1,5 +1,6 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import {
   Dialog,
   DialogContent,
@@ -27,17 +28,16 @@ export function ChangeSpeakerDialog({
   onOpenChange,
   targetSegmentIds,
 }: ChangeSpeakerDialogProps) {
-  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
-  const speakerCollections = useClippingStore(
-    (s) => s.segments.speakerCollections,
-  );
-  const diarizationId = useClippingStore((s) => s.segments.diarizationId);
-  const clearSelection = useClippingStore((s) => s.segments.clearSelection);
+  const $store = useClippingStore();
+
+  const segments = useValue($store.segments);
+  const speakerCollections = useValue($store.speakerCollections);
+  const diarizationId = useValue($store.diarizationId);
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
 
   // Get all unique speakers from segments
-  const speakers = getUniqueSpeakers(Object.values(segmentsById));
+  const speakers = getUniqueSpeakers(segments);
 
   // Create speaker index map for colors
   const speakerIndexMap = new Map(speakers.map((s, i) => [s, i]));
@@ -48,7 +48,7 @@ export function ChangeSpeakerDialog({
       segmentIds: targetSegmentIds,
       updates: { speaker },
     });
-    clearSelection();
+    $store.selection.clearSelection();
     onOpenChange(false);
   };
 

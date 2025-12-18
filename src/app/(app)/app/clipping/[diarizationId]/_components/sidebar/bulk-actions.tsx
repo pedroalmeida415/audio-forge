@@ -1,5 +1,6 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { Check, Trash2, User } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
@@ -8,11 +9,11 @@ import { useClippingStore } from "../../_context/store.context";
 import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 
 export function SegmentActions() {
-  const selectedSegmentIds = useClippingStore(
-    (s) => s.segments.selectedSegmentIds,
-  );
-  const activeSegmentId = useClippingStore((s) => s.segments.activeSegmentId);
-  const diarizationId = useClippingStore((s) => s.segments.diarizationId);
+  const $store = useClippingStore();
+
+  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
+  const activeSegmentId = useValue($store.selection.activeSegmentId);
+  const diarizationId = useValue($store.diarizationId);
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
 

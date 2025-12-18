@@ -1,8 +1,10 @@
 "use client";
 
+import { observe } from "@legendapp/state";
+import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef } from "react";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-workspace-store";
+import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
@@ -11,10 +13,10 @@ interface TimelineScrubberProps {
 }
 
 export function TimelineScrubber({ onDrag }: TimelineScrubberProps) {
-  const store = useClippingStore();
+  const $store = useClippingStore();
   // Subscribe to zoom/container changes via React (infrequent updates)
-  const zoomLevel = useClippingStore((s) => s.timeline.zoomLevel);
-  const containerWidth = useClippingStore((s) => s.timeline.containerWidth);
+  const zoomLevel = useValue($store.timeline.zoomLevel);
+  const containerWidth = useValue($store.timeline.containerWidth);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
 
@@ -27,30 +29,29 @@ export function TimelineScrubber({ onDrag }: TimelineScrubberProps) {
 
     // Update position immediately when zoom/width changes
     if (scrubberRef.current) {
-      const time = store.getState().playback.currentTime;
+      const time = $store.playback.currentTime.peek();
       scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
     }
-  }, [zoomLevel, containerWidth, store]);
+  }, [zoomLevel, containerWidth, $store]);
 
   // Subscribe to currentTime updates for direct DOM manipulation (bypasses React)
   useEffect(() => {
     // Set initial position
     if (scrubberRef.current) {
-      const time = store.getState().playback.currentTime;
+      const time = $store.playback.currentTime.peek();
       scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
     }
 
-    const unsubscribe = store.subscribe(
-      (state) => state.playback.currentTime,
-      (time) => {
-        if (scrubberRef.current) {
-          scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
-        }
-      },
-    );
+    // observe() replaces store.subscribe()
+    const dispose = observe(() => {
+      const time = $store.playback.currentTime.get();
+      if (scrubberRef.current) {
+        scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
+      }
+    });
 
-    return unsubscribe;
-  }, [store]);
+    return dispose;
+  }, [$store]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();

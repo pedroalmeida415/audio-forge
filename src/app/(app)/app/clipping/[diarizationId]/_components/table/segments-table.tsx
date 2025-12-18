@@ -1,5 +1,7 @@
 "use client";
 
+import { observe } from "@legendapp/state";
+import { useValue } from "@legendapp/state/react";
 import {
   flexRender,
   getCoreRowModel,
@@ -12,9 +14,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
-import type { FilterConfig } from "../../_store/types";
+import type { SegmentWithId } from "../../_store/clipping-store";
 import { getUniqueSpeakers } from "../../_utils/segment-utils";
 import { createColumns, type TableSegment } from "./columns";
+
+interface FilterConfig {
+  reviewed: boolean | null;
+}
 
 interface TableRowProps {
   row: Row<TableSegment>;
@@ -71,23 +77,13 @@ const TableRow = memo(
 );
 
 export function SegmentsTable() {
-  // Get store API for direct state access (avoids stale closures)
-  const store = useClippingStore();
+  const $store = useClippingStore();
 
-  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
-  const selectedSegmentIds = useClippingStore(
-    (s) => s.segments.selectedSegmentIds,
-  );
-  const toggleSegmentSelection = useClippingStore(
-    (s) => s.segments.toggleSegmentSelection,
-  );
-  const selectAllSegments = useClippingStore(
-    (s) => s.segments.selectAllSegments,
-  );
-  const clearSelection = useClippingStore((s) => s.segments.clearSelection);
-  const activeSegmentId = useClippingStore((s) => s.segments.activeSegmentId);
-  const setActiveSegment = useClippingStore((s) => s.segments.setActiveSegment);
+  // Get reactive values from store
+  const segments = useValue($store.segments);
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
+  const activeSegmentId = useValue($store.selection.activeSegmentId);
 
   const { handleSegmentPlay } = usePlayback();
 
@@ -102,21 +98,20 @@ export function SegmentsTable() {
 
   // Pre-compute speaker index map for O(1) lookups instead of O(n) indexOf calls
   const speakerIndexMap = useMemo(() => {
-    const speakerOrder = getUniqueSpeakers(Object.values(segmentsById));
+    const speakerOrder = getUniqueSpeakers(segments);
     return new Map(speakerOrder.map((speaker, idx) => [speaker, idx]));
-  }, [segmentsById]);
+  }, [segments]);
 
-  // Pre-group segments by speaker - only recomputes when segmentsById changes.
+  // Pre-group segments by speaker - only recomputes when segments changes.
   // Each speaker's segments are pre-sorted by start time and pre-transformed
-  // to TableSegment format. This avoids filtering/sorting all 302 segments
+  // to TableSegment format. This avoids filtering/sorting all segments
   // on every speaker selection change.
   const segmentsBySpeaker = useMemo(() => {
     const map = new Map<string, TableSegment[]>();
-    const allSegments = Object.values(segmentsById);
 
-    // Group by speaker (using base SegmentWithId type first)
-    const groupedRaw = new Map<string, typeof allSegments>();
-    for (const segment of allSegments) {
+    // Group by speaker (filter out deleted)
+    const groupedRaw = new Map<string, SegmentWithId[]>();
+    for (const segment of segments) {
       if (segment.isDeleted) continue;
       const list = groupedRaw.get(segment.speaker) || [];
       list.push(segment);
@@ -124,19 +119,21 @@ export function SegmentsTable() {
     }
 
     // Sort each group by start time and transform to TableSegment
-    for (const [speaker, segments] of groupedRaw) {
-      segments.sort((a, b) => a.start - b.start);
+    for (const [speaker, speakerSegments] of groupedRaw) {
+      speakerSegments.sort((a, b) => a.start - b.start);
       const colorIndex = speakerIndexMap.get(speaker) ?? -1;
-      const tableSegments: TableSegment[] = segments.map((segment, i) => ({
-        ...segment,
-        index: i,
-        colorIndex,
-      }));
+      const tableSegments: TableSegment[] = speakerSegments.map(
+        (segment, i) => ({
+          ...segment,
+          index: i,
+          colorIndex,
+        }),
+      );
       map.set(speaker, tableSegments);
     }
 
     return map;
-  }, [segmentsById, speakerIndexMap]);
+  }, [segments, speakerIndexMap]);
 
   // Get table data for selected speaker - fast O(1) lookup into pre-computed map
   // Only creates new array reference when speaker actually changes
@@ -144,13 +141,13 @@ export function SegmentsTable() {
     if (!selectedSpeaker) return [];
 
     // Apply additional filters if needed
-    const segments = segmentsBySpeaker.get(selectedSpeaker) || [];
+    const speakerSegments = segmentsBySpeaker.get(selectedSpeaker) || [];
     if (filters.reviewed === null) {
-      return segments;
+      return speakerSegments;
     }
 
     // Only filter if reviewed filter is active
-    return segments.filter((s) => {
+    return speakerSegments.filter((s) => {
       const isReviewed = s.isReviewed ?? false;
       return filters.reviewed === isReviewed;
     });
@@ -158,27 +155,25 @@ export function SegmentsTable() {
 
   // Scroll to active segment when it changes (bi-directional navigation)
   useEffect(() => {
-    const unsubscribe = store.subscribe(
-      (state) => state.segments.activeSegmentId,
-      (activeId) => {
-        if (!activeId || !tableContainerRef.current) return;
+    const dispose = observe(() => {
+      const activeId = $store.selection.activeSegmentId.get();
+      if (!activeId || !tableContainerRef.current) return;
 
-        // Find the row element by data-segment-id attribute
-        const row = tableContainerRef.current.querySelector(
-          `tr[data-segment-id="${activeId}"]`,
-        );
+      // Find the row element by data-segment-id attribute
+      const row = tableContainerRef.current.querySelector(
+        `tr[data-segment-id="${activeId}"]`,
+      );
 
-        if (row) {
-          row.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
-      },
-    );
+      if (row) {
+        row.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    });
 
-    return unsubscribe;
-  }, [store]);
+    return dispose;
+  }, [$store]);
 
   // Compute selection state for checkboxes
   const isAllSelected = useMemo(() => {
@@ -194,16 +189,39 @@ export function SegmentsTable() {
     );
   }, [tableData, selectedSegmentIds, isAllSelected]);
 
+  // Action callbacks
+  const handleToggleSelection = useCallback(
+    (segmentId: string) => {
+      $store.selection.toggleSegmentSelection(segmentId);
+    },
+    [$store],
+  );
+
+  const handleSelectAll = useCallback(() => {
+    $store.selection.selectAllSegments();
+  }, [$store]);
+
+  const handleClearSelection = useCallback(() => {
+    $store.selection.clearSelection();
+  }, [$store]);
+
+  const handleSetActiveSegment = useCallback(
+    (segmentId: string) => {
+      $store.selection.setActiveSegment(segmentId);
+    },
+    [$store],
+  );
+
   // Toggle all handler
   const handleToggleAll = useCallback(
     (selectAll: boolean) => {
       if (selectAll) {
-        selectAllSegments();
+        handleSelectAll();
       } else {
-        clearSelection();
+        handleClearSelection();
       }
     },
-    [selectAllSegments, clearSelection],
+    [handleSelectAll, handleClearSelection],
   );
 
   // Column definitions - memoized because TanStack Table relies on reference equality
@@ -213,7 +231,7 @@ export function SegmentsTable() {
       createColumns({
         onPlay: handleSegmentPlay,
         selectedSegmentIds,
-        onToggleSelection: toggleSegmentSelection,
+        onToggleSelection: handleToggleSelection,
         onToggleAll: handleToggleAll,
         isAllSelected,
         isSomeSelected,
@@ -221,14 +239,14 @@ export function SegmentsTable() {
     [
       handleSegmentPlay,
       selectedSegmentIds,
-      toggleSegmentSelection,
+      handleToggleSelection,
       handleToggleAll,
       isAllSelected,
       isSomeSelected,
     ],
   );
 
-  // Create table instance (row selection managed externally via Zustand store)
+  // Create table instance (row selection managed externally via store)
   const table = useReactTable({
     data: tableData,
     columns,
@@ -282,7 +300,7 @@ export function SegmentsTable() {
                     row={row}
                     isSelected={selectedSegmentIds.has(row.original.id)}
                     isActive={row.id === activeSegmentId}
-                    onRowClick={setActiveSegment}
+                    onRowClick={handleSetActiveSegment}
                   />
                 ))
             ) : (

@@ -1,8 +1,9 @@
 "use client";
 
+import { observe } from "@legendapp/state";
 import { createContext, type ReactNode, use, useEffect, useRef } from "react";
 import { useClippingStore } from "../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../_store/clipping-workspace-store";
+import { TIMELINE_CONSTANTS } from "../_store/clipping-store";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
@@ -16,14 +17,13 @@ function getPixelsPerSecond(zoomLevel: number, containerWidth: number): number {
 }
 
 function usePlaybackState(audioDataBuffer: ArrayBuffer) {
-  const store = useClippingStore();
+  const $store = useClippingStore();
 
   // Audio refs
   const audioDataBufferRef = useRef<ArrayBuffer>(audioDataBuffer);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const segmentEndTimeRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  // Track which buffer was initialized to handle re-initialization on navigation
 
   // Timeline refs
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -34,13 +34,15 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
 
   // Convert time to pixel position
   const timeToPixels = (time: number): number => {
-    const { zoomLevel, containerWidth } = store.getState().timeline;
+    const zoomLevel = $store.timeline.zoomLevel.peek();
+    const containerWidth = $store.timeline.containerWidth.peek();
     return time * getPixelsPerSecond(zoomLevel, containerWidth);
   };
 
   // Convert pixel position to time
   const pixelsToTime = (pixels: number): number => {
-    const { zoomLevel, containerWidth } = store.getState().timeline;
+    const zoomLevel = $store.timeline.zoomLevel.peek();
+    const containerWidth = $store.timeline.containerWidth.peek();
     const pps = getPixelsPerSecond(zoomLevel, containerWidth);
     if (pps <= 0) return 0;
     return pixels / pps;
@@ -51,7 +53,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const { containerWidth } = store.getState().timeline;
+    const containerWidth = $store.timeline.containerWidth.peek();
     const targetX = timeToPixels(time);
     // Center the time in the viewport
     const scrollLeft = targetX - containerWidth / 2;
@@ -72,27 +74,27 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     audioRef.current = audio;
 
     const handleLoadedMetadata = () => {
-      store.getState().playback.setDuration(audio.duration);
-      store.getState().playback.setIsLoading(false);
+      $store.playback.duration.set(audio.duration);
+      $store.playback.isLoading.set(false);
     };
 
     const handleEnded = () => {
-      store.getState().playback.setIsPlaying(false);
-      store.getState().playback.setCurrentTime(0);
+      $store.playback.isPlaying.set(false);
+      $store.playback.currentTime.set(0);
       segmentEndTimeRef.current = null;
     };
 
     const handleError = () => {
-      store.getState().playback.setIsLoading(false);
-      store.getState().playback.setError("Failed to load audio");
+      $store.playback.isLoading.set(false);
+      $store.playback.error.set("Failed to load audio");
     };
 
     const handlePlay = () => {
-      store.getState().playback.setIsPlaying(true);
+      $store.playback.isPlaying.set(true);
     };
 
     const handlePause = () => {
-      store.getState().playback.setIsPlaying(false);
+      $store.playback.isPlaying.set(false);
     };
 
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
@@ -119,9 +121,8 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
       audio.src = "";
       audio.remove();
       audioRef.current = null;
-      // Reset the initialized buffer ref so we can reinitialize on next mount
     };
-  }, [store]);
+  }, [$store]);
 
   // ============================================================================
   // RAF loop for smooth playhead updates + auto-scroll
@@ -132,116 +133,118 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     let targetVisibleRight = 0;
     let targetVisibleLeft = 0;
 
-    const unsubscribe = store.subscribe(
-      (state) => state.playback.isPlaying,
-      (isPlaying) => {
-        if (!isPlaying) {
-          if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
-            animationFrameRef.current = null;
-          }
+    // observe() automatically tracks dependencies and runs when they change
+    const dispose = observe(() => {
+      const isPlaying = $store.playback.isPlaying.get();
+
+      if (!isPlaying) {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        return;
+      }
+
+      // Initialize target boundaries
+      const container = scrollContainerRef.current;
+      if (container) {
+        const containerWidth = $store.timeline.containerWidth.peek();
+        targetVisibleLeft = container.scrollLeft;
+        targetVisibleRight = targetVisibleLeft + containerWidth;
+      }
+
+      const updateTime = () => {
+        const audio = audioRef.current;
+        const container = scrollContainerRef.current;
+        if (!audio) return;
+
+        // Check segment end
+        if (
+          segmentEndTimeRef.current !== null &&
+          audio.currentTime >= segmentEndTimeRef.current
+        ) {
+          audio.pause();
+          segmentEndTimeRef.current = null;
           return;
         }
 
-        // Initialize target boundaries
-        const container = scrollContainerRef.current;
+        const currentTime = audio.currentTime;
+
+        // Update time in store
+        $store.playback.currentTime.set(currentTime);
+
+        // Auto-scroll: keep playhead visible, always land on left side
         if (container) {
-          const { containerWidth } = store.getState().timeline;
-          targetVisibleLeft = container.scrollLeft;
-          targetVisibleRight = targetVisibleLeft + containerWidth;
+          const zoomLevel = $store.timeline.zoomLevel.peek();
+          const containerWidth = $store.timeline.containerWidth.peek();
+          const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+          const timeX = currentTime * pps;
+          const padding = containerWidth * 0.1;
+
+          // Check against TARGET boundaries (where we're scrolling to), not current scroll position
+          const pastRightEdge = timeX > targetVisibleRight - padding;
+          const pastLeftEdge = timeX < targetVisibleLeft + padding;
+
+          if (pastRightEdge || pastLeftEdge) {
+            // Always position playhead on the left side with padding
+            const newScrollLeft = Math.max(0, timeX - padding);
+            container.scrollTo({
+              left: newScrollLeft,
+              behavior: "smooth",
+            });
+            // Update target boundaries to where we're scrolling
+            targetVisibleLeft = newScrollLeft;
+            targetVisibleRight = newScrollLeft + containerWidth;
+          }
         }
 
-        const updateTime = () => {
-          const audio = audioRef.current;
-          const container = scrollContainerRef.current;
-          if (!audio) return;
-
-          // Check segment end
-          if (
-            segmentEndTimeRef.current !== null &&
-            audio.currentTime >= segmentEndTimeRef.current
-          ) {
-            audio.pause();
-            segmentEndTimeRef.current = null;
-            return;
-          }
-
-          const currentTime = audio.currentTime;
-
-          // Update time in store (triggers primitive selector subscribers)
-          store.getState().playback.setCurrentTime(currentTime);
-
-          // Auto-scroll: keep playhead visible, always land on left side
-          if (container) {
-            const { zoomLevel, containerWidth } = store.getState().timeline;
-            const pps = getPixelsPerSecond(zoomLevel, containerWidth);
-            const timeX = currentTime * pps;
-            const padding = containerWidth * 0.1;
-
-            // Check against TARGET boundaries (where we're scrolling to), not current scroll position
-            const pastRightEdge = timeX > targetVisibleRight - padding;
-            const pastLeftEdge = timeX < targetVisibleLeft + padding;
-
-            if (pastRightEdge || pastLeftEdge) {
-              // Always position playhead on the left side with padding
-              const newScrollLeft = Math.max(0, timeX - padding);
-              container.scrollTo({
-                left: newScrollLeft,
-                behavior: "smooth",
-              });
-              // Update target boundaries to where we're scrolling
-              targetVisibleLeft = newScrollLeft;
-              targetVisibleRight = newScrollLeft + containerWidth;
-            }
-          }
-
-          animationFrameRef.current = requestAnimationFrame(updateTime);
-        };
-
         animationFrameRef.current = requestAnimationFrame(updateTime);
-      },
-      { fireImmediately: true },
-    );
+      };
+
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    });
 
     return () => {
-      unsubscribe();
+      dispose();
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [store]);
+  }, [$store]);
 
   // ============================================================================
   // Scroll timeline when active segment changes
   // ============================================================================
 
   useEffect(() => {
-    const unsubscribe = store.subscribe(
-      (state) => state.segments.activeSegmentId,
-      (activeSegmentId) => {
-        if (!activeSegmentId) return;
-        const segment = store.getState().segments.segmentsById[activeSegmentId];
-        if (!segment) return;
+    const dispose = observe(() => {
+      const activeSegmentId = $store.selection.activeSegmentId.get();
+      if (!activeSegmentId) return;
 
-        const container = scrollContainerRef.current;
-        if (!container) return;
+      // Use peek() to avoid tracking these - we only want to react to activeSegmentId
+      const $segment = $store.segmentsById[activeSegmentId];
+      if (!$segment) return;
 
-        // Calculate segment center and scroll to it
-        const segmentCenter = (segment.start + segment.end) / 2;
-        const { zoomLevel, containerWidth } = store.getState().timeline;
-        const pps = getPixelsPerSecond(zoomLevel, containerWidth);
-        const targetX = segmentCenter * pps;
-        const scrollLeft = targetX - containerWidth / 2;
+      const container = scrollContainerRef.current;
+      if (!container) return;
 
-        container.scrollTo({
-          left: Math.max(0, scrollLeft),
-          behavior: "smooth",
-        });
-      },
-    );
+      // Calculate segment center and scroll to it
+      const segment = $segment.peek();
+      const segmentCenter = (segment.start + segment.end) / 2;
+      const zoomLevel = $store.timeline.zoomLevel.peek();
+      const containerWidth = $store.timeline.containerWidth.peek();
+      const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+      const targetX = segmentCenter * pps;
+      const scrollLeft = targetX - containerWidth / 2;
 
-    return unsubscribe;
-  }, [store]);
+      container.scrollTo({
+        left: Math.max(0, scrollLeft),
+        behavior: "smooth",
+      });
+    });
+
+    return dispose;
+  }, [$store]);
 
   // ============================================================================
   // Audio actions
@@ -258,7 +261,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
   };
 
   const togglePlayback = () => {
-    const isPlaying = store.getState().playback.isPlaying;
+    const isPlaying = $store.playback.isPlaying.peek();
     if (isPlaying) {
       pause();
     } else {
@@ -270,7 +273,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     const audio = audioRef.current;
     if (audio) {
       audio.currentTime = Math.max(0, Math.min(time, audio.duration || 0));
-      store.getState().playback.setCurrentTime(audio.currentTime);
+      $store.playback.currentTime.set(audio.currentTime);
     }
   };
 
@@ -278,7 +281,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     const audio = audioRef.current;
     if (audio) {
       audio.playbackRate = rate;
-      store.getState().playback.setPlaybackRate(rate);
+      $store.playback.playbackRate.set(rate);
     }
   };
 
@@ -293,40 +296,44 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
 
   // Combined handlers
   const handleSegmentSelect = (segmentId: string) => {
-    store.getState().segments.selectSegment(segmentId);
-    const segment = store.getState().segments.segmentsById[segmentId];
-    if (segment) {
-      scrollToTime(segment.start);
+    $store.selection.selectSegment(segmentId);
+    const $segment = $store.segmentsById[segmentId];
+    if ($segment) {
+      scrollToTime($segment.start.peek());
     }
   };
 
   const handleTimelineSegmentClick = (segmentId: string) => {
-    store.getState().segments.setActiveSegment(segmentId);
+    $store.selection.setActiveSegment(segmentId);
   };
 
   const handleSegmentPlay = (segmentId: string) => {
-    const segment = store.getState().segments.segmentsById[segmentId];
-    if (segment) {
+    const $segment = $store.segmentsById[segmentId];
+    if ($segment) {
+      const segment = $segment.peek();
       playSegment(segment.start, segment.end);
       scrollToTime(segment.start);
     }
   };
 
   const handleNavigateSegment = (direction: "next" | "prev") => {
-    const segmentsState = store.getState().segments;
-    const { selectedSegmentId, selectedSpeaker, segmentsById } = segmentsState;
-    const segments = Object.values(segmentsById);
+    const selectedSegmentId = $store.selection.selectedSegmentId.peek();
+    const selectedSpeaker = $store.selection.selectedSpeaker.peek();
+    const segments = $store.segments.peek();
 
-    // Filter segments by speaker
+    // Filter segments by speaker and non-deleted
     const filteredSegments = selectedSpeaker
-      ? segments.filter((s) => s.speaker === selectedSpeaker)
-      : segments;
+      ? segments.filter((s) => s.speaker === selectedSpeaker && !s.isDeleted)
+      : segments.filter((s) => !s.isDeleted);
+
+    // Sort by start time
+    filteredSegments.sort((a, b) => a.start - b.start);
 
     if (!selectedSegmentId) {
       const nextSegment =
         direction === "next" ? filteredSegments[0] : undefined;
       if (nextSegment) {
-        segmentsState.selectSegment(nextSegment.id);
+        $store.selection.selectSegment(nextSegment.id);
         scrollToTime(nextSegment.start);
       }
       return;
@@ -341,7 +348,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     const segment = filteredSegments[newIndex];
 
     if (segment) {
-      segmentsState.selectSegment(segment.id);
+      $store.selection.selectSegment(segment.id);
       scrollToTime(segment.start);
     }
   };
@@ -353,7 +360,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     const scrollLeft = container.scrollLeft;
     const relativeX = clientX - rect.left + scrollLeft;
     const time = pixelsToTime(relativeX);
-    const duration = store.getState().playback.duration;
+    const duration = $store.playback.duration.peek();
     const clampedTime = Math.max(0, Math.min(time, duration));
     seek(clampedTime);
   };
@@ -368,7 +375,7 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     const scrollLeft = container.scrollLeft;
     const relativeX = e.clientX - rect.left + scrollLeft;
     const time = pixelsToTime(relativeX);
-    const duration = store.getState().playback.duration;
+    const duration = $store.playback.duration.peek();
     const clampedTime = Math.max(0, Math.min(time, duration));
     seek(clampedTime);
   };

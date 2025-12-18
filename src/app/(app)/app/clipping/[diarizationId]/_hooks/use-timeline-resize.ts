@@ -10,15 +10,13 @@ import { useClippingStore } from "../_context/store.context";
  * Must be rendered within ClippingStoreProvider.
  */
 export function useTimelineResize() {
-  const store = useClippingStore();
+  const $store = useClippingStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
-        store
-          .getState()
-          .timeline.setContainerWidth(containerRef.current.offsetWidth);
+        $store.timeline.setContainerWidth(containerRef.current.offsetWidth);
       }
     };
 
@@ -31,7 +29,7 @@ export function useTimelineResize() {
     }
 
     return () => observer.disconnect();
-  }, [store]);
+  }, [$store]);
 
   return containerRef;
 }

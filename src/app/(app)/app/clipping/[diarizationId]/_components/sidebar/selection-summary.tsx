@@ -1,13 +1,23 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { formatDuration } from "~/lib/time-utils";
 import { useClippingStore } from "../../_context/store.context";
 import { getSelectedSegmentsData } from "../../_utils/segment-utils";
 
 export function SelectionSummary() {
-  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
-  const selectedSegmentIds = useClippingStore(
-    (s) => s.segments.selectedSegmentIds,
+  const $store = useClippingStore();
+
+  const segments = useValue($store.segments);
+  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
+
+  // Build segmentsById locally
+  const segmentsById = segments.reduce(
+    (acc, segment) => {
+      acc[segment.id] = segment;
+      return acc;
+    },
+    {} as Record<string, (typeof segments)[0]>,
   );
 
   const selectionData = getSelectedSegmentsData(

@@ -1,11 +1,13 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { Users } from "lucide-react";
 import { useClippingStore } from "../../_context/store.context";
 import { SegmentsTable } from "./segments-table";
 
 export function TableView() {
-  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
+  const $store = useClippingStore();
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

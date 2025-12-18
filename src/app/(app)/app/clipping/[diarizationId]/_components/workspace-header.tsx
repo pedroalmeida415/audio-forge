@@ -1,5 +1,6 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { ArrowLeft, Focus, ScissorsIcon, Table2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
@@ -13,7 +14,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { useClippingStore } from "../_context/store.context";
-import type { ViewMode } from "../_store/clipping-workspace-store";
+import type { ViewMode } from "../_store/clipping-store";
 import {
   getSpeakerDisplayName,
   getUniqueSpeakers,
@@ -24,19 +25,25 @@ interface WorkspaceHeaderProps {
 }
 
 export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
-  const viewMode = useClippingStore((s) => s.ui.viewMode);
-  const setViewMode = useClippingStore((s) => s.ui.setViewMode);
-  const segmentsById = useClippingStore((s) => s.segments.segmentsById);
-  const selectedSpeaker = useClippingStore((s) => s.segments.selectedSpeaker);
-  const selectSpeaker = useClippingStore((s) => s.segments.selectSpeaker);
-  const speakerCollections = useClippingStore(
-    (s) => s.segments.speakerCollections,
-  );
+  const $store = useClippingStore();
 
-  const speakers = getUniqueSpeakers(Object.values(segmentsById));
+  const viewMode = useValue($store.ui.viewMode);
+  const segments = useValue($store.segments);
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const speakerCollections = useValue($store.speakerCollections);
+
+  const speakers = getUniqueSpeakers(segments);
   const speakerColorIndex = selectedSpeaker
     ? speakers.indexOf(selectedSpeaker)
     : -1;
+
+  const setViewMode = (mode: ViewMode) => {
+    $store.ui.viewMode.set(mode);
+  };
+
+  const selectSpeaker = (speaker: string | null) => {
+    $store.selection.selectSpeaker(speaker);
+  };
 
   return (
     <div className="flex items-center justify-between border-b bg-background px-4 py-2">
