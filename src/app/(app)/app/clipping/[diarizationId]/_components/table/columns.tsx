@@ -1,23 +1,21 @@
 "use client";
 
-import type { ColumnDef, Row, Table } from "@tanstack/react-table";
+import { useValue } from "@legendapp/state/react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Play } from "lucide-react";
+import { useMemo } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
-import type { SegmentWithId } from "../../_store/clipping-workspace-store";
+import type { DiarizationSegment } from "~/server/db/schema";
+import { usePlayback } from "../../_context/playback.context";
+import { useClippingStore } from "../../_context/store.context";
 import {
   DURATION_THRESHOLDS,
   getSegmentDuration,
 } from "../../_utils/segment-utils";
 import { EditableTimeCell } from "./editable-time-cell";
-
-// Extended segment with computed fields for the table
-export interface TableSegment extends SegmentWithId {
-  index: number;
-  colorIndex: number;
-}
 
 // Get sort icon based on column state
 function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
@@ -30,42 +28,57 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 // Cell Components
 // ============================================================================
 
-// Header checkbox for select all - uses direct store action
-function SelectAllCheckbox({
-  isAllSelected,
-  isSomeSelected,
-  onToggleAll,
-}: {
-  isAllSelected: boolean;
-  isSomeSelected: boolean;
-  onToggleAll: (selectAll: boolean) => void;
-}) {
-  const checked = isAllSelected || (isSomeSelected && "indeterminate");
+// Header checkbox for select all - subscribes directly to store
+function SelectAllCheckbox() {
+  const $store = useClippingStore();
+
+  const speakerSegments = useValue(() =>
+    $store.segmentsBySpeaker
+      .get()
+      .get($store.selection.selectedSpeaker.get() ?? ""),
+  );
+  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
+
+  const memoizedSpeakerSegments = useMemo(
+    () => speakerSegments?.map(($seg) => $seg.peek()) ?? [],
+    [speakerSegments],
+  );
+
+  const isAllSelected =
+    memoizedSpeakerSegments.length > 0 &&
+    memoizedSpeakerSegments.every((segment) =>
+      selectedSegmentIds.has(segment.id),
+    );
+
+  const handleToggleAll = (selectAll: boolean) => {
+    if (selectAll) {
+      $store.selection.selectAllSegments();
+    } else {
+      $store.selection.clearSelection();
+    }
+  };
 
   return (
     <Checkbox
-      checked={checked}
-      onCheckedChange={(value) => onToggleAll(!!value)}
+      checked={isAllSelected}
+      onCheckedChange={(value) => handleToggleAll(!!value)}
       aria-label="Select all"
       className="translate-y-[2px]"
     />
   );
 }
 
-// Row checkbox cell - uses direct store action
-function SelectCell({
-  segmentId,
-  isSelected,
-  onToggle,
-}: {
-  segmentId: string;
-  isSelected: boolean;
-  onToggle: (segmentId: string) => void;
-}) {
+// Row checkbox cell - subscribes directly to store
+function SelectCell({ segmentId }: { segmentId: string }) {
+  const $store = useClippingStore();
+  const isSelected = useValue(() =>
+    $store.selection.selectedSegmentIds.get().has(segmentId),
+  );
+
   return (
     <Checkbox
       checked={isSelected}
-      onCheckedChange={() => onToggle(segmentId)}
+      onCheckedChange={() => $store.selection.toggleSegmentSelection(segmentId)}
       onClick={(e) => e.stopPropagation()}
       aria-label="Select row"
       className="translate-y-[2px]"
@@ -82,14 +95,10 @@ function IndexCell({ index }: { index: number }) {
   );
 }
 
-// Play button cell
-function PlayCell({
-  segmentId,
-  onPlay,
-}: {
-  segmentId: string;
-  onPlay: (id: string) => void;
-}) {
+// Play button cell - subscribes directly to playback context
+function PlayCell({ segmentId }: { segmentId: string }) {
+  const { handleSegmentPlay } = usePlayback();
+
   return (
     <Button
       variant="ghost"
@@ -97,7 +106,7 @@ function PlayCell({
       className="h-7 w-7"
       onClick={(e) => {
         e.stopPropagation();
-        onPlay(segmentId);
+        handleSegmentPlay(segmentId);
       }}
     >
       <Play className="h-3.5 w-3.5" />
@@ -149,54 +158,31 @@ function ReviewedCell({ isReviewed }: { isReviewed: boolean }) {
 // Column Definitions
 // ============================================================================
 
-export function createColumns(options: {
-  onPlay: (segmentId: string) => void;
-  // Selection callbacks (bypasses TanStack Table's built-in selection)
-  selectedSegmentIds: Set<string>;
-  onToggleSelection: (segmentId: string) => void;
-  onToggleAll: (selectAll: boolean) => void;
-  isAllSelected: boolean;
-  isSomeSelected: boolean;
-}): ColumnDef<TableSegment>[] {
+export function createColumns(): ColumnDef<DiarizationSegment>[] {
   return [
-    // Checkbox column
+    // Checkbox column - subscribes directly to store
     {
       id: "select",
-      header: () => (
-        <SelectAllCheckbox
-          isAllSelected={options.isAllSelected}
-          isSomeSelected={options.isSomeSelected}
-          onToggleAll={options.onToggleAll}
-        />
-      ),
-      cell: ({ row }) => (
-        <SelectCell
-          segmentId={row.original.id}
-          isSelected={options.selectedSegmentIds.has(row.original.id)}
-          onToggle={options.onToggleSelection}
-        />
-      ),
+      header: () => <SelectAllCheckbox />,
+      cell: ({ row }) => <SelectCell segmentId={row.original.id} />,
       enableSorting: false,
       enableHiding: false,
       size: 40,
     },
 
-    // Index column
+    // Index column - uses row index from table
     {
       id: "index",
-      accessorFn: (row) => row.index,
       header: () => <span className="block text-center">#</span>,
-      cell: ({ row }) => <IndexCell index={row.original.index} />,
+      cell: ({ row }) => <IndexCell index={row.index} />,
       size: 50,
     },
 
-    // Play button column
+    // Play button column - subscribes directly to playback context
     {
       id: "play",
       header: "",
-      cell: ({ row }) => (
-        <PlayCell segmentId={row.original.id} onPlay={options.onPlay} />
-      ),
+      cell: ({ row }) => <PlayCell segmentId={row.original.id} />,
       enableSorting: false,
       size: 40,
     },

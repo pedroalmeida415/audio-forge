@@ -44,8 +44,7 @@ export interface ClippingStoreState {
 
   // Computed lookup tables (return observable references for direct mutation)
   segmentsById: () => Record<string, Observable<DiarizationSegment>>;
-  segmentsBySpeaker: () => Map<string, DiarizationSegment[]>;
-  speakerOrder: () => string[];
+  segmentsBySpeaker: () => Map<string, Observable<DiarizationSegment>[]>;
 
   // Playback state (actions handled by playback context)
   playback: {
@@ -160,38 +159,14 @@ export function createClippingStore(
         {} as Record<string, Observable<DiarizationSegment>>,
       ),
 
-    segmentsBySpeaker: (): Map<string, DiarizationSegment[]> => {
-      const segs = $store.segments.get();
-      const map = new Map<string, DiarizationSegment[]>();
-
-      for (const segment of segs) {
-        if (segment.isDeleted) continue;
-        const list = map.get(segment.speaker) ?? [];
+    segmentsBySpeaker: () =>
+      $store.segments.reduce((acc, segment) => {
+        const speaker = segment.speaker.get();
+        const list = acc.get(speaker) ?? [];
         list.push(segment);
-        map.set(segment.speaker, list);
-      }
-
-      for (const list of map.values()) {
-        list.sort((a, b) => a.start - b.start);
-      }
-
-      return map;
-    },
-
-    speakerOrder: (): string[] => {
-      const segs = $store.segments.get();
-      const seen = new Set<string>();
-      const order: string[] = [];
-
-      for (const segment of segs) {
-        if (!seen.has(segment.speaker)) {
-          seen.add(segment.speaker);
-          order.push(segment.speaker);
-        }
-      }
-
-      return order;
-    },
+        acc.set(speaker, list);
+        return acc;
+      }, new Map<string, Observable<DiarizationSegment>[]>()),
 
     // ========================================================================
     // Playback State

@@ -1,6 +1,6 @@
 "use client";
 
-import { useValue } from "@legendapp/state/react";
+import { For, useValue } from "@legendapp/state/react";
 import { ArrowLeft, Focus, ScissorsIcon, Table2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
@@ -15,10 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { getSpeakerColor } from "~/lib/speaker-colors";
 import { useClippingStore } from "../_context/store.context";
 import type { ViewMode } from "../_store/clipping-store";
-import {
-  getSpeakerDisplayName,
-  getUniqueSpeakers,
-} from "../_utils/segment-utils";
+import { getSpeakerDisplayName } from "../_utils/segment-utils";
 
 interface WorkspaceHeaderProps {
   fileName: string;
@@ -28,20 +25,17 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
   const $store = useClippingStore();
 
   const viewMode = useValue($store.ui.viewMode);
-  const segments = useValue($store.segments);
+  const speakers = useValue(() =>
+    Array.from($store.segmentsBySpeaker.get().keys()),
+  );
   const selectedSpeaker = useValue($store.selection.selectedSpeaker);
   const speakerCollections = useValue($store.speakerCollections);
-
-  const speakers = getUniqueSpeakers(segments);
-  const speakerColorIndex = selectedSpeaker
-    ? speakers.indexOf(selectedSpeaker)
-    : -1;
 
   const setViewMode = (mode: ViewMode) => {
     $store.ui.viewMode.set(mode);
   };
 
-  const selectSpeaker = (speaker: string | null) => {
+  const handleSelectSpeaker = (speaker: string | null) => {
     $store.selection.selectSpeaker(speaker);
   };
 
@@ -59,7 +53,7 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
       <div className="flex items-center rounded-md bg-muted">
         <Select
           value={selectedSpeaker ?? ""}
-          onValueChange={(value) => selectSpeaker(value || null)}
+          onValueChange={handleSelectSpeaker}
         >
           <SelectTrigger className="h-10 max-w-40 rounded-lg bg-muted">
             <SelectValue placeholder="Select speaker">
@@ -67,10 +61,11 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
                 <span className="flex items-center gap-2">
                   <span
                     className="h-2.5 w-2.5 rounded-full"
-                    style={{
-                      backgroundColor:
-                        getSpeakerColor(speakerColorIndex).border,
-                    }}
+                    // TODO improve speaker color mapping
+                    // style={{
+                    //   backgroundColor:
+                    //     getSpeakerColor(speakerColorIndex).border,
+                    // }}
                   />
                   <span className="truncate">
                     {getSpeakerDisplayName(selectedSpeaker, speakerCollections)}
