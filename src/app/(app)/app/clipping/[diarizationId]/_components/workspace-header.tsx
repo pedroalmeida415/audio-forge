@@ -26,7 +26,7 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
 
   const viewMode = useValue($store.ui.viewMode);
   const speakers = useValue(() =>
-    Array.from($store.segmentsBySpeaker.get().keys()),
+    Array.from(Object.keys($store.segmentsBySpeaker.get())),
   );
   const selectedSpeaker = useValue($store.selection.selectedSpeaker);
   const speakerCollections = useValue($store.speakerCollections);

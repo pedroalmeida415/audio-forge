@@ -44,7 +44,7 @@ export interface ClippingStoreState {
 
   // Computed lookup tables (return observable references for direct mutation)
   segmentsById: () => Record<string, Observable<DiarizationSegment>>;
-  segmentsBySpeaker: () => Map<string, Observable<DiarizationSegment>[]>;
+  segmentsBySpeaker: () => Record<string, Observable<DiarizationSegment>[]>;
 
   // Playback state (actions handled by playback context)
   playback: {
@@ -160,13 +160,16 @@ export function createClippingStore(
       ),
 
     segmentsBySpeaker: () =>
-      $store.segments.reduce((acc, segment) => {
-        const speaker = segment.speaker.get();
-        const list = acc.get(speaker) ?? [];
-        list.push(segment);
-        acc.set(speaker, list);
-        return acc;
-      }, new Map<string, Observable<DiarizationSegment>[]>()),
+      $store.segments.reduce(
+        (acc, segment) => {
+          const speaker = segment.speaker.get();
+          const list = acc[speaker] ?? [];
+          list.push(segment);
+          acc[speaker] = list;
+          return acc;
+        },
+        {} as Record<string, Observable<DiarizationSegment>[]>,
+      ),
 
     // ========================================================================
     // Playback State

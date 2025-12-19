@@ -73,12 +73,10 @@ export function SegmentsTable() {
   // Get segments for the selected speaker
   const speakerSegments = useValue(
     () =>
-      $store.segmentsBySpeaker
-        .get()
-        .get($store.selection.selectedSpeaker.get() ?? "") ?? [],
+      $store.segmentsBySpeaker[
+        $store.selection.selectedSpeaker.get() ?? ""
+      ]?.get() ?? [],
   );
-
-  console.log("speakerSegments", speakerSegments);
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -86,17 +84,12 @@ export function SegmentsTable() {
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  const memoizedSpeakerSegments = useMemo(
-    () => speakerSegments?.map(($seg) => $seg.peek()),
-    [speakerSegments],
-  );
-
   // Column definitions - cells subscribe directly to store/context
   const memoizedColumns = useMemo(() => createColumns(), []);
 
   // Create table instance (row selection managed externally via store)
   const table = useReactTable({
-    data: memoizedSpeakerSegments,
+    data: speakerSegments,
     columns: memoizedColumns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
