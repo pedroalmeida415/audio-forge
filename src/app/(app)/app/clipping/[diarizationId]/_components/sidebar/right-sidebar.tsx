@@ -2,6 +2,7 @@
 
 import { useValue } from "@legendapp/state/react";
 import { Users } from "lucide-react";
+import { useParams } from "next/navigation";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
 import { useClippingStore } from "../../_context/store.context";
@@ -11,9 +12,10 @@ import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
 
 export function RightSidebar() {
+  const { diarizationId } = useParams<{ diarizationId: string }>();
+
   const $store = useClippingStore();
 
-  const diarizationId = useValue($store.diarizationId);
   const projectId = useValue($store.projectId);
   const selectedSpeaker = useValue($store.selection.selectedSpeaker);
 

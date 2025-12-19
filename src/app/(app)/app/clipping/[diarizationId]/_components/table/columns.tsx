@@ -34,9 +34,9 @@ function SelectAllCheckbox() {
 
   const speakerSegments = useValue(
     () =>
-      $store.segmentsBySpeaker[
+      $store.segmentsBySpeaker.get()[
         $store.selection.selectedSpeaker.get() ?? ""
-      ]?.get() ?? [],
+      ] ?? [],
   );
   const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
 

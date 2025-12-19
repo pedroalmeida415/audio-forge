@@ -1,6 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
+import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { formatTimestamp, parseTimestamp } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
@@ -27,15 +28,9 @@ export function EditableTimeCell({
   const [hasError, setHasError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const $store = useClippingStore();
-
-  const diarizationId = useValue($store.diarizationId);
-  const segments = useValue($store.segments);
+  const { diarizationId } = useParams<{ diarizationId: string }>();
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
-
-  // Find segment by ID
-  const segment = segments.find((s) => s.id === segmentId);
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,7 +61,7 @@ export function EditableTimeCell({
     }
 
     // Only update if value changed
-    if (parsed !== value && segment) {
+    if (parsed !== value) {
       const updates = field === "start" ? { start: parsed } : { end: parsed };
 
       updateSegmentsMutation.mutate({

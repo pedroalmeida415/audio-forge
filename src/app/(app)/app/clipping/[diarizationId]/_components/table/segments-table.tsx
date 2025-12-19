@@ -73,9 +73,9 @@ export function SegmentsTable() {
   // Get segments for the selected speaker
   const speakerSegments = useValue(
     () =>
-      $store.segmentsBySpeaker[
+      $store.segmentsBySpeaker.get()[
         $store.selection.selectedSpeaker.get() ?? ""
-      ]?.get() ?? [],
+      ] ?? [],
   );
 
   // Local UI state (not shared across components)
