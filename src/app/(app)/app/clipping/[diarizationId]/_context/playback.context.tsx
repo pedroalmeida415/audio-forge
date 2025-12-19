@@ -368,6 +368,54 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     seek(clampedTime);
   };
 
+  // ============================================================================
+  // Zoom at playhead - adjusts scroll to keep playhead at same viewport position
+  // ============================================================================
+
+  const zoomAtPlayhead = (newZoomLevel: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      $store.timeline.setZoomLevel(newZoomLevel);
+      return;
+    }
+
+    const currentTime = $store.playback.currentTime.peek();
+    const containerWidth = $store.timeline.containerWidth.peek();
+    const oldZoomLevel = $store.timeline.zoomLevel.peek();
+
+    // Calculate playhead position before zoom
+    const oldVisibleTimespan = (BASE_TIMESPAN * 100) / oldZoomLevel;
+    const oldPps = containerWidth / oldVisibleTimespan;
+    const playheadPixelPos = currentTime * oldPps;
+
+    // Get playhead's offset from left edge of viewport
+    const playheadViewportOffset = playheadPixelPos - container.scrollLeft;
+
+    // Apply zoom
+    $store.timeline.setZoomLevel(newZoomLevel);
+
+    // Calculate new playhead position after zoom
+    const newVisibleTimespan = (BASE_TIMESPAN * 100) / newZoomLevel;
+    const newPps = containerWidth / newVisibleTimespan;
+    const newPlayheadPixelPos = currentTime * newPps;
+
+    // Adjust scroll to keep playhead at same viewport offset
+    const newScrollLeft = newPlayheadPixelPos - playheadViewportOffset;
+    container.scrollLeft = Math.max(0, newScrollLeft);
+  };
+
+  const zoomIn = () => {
+    const current = $store.timeline.zoomLevel.peek();
+    const { MAX_ZOOM } = TIMELINE_CONSTANTS;
+    zoomAtPlayhead(Math.min(MAX_ZOOM, current + 25));
+  };
+
+  const zoomOut = () => {
+    const current = $store.timeline.zoomLevel.peek();
+    const { MIN_ZOOM } = TIMELINE_CONSTANTS;
+    zoomAtPlayhead(Math.max(MIN_ZOOM, current - 25));
+  };
+
   return {
     // Timeline refs and utilities
     scrollContainerRef,
@@ -383,6 +431,11 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     seek,
     setPlaybackRate,
     playSegment,
+
+    // Zoom actions (zoom centered on playhead)
+    zoomIn,
+    zoomOut,
+    zoomAtPlayhead,
 
     // Combined handlers
     handleSegmentSelect,

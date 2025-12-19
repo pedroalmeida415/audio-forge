@@ -93,8 +93,14 @@ export function TimelineToolbar() {
   const activeSegmentId = useValue($store.selection.activeSegmentId);
   const diarizationId = useValue($store.diarizationId);
 
-  const { handleNavigateSegment, togglePlayback, setPlaybackRate } =
-    usePlayback();
+  const {
+    handleNavigateSegment,
+    togglePlayback,
+    setPlaybackRate,
+    zoomIn,
+    zoomOut,
+    zoomAtPlayhead,
+  } = usePlayback();
 
   const splitSegmentMutation = api.diarization.splitSegment.useMutation();
 
@@ -136,11 +142,6 @@ export function TimelineToolbar() {
       splitTime,
     });
   };
-
-  const handleZoomIn = () => $store.timeline.zoomIn();
-  const handleZoomOut = () => $store.timeline.zoomOut();
-  const handleSetZoomLevel = (level: number) =>
-    $store.timeline.setZoomLevel(level);
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">
@@ -227,7 +228,7 @@ export function TimelineToolbar() {
       <div className="flex items-center gap-2">
         <Button
           disabled={zoomLevel <= MIN_ZOOM}
-          onClick={handleZoomOut}
+          onClick={zoomOut}
           size="icon"
           variant="ghost"
         >
@@ -238,14 +239,14 @@ export function TimelineToolbar() {
           className="w-24"
           max={MAX_ZOOM}
           min={MIN_ZOOM}
-          onValueChange={([value]) => value && handleSetZoomLevel(value)}
+          onValueChange={([value]) => value && zoomAtPlayhead(value)}
           step={5}
           value={[zoomLevel]}
         />
 
         <Button
           disabled={zoomLevel >= MAX_ZOOM}
-          onClick={handleZoomIn}
+          onClick={zoomIn}
           size="icon"
           variant="ghost"
         >

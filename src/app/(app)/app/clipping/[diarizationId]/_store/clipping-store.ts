@@ -61,8 +61,6 @@ export interface ClippingStoreState {
     zoomLevel: number;
     containerWidth: number;
     setZoomLevel: (level: number) => void;
-    zoomIn: () => void;
-    zoomOut: () => void;
     setContainerWidth: (width: number) => void;
   };
 
@@ -197,18 +195,6 @@ export function createClippingStore(
         $store.timeline.zoomLevel.set(
           Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level)),
         );
-      },
-
-      zoomIn: () => {
-        const current = $store.timeline.zoomLevel.peek();
-        const { MAX_ZOOM } = TIMELINE_CONSTANTS;
-        $store.timeline.zoomLevel.set(Math.min(MAX_ZOOM, current + 25));
-      },
-
-      zoomOut: () => {
-        const current = $store.timeline.zoomLevel.peek();
-        const { MIN_ZOOM } = TIMELINE_CONSTANTS;
-        $store.timeline.zoomLevel.set(Math.max(MIN_ZOOM, current - 25));
       },
 
       setContainerWidth: (width: number) => {
