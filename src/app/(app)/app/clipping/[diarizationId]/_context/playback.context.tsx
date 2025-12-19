@@ -353,18 +353,6 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     }
   };
 
-  const handleScrubberDrag = (clientX: number, rect: DOMRect) => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const scrollLeft = container.scrollLeft;
-    const relativeX = clientX - rect.left + scrollLeft;
-    const time = pixelsToTime(relativeX);
-    const duration = $store.playback.duration.peek();
-    const clampedTime = Math.max(0, Math.min(time, duration));
-    seek(clampedTime);
-  };
-
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("button")) return;
 
@@ -401,7 +389,6 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
     handleTimelineSegmentClick,
     handleSegmentPlay,
     handleNavigateSegment,
-    handleScrubberDrag,
     handleTimelineClick,
   };
 }

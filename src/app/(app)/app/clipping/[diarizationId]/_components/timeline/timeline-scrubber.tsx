@@ -2,18 +2,17 @@
 
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
-interface TimelineScrubberProps {
-  onDrag: (clientX: number, rect: DOMRect) => void;
-}
-
-export function TimelineScrubber({ onDrag }: TimelineScrubberProps) {
+export function TimelineScrubber() {
   const $store = useClippingStore();
+  const { scrollContainerRef, seek } = usePlayback();
+
   // Subscribe to zoom/container changes via React (infrequent updates)
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
@@ -53,29 +52,52 @@ export function TimelineScrubber({ onDrag }: TimelineScrubberProps) {
     return dispose;
   }, [$store]);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Convert pixel position to time and seek
+  const pixelsToTime = useCallback((pixels: number) => {
+    const pps = pixelsPerSecondRef.current;
+    return pps > 0 ? pixels / pps : 0;
+  }, []);
 
-    // Get the scrollable container (parent of the timeline content div)
-    const scrollContainer = scrubberRef.current?.parentElement?.parentElement;
-    if (!scrollContainer) return;
+  const handleDrag = useCallback(
+    (clientX: number, rect: DOMRect) => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
 
-    const rect = scrollContainer.getBoundingClientRect();
-    onDrag(e.clientX, rect);
+      const scrollLeft = container.scrollLeft;
+      const relativeX = clientX - rect.left + scrollLeft;
+      const time = pixelsToTime(relativeX);
+      const duration = $store.playback.duration.peek();
+      const clampedTime = Math.max(0, Math.min(time, duration));
+      seek(clampedTime);
+    },
+    [$store.playback.duration, pixelsToTime, scrollContainerRef, seek],
+  );
 
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      onDrag(moveEvent.clientX, rect);
-    };
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const handlePointerUp = () => {
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerUp);
-    };
+      const container = scrollContainerRef.current;
+      if (!container) return;
 
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerUp);
-  };
+      const rect = container.getBoundingClientRect();
+      handleDrag(e.clientX, rect);
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        handleDrag(moveEvent.clientX, rect);
+      };
+
+      const handlePointerUp = () => {
+        document.removeEventListener("pointermove", handlePointerMove);
+        document.removeEventListener("pointerup", handlePointerUp);
+      };
+
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", handlePointerUp);
+    },
+    [handleDrag, scrollContainerRef],
+  );
 
   return (
     <div

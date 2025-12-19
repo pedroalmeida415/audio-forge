@@ -1,8 +1,6 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { useCallback } from "react";
-import { api } from "~/trpc/react";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
@@ -16,116 +14,32 @@ import { TimelineWaveform } from "./timeline-waveform";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
-/**
- * Get speaker color index from speaker order.
- */
-function getSpeakerColorIndex(
-  segments: { speaker: string }[],
-  speaker: string,
-): number {
-  const seen = new Set<string>();
-  const order: string[] = [];
-  for (const seg of segments) {
-    if (!seen.has(seg.speaker)) {
-      seen.add(seg.speaker);
-      order.push(seg.speaker);
-    }
-  }
-  const index = order.indexOf(speaker);
-  return index >= 0 ? index : 0;
-}
-
 export function TimelineContainer() {
-  const {
-    handleTimelineSegmentClick,
-    handleScrubberDrag,
-    handleTimelineClick,
-    scrollContainerRef,
-  } = usePlayback();
-
+  const { handleTimelineClick, scrollContainerRef } = usePlayback();
   const $store = useClippingStore();
 
+  // Subscribe only to what's needed for layout
   const duration = useValue($store.playback.duration);
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
-  const segments = useValue($store.segments);
-  const activeSegmentId = useValue($store.selection.activeSegmentId);
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
-  const speakerCollections = useValue($store.speakerCollections);
-  const diarizationId = useValue($store.diarizationId);
-
-  const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
-
-  // Called during drag for immediate visual feedback (local store update only)
-  const handleDragUpdate = useCallback(
-    (segmentId: string, start: number, end: number) => {
-      $store.segmentActions.updateTimes(segmentId, start, end);
-    },
-    [$store],
-  );
-
-  // Called on drag end to persist changes (triggers mutation)
-  const handleCommitUpdate = useCallback(
-    (segmentId: string, field: "start" | "end", newTime: number) => {
-      updateSegmentsMutation.mutate({
-        diarizationId,
-        segmentIds: segmentId,
-        updates: { [field]: newTime },
-      });
-    },
-    [diarizationId, updateSegmentsMutation],
-  );
 
   const containerRef = useTimelineResize();
 
-  // Derived values
+  // Compute total width for the scrollable area
   const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
   const pixelsPerSecond =
     visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
   const totalWidth = Math.max(duration * pixelsPerSecond, containerWidth);
-
-  // Generate timestamp marks
-  const timestampMarks: { time: number; major: boolean }[] = [];
-
-  let majorInterval: number;
-  let minorInterval: number;
-
-  if (zoomLevel >= 200) {
-    majorInterval = 2;
-    minorInterval = 0.5;
-  } else if (zoomLevel >= 100) {
-    majorInterval = 5;
-    minorInterval = 1;
-  } else if (zoomLevel >= 50) {
-    majorInterval = 10;
-    minorInterval = 2;
-  } else {
-    majorInterval = 30;
-    minorInterval = 5;
-  }
-
-  const maxTime = Math.max(duration, visibleTimespan);
-
-  for (let t = 0; t <= maxTime; t += minorInterval) {
-    timestampMarks.push({
-      time: t,
-      major: t % majorInterval === 0,
-    });
-  }
-
-  const timeToPixels = (time: number) => time * pixelsPerSecond;
-  const pixelsToTime = (pixels: number) =>
-    pixelsPerSecond > 0 ? pixels / pixelsPerSecond : 0;
 
   return (
     <div
       className="flex h-56 shrink-0 flex-col border-t bg-muted/20"
       ref={containerRef}
     >
-      {/* Progress bar */}
+      {/* Progress bar - subscribes to store internally */}
       <TimelineProgressBar />
 
-      {/* Toolbar */}
+      {/* Toolbar - subscribes to store internally */}
       <TimelineToolbar />
 
       {/* Scrollable timeline content */}
@@ -137,34 +51,18 @@ export function TimelineContainer() {
         role="region"
       >
         <div className="relative h-full" style={{ width: totalWidth }}>
-          {/* Scrubber - positioned absolutely across the whole timeline */}
-          <TimelineScrubber onDrag={handleScrubberDrag} />
+          {/* Scrubber - subscribes to store internally */}
+          <TimelineScrubber />
 
           {/* Stacked timeline elements */}
           <div className="flex h-full flex-col">
-            {/* Timestamps */}
-            <TimelineTimestamps
-              marks={timestampMarks}
-              timeToPixels={timeToPixels}
-            />
+            {/* Timestamps - subscribes to store internally */}
+            <TimelineTimestamps />
 
-            {/* Segments bar */}
-            <TimelineSegmentsBar
-              getSpeakerColorIndex={(speaker) =>
-                getSpeakerColorIndex(segments, speaker)
-              }
-              onSegmentClick={handleTimelineSegmentClick}
-              onDragUpdate={handleDragUpdate}
-              onCommitUpdate={handleCommitUpdate}
-              pixelsToTime={pixelsToTime}
-              segments={segments}
-              activeSegmentId={activeSegmentId}
-              selectedSpeaker={selectedSpeaker}
-              speakerCollections={speakerCollections}
-              timeToPixels={timeToPixels}
-            />
+            {/* Segments bar - subscribes to store internally */}
+            <TimelineSegmentsBar />
 
-            {/* Waveform */}
+            {/* Waveform - subscribes to store internally */}
             <TimelineWaveform />
           </div>
         </div>
