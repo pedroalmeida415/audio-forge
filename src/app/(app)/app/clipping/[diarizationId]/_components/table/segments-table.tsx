@@ -84,12 +84,17 @@ export function SegmentsTable() {
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
+  const filteredData = useMemo(
+    () => speakerSegments.filter((seg) => !seg.isDeleted),
+    [speakerSegments],
+  );
+
   // Column definitions - cells subscribe directly to store/context
   const memoizedColumns = useMemo(() => createColumns(), []);
 
   // Create table instance (row selection managed externally via store)
   const table = useReactTable({
-    data: speakerSegments,
+    data: filteredData,
     columns: memoizedColumns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),

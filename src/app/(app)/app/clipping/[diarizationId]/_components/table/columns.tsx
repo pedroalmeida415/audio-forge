@@ -40,9 +40,16 @@ function SelectAllCheckbox() {
   );
   const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
 
+  const filteredSpeakerSegments = useMemo(
+    () => speakerSegments.filter((seg) => !seg.isDeleted),
+    [speakerSegments],
+  );
+
   const isAllSelected =
-    speakerSegments.length > 0 &&
-    speakerSegments.every((segment) => selectedSegmentIds.has(segment.id));
+    filteredSpeakerSegments.length > 0 &&
+    filteredSpeakerSegments.every((segment) =>
+      selectedSegmentIds.has(segment.id),
+    );
 
   const handleToggleAll = (selectAll: boolean) => {
     if (selectAll) {
