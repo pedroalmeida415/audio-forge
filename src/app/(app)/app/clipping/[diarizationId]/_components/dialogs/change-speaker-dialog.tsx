@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { getSpeakerColor } from "~/lib/speaker-colors";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
 import {
@@ -38,9 +37,7 @@ export function ChangeSpeakerDialog({
 
   // Get all unique speakers from segments
   const speakers = getUniqueSpeakers(segments);
-
-  // Create speaker index map for colors
-  const speakerIndexMap = new Map(speakers.map((s, i) => [s, i]));
+  const speakerColors = useValue($store.speakerColors);
 
   const handleSelectSpeaker = (speaker: string) => {
     updateSegmentsMutation.mutate({
@@ -68,8 +65,6 @@ export function ChangeSpeakerDialog({
         <ScrollArea className="max-h-[400px]">
           <div className="grid gap-2 py-2 pr-4">
             {speakers.map((speaker) => {
-              const colorIndex = speakerIndexMap.get(speaker) ?? 0;
-              const color = getSpeakerColor(colorIndex);
               const displayName = getSpeakerDisplayName(
                 speaker,
                 speakerCollections,
@@ -84,7 +79,7 @@ export function ChangeSpeakerDialog({
                 >
                   <div
                     className="h-4 w-4 shrink-0 rounded-full"
-                    style={{ backgroundColor: color.border }}
+                    style={{ backgroundColor: speakerColors[speaker] }}
                   />
                   <span className="font-medium">{displayName}</span>
                 </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { For, useValue } from "@legendapp/state/react";
+import { useValue } from "@legendapp/state/react";
 import { ArrowLeft, Focus, ScissorsIcon, Table2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "~/components/ui/button";
@@ -12,7 +12,6 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { getSpeakerColor } from "~/lib/speaker-colors";
 import { useClippingStore } from "../_context/store.context";
 import type { ViewMode } from "../_store/clipping-store";
 import { getSpeakerDisplayName } from "../_utils/segment-utils";
@@ -30,6 +29,7 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
   );
   const selectedSpeaker = useValue($store.selection.selectedSpeaker);
   const speakerCollections = useValue($store.speakerCollections);
+  const speakerColors = useValue($store.speakerColors);
 
   const setViewMode = (mode: ViewMode) => {
     $store.ui.viewMode.set(mode);
@@ -61,11 +61,9 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
                 <span className="flex items-center gap-2">
                   <span
                     className="h-2.5 w-2.5 rounded-full"
-                    // TODO improve speaker color mapping
-                    // style={{
-                    //   backgroundColor:
-                    //     getSpeakerColor(speakerColorIndex).border,
-                    // }}
+                    style={{
+                      backgroundColor: speakerColors[selectedSpeaker],
+                    }}
                   />
                   <span className="truncate">
                     {getSpeakerDisplayName(selectedSpeaker, speakerCollections)}
@@ -75,22 +73,19 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {speakers.map((speaker, index) => {
-              const color = getSpeakerColor(index);
-              return (
-                <SelectItem key={speaker} value={speaker}>
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: color.border }}
-                    />
-                    <span className="truncate">
-                      {getSpeakerDisplayName(speaker, speakerCollections)}
-                    </span>
+            {speakers.map((speaker) => (
+              <SelectItem key={speaker} value={speaker}>
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: speakerColors[speaker] }}
+                  />
+                  <span className="truncate">
+                    {getSpeakerDisplayName(speaker, speakerCollections)}
                   </span>
-                </SelectItem>
-              );
-            })}
+                </span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Tabs

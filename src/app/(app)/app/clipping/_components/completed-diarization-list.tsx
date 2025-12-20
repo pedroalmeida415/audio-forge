@@ -5,7 +5,7 @@ import { ArrowRight, AudioWaveform, Clock, Users } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { getSpeakerColor } from "~/lib/speaker-colors";
+import { createSpeakerColorMap, withAlpha } from "~/lib/speaker-colors";
 import { api } from "~/trpc/react";
 
 export function CompletedDiarizationList() {
@@ -36,13 +36,12 @@ export function CompletedDiarizationList() {
 
   return (
     <div className="space-y-4">
-      <h2 className="font-display font-semibold text-xl">
-        Ready for Clipping
-      </h2>
+      <h2 className="font-display font-semibold text-xl">Ready for Clipping</h2>
       <div className="grid gap-4">
         {completedDiarizations.map((diarization, index) => {
           const segments = diarization.output?.segments ?? [];
           const uniqueSpeakers = getUniqueSpeakers(segments);
+          const speakerColors = createSpeakerColorMap(uniqueSpeakers);
           const fileName =
             diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
 
@@ -67,10 +66,7 @@ export function CompletedDiarizationList() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge
-                        className="gap-1"
-                        variant="secondary"
-                      >
+                      <Badge className="gap-1" variant="secondary">
                         <Users className="h-3 w-3" />
                         {uniqueSpeakers.length} speakers
                       </Badge>
@@ -79,13 +75,17 @@ export function CompletedDiarizationList() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {uniqueSpeakers.map((speaker, speakerIndex) => {
-                      const color = getSpeakerColor(speakerIndex);
+                    {uniqueSpeakers.map((speaker) => {
+                      const color = speakerColors[speaker];
                       return (
                         <Badge
-                          className={`${color.bgClass} ${color.borderClass} border`}
+                          className="border"
                           key={speaker}
                           variant="outline"
+                          style={{
+                            backgroundColor: color && withAlpha(color, 0.4),
+                            borderColor: color,
+                          }}
                         >
                           {speaker}
                         </Badge>

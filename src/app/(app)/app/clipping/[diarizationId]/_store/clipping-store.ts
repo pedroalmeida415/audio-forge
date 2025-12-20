@@ -1,5 +1,6 @@
 import type { Observable } from "@legendapp/state";
 import { batch, observable } from "@legendapp/state";
+import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type { Diarization, DiarizationSegment } from "~/server/db/schema";
 import type { api } from "~/trpc/react";
 
@@ -45,6 +46,7 @@ export interface ClippingStoreState {
   // Computed lookup tables (return observable references for direct mutation)
   segmentsById: () => Record<string, Observable<DiarizationSegment>>;
   segmentsBySpeaker: () => Record<string, Observable<DiarizationSegment>[]>;
+  speakerColors: () => Record<string, string>;
 
   // Playback state (actions handled by playback context)
   playback: {
@@ -168,6 +170,11 @@ export function createClippingStore(
         },
         {} as Record<string, Observable<DiarizationSegment>[]>,
       ),
+
+    speakerColors: () => {
+      const speakers = Object.keys($store.segmentsBySpeaker.get());
+      return createSpeakerColorMap(speakers);
+    },
 
     // ========================================================================
     // Playback State

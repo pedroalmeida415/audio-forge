@@ -2,6 +2,7 @@
 
 import type { Observable } from "@legendapp/state";
 import { For, useValue } from "@legendapp/state/react";
+import { withAlpha } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { usePlayback } from "../../_context/playback.context";
@@ -45,17 +46,16 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   // Subscribe to speaker collections for display name
   const speakerCollections = useValue($store.speakerCollections);
 
+  // Subscribe to speaker colors from store
+  const speakerColors = useValue($store.speakerColors);
+
   // Derived values
   const left = start * pixelsPerSecond;
   const width = (end - start) * pixelsPerSecond;
   const isActive = id === activeSegmentId;
   const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
 
-  // TODO improve speaker color mapping
-  const color = {
-    bg: "",
-    border: "",
-  };
+  const color = speakerColors[speaker];
 
   return (
     <button
@@ -70,8 +70,10 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
       style={{
         left,
         width: Math.max(width, 4),
-        backgroundColor: isDimmed ? "rgba(100, 100, 100, 0.3)" : color.bg,
-        borderColor: isDimmed ? "rgba(100, 100, 100, 0.5)" : color.border,
+        backgroundColor: isDimmed
+          ? "rgba(100, 100, 100, 0.3)"
+          : color && withAlpha(color, 0.4),
+        borderColor: isDimmed ? "rgba(100, 100, 100, 0.5)" : color,
       }}
       type="button"
     >
@@ -80,7 +82,7 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
         <span
           className="block truncate px-2 font-mono text-[10px] leading-6"
           style={{
-            color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color.border,
+            color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color,
           }}
         >
           {getSpeakerDisplayName(speaker, speakerCollections)}
