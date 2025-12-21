@@ -8,7 +8,6 @@ import type { DiarizationSegment } from "~/server/db/schema";
 import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
-import { getSpeakerDisplayName } from "../../_utils/segment-utils";
 
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
@@ -43,8 +42,8 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   const activeSegmentId = useValue($store.selection.activeSegmentId);
   const selectedSpeaker = useValue($store.selection.selectedSpeaker);
 
-  // Subscribe to speaker collections for display name
-  const speakerCollections = useValue($store.speakerCollections);
+  // Subscribe to this speaker's collection mapping directly for reactivity
+  const speakerCollection = useValue($store.speakerCollections[speaker]);
 
   // Subscribe to speaker colors from store
   const speakerColors = useValue($store.speakerColors);
@@ -85,7 +84,7 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
             color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color,
           }}
         >
-          {getSpeakerDisplayName(speaker, speakerCollections)}
+          {speakerCollection?.collectionName ?? speaker}
         </span>
       )}
     </button>
