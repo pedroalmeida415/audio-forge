@@ -32,24 +32,26 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 function SelectAllCheckbox() {
   const $store = useClippingStore();
 
-  const speakerSegments = useValue(
-    () =>
-      $store.segmentsBySpeaker.get()[
-        $store.selection.selectedSpeaker.get() ?? ""
-      ] ?? [],
-  );
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
   const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
 
-  const filteredSpeakerSegments = useMemo(
-    () => speakerSegments.filter((seg) => !seg.isDeleted),
-    [speakerSegments],
+  const speakerVisibleSegments = useMemo(() => {
+    return $store.segments
+      .peek()
+      .filter((seg) => !seg.isDeleted && seg.speaker === selectedSpeaker);
+  }, [selectedSpeaker]);
+
+  const visibleSegments = useMemo(
+    () =>
+      speakerVisibleSegments.filter(
+        (seg) => !seg.isDeleted && seg.speaker === selectedSpeaker,
+      ),
+    [speakerVisibleSegments, selectedSpeaker],
   );
 
   const isAllSelected =
-    filteredSpeakerSegments.length > 0 &&
-    filteredSpeakerSegments.every((segment) =>
-      selectedSegmentIds.has(segment.id),
-    );
+    visibleSegments.length > 0 &&
+    visibleSegments.every((segment) => selectedSegmentIds.has(segment.id));
 
   const handleToggleAll = (selectAll: boolean) => {
     if (selectAll) {

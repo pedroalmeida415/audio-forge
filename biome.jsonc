@@ -35,7 +35,10 @@
           }
         }
       },
-      "a11y": "off"
+      "a11y": "off",
+      "correctness": {
+        "useExhaustiveDependencies": "off"
+      }
     }
   },
   "html": {

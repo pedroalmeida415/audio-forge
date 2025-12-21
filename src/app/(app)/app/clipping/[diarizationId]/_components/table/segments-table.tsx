@@ -1,7 +1,7 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useValue } from "@legendapp/state/react";
+import { useObserve, useObserveEffect, useValue } from "@legendapp/state/react";
 import {
   flexRender,
   getCoreRowModel,
@@ -10,11 +10,13 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
 import { createColumns } from "./columns";
+
+const columns = createColumns();
 
 interface TableRowProps {
   row: Row<DiarizationSegment>;
@@ -70,32 +72,29 @@ function TableRow({ row }: TableRowProps) {
 export function SegmentsTable() {
   const $store = useClippingStore();
 
-  // Get segments for the selected speaker
-  const speakerSegments = useValue(
-    () =>
-      $store.segmentsBySpeaker.get()[
-        $store.selection.selectedSpeaker.get() ?? ""
-      ] ?? [],
-  );
-
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [data, setData] = useState<DiarizationSegment[]>([]);
 
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  const filteredData = useMemo(
-    () => speakerSegments.filter((seg) => !seg.isDeleted),
-    [speakerSegments],
-  );
+  // Subscribe to segment changes outside of render cycle and after component mounts
+  useObserveEffect(() => {
+    const data = $store.segments
+      .filter(
+        ($seg) =>
+          !$seg.isDeleted.get() &&
+          $seg.speaker.get() === $store.selection.selectedSpeaker.get(),
+      )
+      .map(($seg) => $seg.peek());
 
-  // Column definitions - cells subscribe directly to store/context
-  const memoizedColumns = useMemo(() => createColumns(), []);
+    setData(data);
+  });
 
-  // Create table instance (row selection managed externally via store)
   const table = useReactTable({
-    data: filteredData,
-    columns: memoizedColumns,
+    data,
+    columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
@@ -166,7 +165,7 @@ export function SegmentsTable() {
             ) : (
               <tr>
                 <td
-                  colSpan={memoizedColumns.length}
+                  colSpan={columns.length}
                   className="py-10 text-center text-muted-foreground"
                 >
                   No segments found

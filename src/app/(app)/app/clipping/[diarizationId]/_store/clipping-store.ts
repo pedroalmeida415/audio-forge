@@ -43,9 +43,7 @@ export interface ClippingStoreState {
   segments: DiarizationSegment[];
   speakerCollections: SpeakerCollections;
 
-  // Computed lookup tables (return observable references for direct mutation)
-  segmentsById: () => Record<string, Observable<DiarizationSegment>>;
-  segmentsBySpeaker: () => Record<string, Observable<DiarizationSegment>[]>;
+  // Computed values
   speakerColors: () => Record<string, string>;
 
   // Playback state (actions handled by playback context)
@@ -148,31 +146,9 @@ export function createClippingStore(
     // Computed Values
     // ========================================================================
 
-    // Returns observable references - mutations go to original array elements
-    segmentsById: () =>
-      $store.segments.reduce(
-        (acc, segment) => {
-          const id = segment.id.get();
-          acc[id] = segment;
-          return acc;
-        },
-        {} as Record<string, Observable<DiarizationSegment>>,
-      ),
-
-    segmentsBySpeaker: () =>
-      $store.segments.reduce(
-        (acc, segment) => {
-          const speaker = segment.speaker.get();
-          const list = acc[speaker] ?? [];
-          list.push(segment);
-          acc[speaker] = list;
-          return acc;
-        },
-        {} as Record<string, Observable<DiarizationSegment>[]>,
-      ),
-
     speakerColors: () => {
-      const speakers = Object.keys($store.segmentsBySpeaker.get());
+      const segments = $store.segments.get();
+      const speakers = [...new Set(segments.map((s) => s.speaker))];
       return createSpeakerColorMap(speakers);
     },
 
@@ -241,16 +217,13 @@ export function createClippingStore(
           return;
         }
 
-        const $segment = $store.segmentsById[segmentId];
+        const segment = $store.segments.peek().find((s) => s.id === segmentId);
         const currentSpeaker = $store.selection.selectedSpeaker.peek();
 
         batch(() => {
           $store.selection.selectedSegmentId.set(segmentId);
-          if ($segment) {
-            const speaker = $segment.speaker.peek();
-            if (speaker !== currentSpeaker) {
-              $store.selection.selectedSpeaker.set(speaker);
-            }
+          if (segment && segment.speaker !== currentSpeaker) {
+            $store.selection.selectedSpeaker.set(segment.speaker);
           }
         });
       },
@@ -300,16 +273,13 @@ export function createClippingStore(
           return;
         }
 
-        const $segment = $store.segmentsById[segmentId];
+        const segment = $store.segments.peek().find((s) => s.id === segmentId);
         const currentSpeaker = $store.selection.selectedSpeaker.peek();
 
         batch(() => {
           $store.selection.activeSegmentId.set(segmentId);
-          if ($segment) {
-            const speaker = $segment.speaker.peek();
-            if (speaker !== currentSpeaker) {
-              $store.selection.selectedSpeaker.set(speaker);
-            }
+          if (segment && segment.speaker !== currentSpeaker) {
+            $store.selection.selectedSpeaker.set(segment.speaker);
           }
         });
       },
@@ -321,9 +291,9 @@ export function createClippingStore(
 
     segmentActions: {
       updateTimes: (segmentId: string, start: number, end: number) => {
-        const $segment = $store.segmentsById[segmentId];
+        const idx = $store.segments.peek().findIndex((s) => s.id === segmentId);
+        const $segment = $store.segments[idx];
         if (!$segment) return;
-
         batch(() => {
           $segment.start.set(Math.max(0, start));
           $segment.end.set(Math.max(start + 0.1, end));
@@ -331,11 +301,15 @@ export function createClippingStore(
       },
 
       archive: (segmentId: string) => {
-        const $segment = $store.segmentsById[segmentId];
-        if (!$segment) return;
-
         batch(() => {
-          $segment.isDeleted.set(true);
+          const idx = $store.segments
+            .peek()
+            .findIndex((s) => s.id === segmentId);
+          const $segment = $store.segments[idx];
+          if ($segment) {
+            $segment.isDeleted.set(true);
+          }
+
           const selectedIds = $store.selection.selectedSegmentIds.peek();
           if (selectedIds.has(segmentId)) {
             const newSet = new Set(selectedIds);
@@ -350,42 +324,61 @@ export function createClippingStore(
         if (selectedIds.size === 0) return;
 
         batch(() => {
-          for (const segmentId of selectedIds) {
-            const $segment = $store.segmentsById[segmentId];
-            $segment?.isDeleted.set(true);
+          const segments = $store.segments.peek();
+          for (const id of selectedIds) {
+            const idx = segments.findIndex((s) => s.id === id);
+            const $segment = $store.segments[idx];
+            if ($segment) {
+              $segment.isDeleted.set(true);
+            }
           }
           $store.selection.selectedSegmentIds.set(new Set<string>());
         });
       },
 
       restore: (segmentId: string) => {
-        const $segment = $store.segmentsById[segmentId];
-        $segment?.isDeleted.set(false);
+        const idx = $store.segments.peek().findIndex((s) => s.id === segmentId);
+        const $segment = $store.segments[idx];
+        if ($segment) {
+          $segment.isDeleted.set(false);
+        }
       },
 
       markAsReviewed: (segmentIds: string[]) => {
         batch(() => {
-          for (const segmentId of segmentIds) {
-            const $segment = $store.segmentsById[segmentId];
-            $segment?.isReviewed.set(true);
+          const segments = $store.segments.peek();
+          for (const id of segmentIds) {
+            const idx = segments.findIndex((s) => s.id === id);
+            const $segment = $store.segments[idx];
+            if ($segment) {
+              $segment.isReviewed.set(true);
+            }
           }
         });
       },
 
       markAsUnreviewed: (segmentIds: string[]) => {
         batch(() => {
-          for (const segmentId of segmentIds) {
-            const $segment = $store.segmentsById[segmentId];
-            $segment?.isReviewed.set(false);
+          const segments = $store.segments.peek();
+          for (const id of segmentIds) {
+            const idx = segments.findIndex((s) => s.id === id);
+            const $segment = $store.segments[idx];
+            if ($segment) {
+              $segment.isReviewed.set(false);
+            }
           }
         });
       },
 
       changeSpeaker: (segmentIds: string[], newSpeaker: string) => {
         batch(() => {
-          for (const segmentId of segmentIds) {
-            const $segment = $store.segmentsById[segmentId];
-            $segment?.speaker.set(newSpeaker);
+          const segments = $store.segments.peek();
+          for (const id of segmentIds) {
+            const idx = segments.findIndex((s) => s.id === id);
+            const $segment = $store.segments[idx];
+            if ($segment) {
+              $segment.speaker.set(newSpeaker);
+            }
           }
         });
       },
@@ -394,11 +387,17 @@ export function createClippingStore(
         segmentId: string,
         splitTime: number,
       ): { firstId: string; secondId: string } => {
-        const $segment = $store.segmentsById[segmentId];
-        if (!$segment) return { firstId: "", secondId: "" };
+        const segments = $store.segments.peek();
+        const idx = segments.findIndex((s) => s.id === segmentId);
+        const $segment = $store.segments[idx];
+        const segment = segments[idx];
 
-        const segment = $segment.peek();
-        if (splitTime <= segment.start || splitTime >= segment.end) {
+        if (
+          !$segment ||
+          !segment ||
+          splitTime <= segment.start ||
+          splitTime >= segment.end
+        ) {
           return { firstId: "", secondId: "" };
         }
 
@@ -406,6 +405,10 @@ export function createClippingStore(
         const firstId = segment.id;
 
         batch(() => {
+          // Update original segment's end time
+          $segment.end.set(splitTime);
+
+          // Create new second segment
           const newSegment: DiarizationSegment = {
             ...segment,
             id: secondId,
@@ -414,20 +417,8 @@ export function createClippingStore(
             isReviewed: false,
           };
 
-          // Update the original segment's end time
-          $segment.end.set(splitTime);
-
-          // Find the index and insert new segment after it
-          const segments = $store.segments.peek();
-          const idx = segments.findIndex((s) => s.id === segmentId);
-          if (idx >= 0) {
-            const newSegments = [
-              ...segments.slice(0, idx + 1),
-              newSegment,
-              ...segments.slice(idx + 1),
-            ];
-            $store.segments.set(newSegments);
-          }
+          // Insert new segment after original using push
+          $store.segments.push(newSegment);
 
           $store.selection.activeSegmentId.set(secondId);
         });
@@ -452,8 +443,11 @@ export function createClippingStore(
 
       // Rollback helpers
       restoreData: (segmentId: string, data: DiarizationSegment) => {
-        const $segment = $store.segmentsById[segmentId];
-        $segment?.set(data);
+        const idx = $store.segments.peek().findIndex((s) => s.id === segmentId);
+        const $segment = $store.segments[idx];
+        if ($segment) {
+          $segment.set(data);
+        }
       },
 
       undoSplit: (
@@ -462,6 +456,7 @@ export function createClippingStore(
         original: DiarizationSegment,
       ) => {
         batch(() => {
+          // Remove the second segment and restore original
           const segments = $store.segments
             .peek()
             .filter((s) => s.id !== secondId);
@@ -481,9 +476,13 @@ export function createClippingStore(
         restoreData: Array<{ id: string; data: DiarizationSegment }>,
       ) => {
         batch(() => {
+          const segments = $store.segments.peek();
           for (const { id, data } of restoreData) {
-            const $segment = $store.segmentsById[id];
-            $segment?.set(data);
+            const idx = segments.findIndex((s) => s.id === id);
+            const $segment = $store.segments[idx];
+            if ($segment) {
+              $segment.set(data);
+            }
           }
         });
       },
@@ -515,13 +514,6 @@ export function createClippingStore(
         );
       }
     },
-    onSettled: (_, __, context) => {
-      if (context?.diarizationId) {
-        void trpcUtils.diarization.getById.invalidate({
-          id: context.diarizationId,
-        });
-      }
-    },
   });
 
   // Segment updates
@@ -531,16 +523,16 @@ export function createClippingStore(
 
       await trpcUtils.diarization.getById.cancel({ id: diarizationId });
 
+      const segments = $store.segments.peek();
       const ids = Array.isArray(segmentIds) ? segmentIds : [segmentIds];
-      const previousSegments = ids.map((id) => ({
-        id,
-        data: { ...$store.segmentsById[id]?.peek() },
-      }));
+      const previousSegments = ids.map((id) => {
+        const segment = segments.find((s) => s.id === id);
+        return { id, data: segment ? { ...segment } : null };
+      });
 
       for (const id of ids) {
-        const $segment = $store.segmentsById[id];
-        if (!$segment) continue;
-        const segment = $segment.peek();
+        const segment = segments.find((s) => s.id === id);
+        if (!segment) continue;
 
         if (updates.start !== undefined || updates.end !== undefined) {
           $store.segmentActions.updateTimes(
@@ -580,13 +572,6 @@ export function createClippingStore(
         );
       }
     },
-    onSettled: (_, __, context) => {
-      if (context?.diarizationId) {
-        void trpcUtils.diarization.getById.invalidate({
-          id: context.diarizationId,
-        });
-      }
-    },
   });
 
   // Segment splitting
@@ -596,8 +581,8 @@ export function createClippingStore(
 
       await trpcUtils.diarization.getById.cancel({ id: diarizationId });
 
-      const $segment = $store.segmentsById[segmentId];
-      const originalSegment = $segment ? { ...$segment.peek() } : null;
+      const segment = $store.segments.peek().find((s) => s.id === segmentId);
+      const originalSegment = segment ? { ...segment } : null;
 
       const { firstId, secondId } = $store.segmentActions.split(
         segmentId,
@@ -613,13 +598,6 @@ export function createClippingStore(
           context.secondId,
           context.originalSegment as DiarizationSegment,
         );
-      }
-    },
-    onSettled: (_, __, context) => {
-      if (context?.diarizationId) {
-        void trpcUtils.diarization.getById.invalidate({
-          id: context.diarizationId,
-        });
       }
     },
   });

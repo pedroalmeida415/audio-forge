@@ -221,15 +221,15 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
       const activeSegmentId = $store.selection.activeSegmentId.get();
       if (!activeSegmentId) return;
 
-      // Use peek() to avoid tracking these - we only want to react to activeSegmentId
-      const $segment = $store.segmentsById[activeSegmentId];
-      if (!$segment) return;
+      const segment = $store.segments
+        .peek()
+        .find((s) => s.id === activeSegmentId);
+      if (!segment) return;
 
       const container = scrollContainerRef.current;
       if (!container) return;
 
       // Calculate segment center and scroll to it
-      const segment = $segment.peek();
       const segmentCenter = (segment.start + segment.end) / 2;
       const zoomLevel = $store.timeline.zoomLevel.peek();
       const containerWidth = $store.timeline.containerWidth.peek();
@@ -297,9 +297,9 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
   // Combined handlers
   const handleSegmentSelect = (segmentId: string) => {
     $store.selection.selectSegment(segmentId);
-    const $segment = $store.segmentsById[segmentId];
-    if ($segment) {
-      scrollToTime($segment.start.peek());
+    const segment = $store.segments.peek().find((s) => s.id === segmentId);
+    if (segment) {
+      scrollToTime(segment.start);
     }
   };
 
@@ -308,9 +308,8 @@ function usePlaybackState(audioDataBuffer: ArrayBuffer) {
   };
 
   const handleSegmentPlay = (segmentId: string) => {
-    const $segment = $store.segmentsById[segmentId];
-    if ($segment) {
-      const segment = $segment.peek();
+    const segment = $store.segments.peek().find((s) => s.id === segmentId);
+    if (segment) {
       playSegment(segment.start, segment.end);
       scrollToTime(segment.start);
     }

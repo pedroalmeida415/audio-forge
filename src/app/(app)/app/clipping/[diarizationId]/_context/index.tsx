@@ -1,9 +1,9 @@
-import type { DiarizationData } from "../_store/clipping-workspace-store";
+import type { ClippingStoreInitialData } from "../_store/clipping-store";
 import { PlaybackProvider } from "./playback.context";
 import { ClippingStoreProvider } from "./store.context";
 
 export interface ClippingWorkspaceInitialData {
-  diarization: DiarizationData;
+  diarization: ClippingStoreInitialData["diarization"];
   audioDataBuffer: ArrayBuffer;
 }
 

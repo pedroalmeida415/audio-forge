@@ -24,12 +24,15 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
   const $store = useClippingStore();
 
   const viewMode = useValue($store.ui.viewMode);
-  const speakers = useValue(() =>
-    Array.from(Object.keys($store.segmentsBySpeaker.get())),
-  );
   const selectedSpeaker = useValue($store.selection.selectedSpeaker);
   const speakerCollections = useValue($store.speakerCollections);
   const speakerColors = useValue($store.speakerColors);
+
+  // Track speakers list with useValue selector to react to segment speaker changes
+  const speakers = useValue(() => {
+    const segments = $store.segments.get();
+    return [...new Set(segments.map((s) => s.speaker))];
+  });
 
   const setViewMode = (mode: ViewMode) => {
     $store.ui.viewMode.set(mode);

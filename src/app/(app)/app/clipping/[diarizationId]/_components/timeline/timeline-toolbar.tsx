@@ -118,13 +118,14 @@ export function TimelineToolbar() {
         return;
       }
 
-      const $segment = $store.segmentsById[currentActiveId];
-      if (!$segment) {
+      const activeSegment = $store.segments
+        .get()
+        .find((s) => s.id === currentActiveId);
+      if (!activeSegment) {
         setCanSplit(false);
         return;
       }
 
-      const activeSegment = $segment.peek();
       const isWithinSegment =
         currentTime > activeSegment.start && currentTime < activeSegment.end;
       setCanSplit(isWithinSegment);

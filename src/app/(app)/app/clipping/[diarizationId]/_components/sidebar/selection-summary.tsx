@@ -2,23 +2,26 @@
 
 import { useValue } from "@legendapp/state/react";
 import { formatDuration } from "~/lib/time-utils";
+import type { DiarizationSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
 import { getSelectedSegmentsData } from "../../_utils/segment-utils";
 
 export function SelectionSummary() {
   const $store = useClippingStore();
 
-  const segments = useValue($store.segments);
   const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
 
-  // Build segmentsById locally
-  const segmentsById = segments.reduce(
-    (acc, segment) => {
-      acc[segment.id] = segment;
-      return acc;
-    },
-    {} as Record<string, (typeof segments)[0]>,
-  );
+  // Track segments with useValue selector to react to segment changes
+  const segmentsById = useValue(() => {
+    const segments = $store.segments.get();
+    return segments.reduce(
+      (acc, segment) => {
+        acc[segment.id] = segment;
+        return acc;
+      },
+      {} as Record<string, DiarizationSegment>,
+    );
+  });
 
   const selectionData = getSelectedSegmentsData(
     segmentsById,
