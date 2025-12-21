@@ -40,26 +40,6 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
- * Formats a time range as "start - end"
- * @param start - Start time in seconds
- * @param end - End time in seconds
- * @returns Formatted time range string
- */
-export function formatTimeRange(start: number, end: number): string {
-  return `${formatTimestamp(start)} - ${formatTimestamp(end)}`;
-}
-
-/**
- * Calculates duration from start and end times
- * @param start - Start time in seconds
- * @param end - End time in seconds
- * @returns Duration in seconds
- */
-export function calculateDuration(start: number, end: number): number {
-  return Math.max(0, end - start);
-}
-
-/**
  * Parses a timestamp string to seconds
  * Supports formats: "SS", "M:SS", "MM:SS", "H:MM:SS"
  * Also supports decimal seconds: "1:30.5"
