@@ -1,7 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { Check, ChevronsUpDown, FolderOpen } from "lucide-react";
+import { Check, ChevronsUpDown, FolderOpen, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
@@ -33,6 +33,7 @@ export function CollectionCombobox({
   projectId,
 }: CollectionComboboxProps) {
   const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
 
   const $store = useClippingStore();
   const speakerCollections = useValue($store.speakerCollections);
@@ -48,9 +49,30 @@ export function CollectionCombobox({
   const setSpeakerCollectionMutation =
     api.diarization.setSpeakerCollection.useMutation();
 
+  const createCollectionMutation = api.collections.create.useMutation({
+    onSuccess: (newCollection) => {
+      utils.collections.list.invalidate({ projectId });
+      setSpeakerCollectionMutation.mutate({
+        diarizationId,
+        speaker,
+        collectionId: newCollection.id,
+        collectionName: newCollection.name,
+      });
+      setSearchValue("");
+      setOpen(false);
+    },
+  });
+
   // Get current mapping for this speaker from the store
   const currentMapping = speakerCollections[speaker];
   const selectedCollectionId = currentMapping?.collectionId;
+
+  // Check if the search value matches any existing collection (case-insensitive)
+  const trimmedSearch = searchValue.trim();
+  const matchesExisting = collections?.some(
+    (c) => c.name.toLowerCase() === trimmedSearch.toLowerCase(),
+  );
+  const canCreate = trimmedSearch.length > 0 && !matchesExisting;
 
   const handleSelect = (collectionId: string) => {
     const collection = collections?.find((c) => c.id === collectionId);
@@ -62,7 +84,16 @@ export function CollectionCombobox({
       collectionId: collection.id,
       collectionName: collection.name,
     });
+    setSearchValue("");
     setOpen(false);
+  };
+
+  const handleCreate = () => {
+    if (!canCreate) return;
+    createCollectionMutation.mutate({
+      projectId,
+      name: trimmedSearch,
+    });
   };
 
   return (
@@ -77,7 +108,7 @@ export function CollectionCombobox({
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between text-sm"
-            disabled={!collections?.length}
+            disabled={!collections}
           >
             {selectedCollectionId ? (
               <span className="flex items-center gap-2 truncate">
@@ -93,28 +124,47 @@ export function CollectionCombobox({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[240px] p-0" align="start">
-          <Command>
-            <CommandInput placeholder="Search collections..." />
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="Search or create..."
+              value={searchValue}
+              onValueChange={setSearchValue}
+            />
             <CommandList>
-              <CommandEmpty>No collections found.</CommandEmpty>
+              {!canCreate && collections?.length === 0 && (
+                <CommandEmpty>No collections found.</CommandEmpty>
+              )}
               <CommandGroup>
-                {collections?.map((collection) => (
+                {canCreate && (
                   <CommandItem
-                    key={collection.id}
-                    value={collection.name}
-                    onSelect={() => handleSelect(collection.id)}
+                    onSelect={handleCreate}
+                    disabled={createCollectionMutation.isPending}
                   >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedCollectionId === collection.id
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
-                    {collection.name}
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create "{trimmedSearch}"
                   </CommandItem>
-                ))}
+                )}
+                {collections
+                  ?.filter((c) =>
+                    c.name.toLowerCase().includes(trimmedSearch.toLowerCase()),
+                  )
+                  .map((collection) => (
+                    <CommandItem
+                      key={collection.id}
+                      value={collection.name}
+                      onSelect={() => handleSelect(collection.id)}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          selectedCollectionId === collection.id
+                            ? "opacity-100"
+                            : "opacity-0",
+                        )}
+                      />
+                      {collection.name}
+                    </CommandItem>
+                  ))}
               </CommandGroup>
             </CommandList>
           </Command>
