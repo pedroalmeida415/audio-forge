@@ -4,6 +4,7 @@ import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type { Diarization, DiarizationSegment } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
+import { setupMutationDefaults } from "./mutations";
 import { createPlaybackState, createTimelineState } from "./slices";
 import type { PlaybackState } from "./slices/playback";
 import type { TimelineState } from "./slices/timeline";
@@ -171,6 +172,9 @@ export function createClippingStore({
   }) as $ClippingStore;
 
   const trpcUtils = api.useUtils();
+
+  // Set up mutation defaults for optimistic updates
+  setupMutationDefaults(() => $store, trpcUtils);
 
   return $store;
 }
