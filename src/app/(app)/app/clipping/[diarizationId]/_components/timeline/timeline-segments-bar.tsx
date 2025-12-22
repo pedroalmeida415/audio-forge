@@ -21,24 +21,19 @@ interface TimelineSegmentProps {
 function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   const $store = useClippingStore();
 
+  const { id, end, speaker, start, isDeleted } = useValue($segment);
+
   // Subscribe to timeline state for pixel calculations
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
 
-  // Compute pixelsPerSecond
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  const pixelsPerSecond =
-    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
-
-  // Subscribe to individual segment fields
-  const id = useValue($segment.id);
-  const speaker = useValue($segment.speaker);
-  const start = useValue($segment.start);
-  const end = useValue($segment.end);
-
   // Subscribe to selection state
-  const activeSegmentId = useValue($store.activeSegmentId);
-  const selectedSpeaker = useValue($store.selectedSpeaker);
+  const isActive = useValue(() => id === $store.activeSegmentId.get());
+  const isDimmed = useValue(
+    () =>
+      $store.selectedSpeaker.get() !== null &&
+      speaker !== $store.selectedSpeaker.get(),
+  );
 
   // Subscribe to this speaker's collection mapping directly for reactivity
   const speakerCollection = useValue($store.speakerCollections[speaker]);
@@ -46,13 +41,18 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   // Subscribe to speaker colors from store
   const speakerColors = useValue($store.speakerColors);
 
+  // Compute pixelsPerSecond
+  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
+  const pixelsPerSecond =
+    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+
   // Derived values
   const left = start * pixelsPerSecond;
   const width = (end - start) * pixelsPerSecond;
-  const isActive = id === activeSegmentId;
-  const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
 
   const color = speakerColors[speaker];
+
+  if (isDeleted) return null;
 
   return (
     <button
