@@ -1,7 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { Check, Trash2, User } from "lucide-react";
+import { Check, Download, Loader2, Trash2, User } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/trpc/react";
@@ -13,11 +13,19 @@ export function SegmentActions() {
 
   const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
   const activeSegmentId = useValue($store.selection.activeSegmentId);
+  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
   const diarizationId = useValue($store.diarizationId);
+  const speakerCollections = useValue($store.speakerCollections);
+  const allSegments = useValue($store.segments);
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
+  const enqueueGenerationMutation = api.clips.enqueueGeneration.useMutation();
 
   const [changeSpeakerOpen, setChangeSpeakerOpen] = useState(false);
+  const [exportStatus, setExportStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Determine target IDs: selected segments if any, otherwise active segment
   const targetIds = useMemo(() => {
@@ -30,8 +38,22 @@ export function SegmentActions() {
     return [];
   }, [selectedSegmentIds, activeSegmentId]);
 
+  // Get all non-deleted segments for current speaker (for "Export All" option)
+  const speakerSegmentIds = useMemo(() => {
+    if (!selectedSpeaker) return [];
+    return allSegments
+      .filter((s) => s.speaker === selectedSpeaker && !s.isDeleted)
+      .map((s) => s.id);
+  }, [allSegments, selectedSpeaker]);
+
+  // Get collection for current speaker
+  const currentCollection = selectedSpeaker
+    ? speakerCollections[selectedSpeaker]
+    : null;
+
   const hasTarget = targetIds.length > 0;
   const isMultiple = selectedSegmentIds.size > 1;
+  const canExport = currentCollection && speakerSegmentIds.length > 0;
 
   const handleMarkAsReviewed = () => {
     updateSegmentsMutation.mutate({
@@ -47,6 +69,40 @@ export function SegmentActions() {
       segmentIds: targetIds,
       updates: { isDeleted: true },
     });
+  };
+
+  const handleExportClips = (segmentIds: string[]) => {
+    if (!currentCollection) {
+      setExportStatus({
+        type: "error",
+        message: "Please select a collection first",
+      });
+      return;
+    }
+
+    setExportStatus(null);
+
+    enqueueGenerationMutation.mutate(
+      {
+        diarizationId,
+        collectionId: currentCollection.collectionId,
+        segmentIds,
+      },
+      {
+        onSuccess: (result) => {
+          setExportStatus({
+            type: "success",
+            message: `Queued ${result.totalClips} clips for generation`,
+          });
+        },
+        onError: (error) => {
+          setExportStatus({
+            type: "error",
+            message: error.message,
+          });
+        },
+      },
+    );
   };
 
   return (
@@ -85,6 +141,48 @@ export function SegmentActions() {
           <Trash2 className="mr-2 h-4 w-4" />
           {isMultiple ? "Delete Selected" : "Delete"}
         </Button>
+      </div>
+
+      {/* Export Section */}
+      <div className="space-y-1.5 pt-2">
+        <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
+          Export
+        </h3>
+        <div className="flex flex-col gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 justify-start"
+            onClick={() => handleExportClips(speakerSegmentIds)}
+            disabled={!canExport || enqueueGenerationMutation.isPending}
+          >
+            {enqueueGenerationMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Export All ({speakerSegmentIds.length})
+          </Button>
+        </div>
+
+        {/* Export Status Feedback */}
+        {exportStatus && (
+          <p
+            className={`text-xs ${
+              exportStatus.type === "success"
+                ? "text-green-600"
+                : "text-red-500"
+            }`}
+          >
+            {exportStatus.message}
+          </p>
+        )}
+
+        {!currentCollection && selectedSpeaker && (
+          <p className="text-[10px] text-muted-foreground">
+            Select a collection above to enable export
+          </p>
+        )}
       </div>
 
       <ChangeSpeakerDialog

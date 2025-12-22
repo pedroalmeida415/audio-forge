@@ -25,6 +25,8 @@ export const env = createEnv({
     // Pyannote
     PYANNOTE_API_KEY: z.string(),
     PYANNOTE_WEBHOOK_URL: z.string().url(),
+    // Redis (for BullMQ)
+    REDIS_URL: z.string().url().optional(),
   },
 
   /**
@@ -56,6 +58,8 @@ export const env = createEnv({
     // Pyannote
     PYANNOTE_API_KEY: process.env.PYANNOTE_API_KEY,
     PYANNOTE_WEBHOOK_URL: process.env.PYANNOTE_WEBHOOK_URL,
+    // Redis
+    REDIS_URL: process.env.REDIS_URL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

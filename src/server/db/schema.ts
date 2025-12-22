@@ -4,6 +4,7 @@ import {
   doublePrecision,
   index,
   jsonb,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -133,6 +134,13 @@ export const collections = pgTable(
   (table) => [index("collection_id_idx").on(table.id)],
 );
 
+export const clipStatus = pgEnum("clip_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+
 export const clips = pgTable(
   "clip",
   {
@@ -145,10 +153,24 @@ export const clips = pgTable(
       .notNull()
       .references(() => collections.id, { onDelete: "cascade" }),
 
-    fileId: uuid("file_id")
+    diarizationId: uuid("diarization_id")
       .notNull()
-      .references(() => files.id, { onDelete: "cascade" }),
+      .references(() => diarizations.id, { onDelete: "cascade" }),
 
+    // Nullable until processing completes
+    fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
+
+    // Source segment info (known at creation time)
+    sourceSegmentId: varchar("source_segment_id", { length: 255 }).notNull(),
+    startTime: doublePrecision("start_time").notNull(),
+    endTime: doublePrecision("end_time").notNull(),
+    duration: doublePrecision("duration").notNull(),
+
+    // Job status (clip record doubles as job record)
+    status: clipStatus("status").default("pending").notNull(),
+    errorMessage: text("error_message"),
+
+    // Optional metadata
     mosScore: doublePrecision("mos_score"),
     transcript: text("transcript"),
 
@@ -161,7 +183,10 @@ export const clips = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  (table) => [index("clip_collection_id_idx").on(table.collectionId)],
+  (table) => [
+    index("clip_collection_id_idx").on(table.collectionId),
+    index("clip_status_idx").on(table.status),
+  ],
 );
 
 /**
@@ -277,6 +302,10 @@ export const clipRelations = relations(clips, ({ one }) => ({
     fields: [clips.collectionId],
     references: [collections.id],
   }),
+  diarization: one(diarizations, {
+    fields: [clips.diarizationId],
+    references: [diarizations.id],
+  }),
   file: one(files, { fields: [clips.fileId], references: [files.id] }),
 }));
 
@@ -293,3 +322,4 @@ export const diarizationRelations = relations(diarizations, ({ one }) => ({
 // ============================================================================
 
 export type Diarization = typeof diarizations.$inferSelect;
+export type Clip = typeof clips.$inferSelect;
