@@ -32,18 +32,16 @@ function SelectAllCheckbox() {
   const $store = useClippingStore();
 
   const speakerSegments = useValue(
-    () => $store.segmentsBySpeaker()[$store.selectedSpeaker.get()!] ?? [],
+    () =>
+      $store
+        .segmentsBySpeaker()
+        [$store.selectedSpeaker.get()!]?.filter((seg) => !seg.isDeleted) ?? [],
   );
-
-  const visibleSegments = useMemo(() => {
-    return speakerSegments.filter((seg) => !seg.isDeleted);
-  }, [speakerSegments]);
+  const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
   const isAllSelected =
-    visibleSegments.length > 0 &&
-    visibleSegments.every((segment) =>
-      $store.selectedSegmentIds.has(segment.id),
-    );
+    speakerSegments.length > 0 &&
+    speakerSegments.every((segment) => selectedSegmentIds.has(segment.id));
 
   const handleToggleAll = (selectAll: boolean) => {
     if (selectAll) {
