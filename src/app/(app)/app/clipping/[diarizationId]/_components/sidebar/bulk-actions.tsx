@@ -2,7 +2,7 @@
 
 import { useValue } from "@legendapp/state/react";
 import { Check, Download, Loader2, Trash2, User } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
@@ -11,12 +11,9 @@ import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 export function SegmentActions() {
   const $store = useClippingStore();
 
-  const selectedSegmentIds = useValue($store.selectedSegmentIds);
-  const activeSegmentId = useValue($store.activeSegmentId);
   const selectedSpeaker = useValue($store.selectedSpeaker);
   const diarizationId = useValue($store.diarizationId);
   const speakerCollections = useValue($store.speakerCollections);
-  const allSegments = useValue($store.segments);
 
   const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
   const enqueueGenerationMutation = api.clips.enqueueGeneration.useMutation();
@@ -28,23 +25,27 @@ export function SegmentActions() {
   } | null>(null);
 
   // Determine target IDs: selected segments if any, otherwise active segment
-  const targetIds = useMemo(() => {
-    if (selectedSegmentIds.size > 0) {
-      return Array.from(selectedSegmentIds);
+  const targetIds = useValue(() => {
+    const selectedIds = $store.selectedSegmentIds.get();
+    if (selectedIds.size > 0) {
+      return Array.from(selectedIds);
     }
-    if (activeSegmentId) {
-      return [activeSegmentId];
+    const activeId = $store.activeSegmentId.get();
+    if (activeId) {
+      return [activeId];
     }
     return [];
-  }, [selectedSegmentIds, activeSegmentId]);
+  });
 
   // Get all non-deleted segments for current speaker (for "Export All" option)
-  const speakerSegmentIds = useMemo(() => {
-    if (!selectedSpeaker) return [];
-    return allSegments
-      .filter((s) => s.speaker === selectedSpeaker && !s.isDeleted)
+  const speakerSegmentIds = useValue(() => {
+    const speaker = $store.selectedSpeaker.get();
+    if (!speaker) return [];
+    return $store.segments
+      .get()
+      .filter((s) => s.speaker === speaker && !s.isDeleted)
       .map((s) => s.id);
-  }, [allSegments, selectedSpeaker]);
+  });
 
   // Get collection for current speaker
   const currentCollection = selectedSpeaker
@@ -52,7 +53,7 @@ export function SegmentActions() {
     : null;
 
   const hasTarget = targetIds.length > 0;
-  const isMultiple = selectedSegmentIds.size > 1;
+  const isMultiple = targetIds.length > 1;
   const canExport = currentCollection && speakerSegmentIds.length > 0;
 
   const handleMarkAsReviewed = () => {
