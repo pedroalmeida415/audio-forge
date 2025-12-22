@@ -9,7 +9,6 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import {
   DURATION_THRESHOLDS,
@@ -32,32 +31,25 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 function SelectAllCheckbox() {
   const $store = useClippingStore();
 
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
-  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
-
-  const speakerVisibleSegments = useMemo(() => {
-    return $store.segments
-      .peek()
-      .filter((seg) => !seg.isDeleted && seg.speaker === selectedSpeaker);
-  }, [selectedSpeaker]);
-
-  const visibleSegments = useMemo(
-    () =>
-      speakerVisibleSegments.filter(
-        (seg) => !seg.isDeleted && seg.speaker === selectedSpeaker,
-      ),
-    [speakerVisibleSegments, selectedSpeaker],
+  const speakerSegments = useValue(
+    () => $store.segmentsBySpeaker()[$store.selectedSpeaker.get()!] ?? [],
   );
+
+  const visibleSegments = useMemo(() => {
+    return speakerSegments.filter((seg) => !seg.isDeleted);
+  }, [speakerSegments]);
 
   const isAllSelected =
     visibleSegments.length > 0 &&
-    visibleSegments.every((segment) => selectedSegmentIds.has(segment.id));
+    visibleSegments.every((segment) =>
+      $store.selectedSegmentIds.has(segment.id),
+    );
 
   const handleToggleAll = (selectAll: boolean) => {
     if (selectAll) {
-      $store.selection.selectAllSegments();
+      $store.selectAllSegments();
     } else {
-      $store.selection.clearSelection();
+      $store.clearAllSelected();
     }
   };
 
@@ -75,13 +67,13 @@ function SelectAllCheckbox() {
 function SelectCell({ segmentId }: { segmentId: string }) {
   const $store = useClippingStore();
   const isSelected = useValue(() =>
-    $store.selection.selectedSegmentIds.get().has(segmentId),
+    $store.selectedSegmentIds.get().has(segmentId),
   );
 
   return (
     <Checkbox
       checked={isSelected}
-      onCheckedChange={() => $store.selection.toggleSegmentSelection(segmentId)}
+      onCheckedChange={() => $store.toggleSelectSegment(segmentId)}
       onClick={(e) => e.stopPropagation()}
       aria-label="Select row"
       className="translate-y-[2px]"
@@ -98,9 +90,10 @@ function IndexCell({ index }: { index: number }) {
   );
 }
 
-// Play button cell - subscribes directly to playback context
+// Play button cell - subscribes directly to store
 function PlayCell({ segmentId }: { segmentId: string }) {
-  const { handleSegmentPlay } = usePlayback();
+  const $store = useClippingStore();
+  const { handleSegmentPlay } = $store.playback.peek();
 
   return (
     <Button

@@ -9,7 +9,7 @@ import { getSelectedSegmentsData } from "../../_utils/segment-utils";
 export function SelectionSummary() {
   const $store = useClippingStore();
 
-  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
+  const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
   // Track segments with useValue selector to react to segment changes
   const segmentsById = useValue(() => {

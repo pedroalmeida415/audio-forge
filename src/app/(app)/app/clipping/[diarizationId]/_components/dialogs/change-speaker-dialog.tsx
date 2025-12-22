@@ -45,7 +45,7 @@ export function ChangeSpeakerDialog({
       segmentIds: targetSegmentIds,
       updates: { speaker },
     });
-    $store.selection.clearSelection();
+    $store.clearAllSelected();
     onOpenChange(false);
   };
 

@@ -5,7 +5,6 @@ import { For, useValue } from "@legendapp/state/react";
 import { withAlpha } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 
@@ -21,7 +20,6 @@ interface TimelineSegmentProps {
 
 function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   const $store = useClippingStore();
-  const { handleTimelineSegmentClick } = usePlayback();
 
   // Subscribe to timeline state for pixel calculations
   const zoomLevel = useValue($store.timeline.zoomLevel);
@@ -39,8 +37,8 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   const end = useValue($segment.end);
 
   // Subscribe to selection state
-  const activeSegmentId = useValue($store.selection.activeSegmentId);
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const activeSegmentId = useValue($store.activeSegmentId);
+  const selectedSpeaker = useValue($store.selectedSpeaker);
 
   // Subscribe to this speaker's collection mapping directly for reactivity
   const speakerCollection = useValue($store.speakerCollections[speaker]);
@@ -65,7 +63,7 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
           : "hover:brightness-110",
         isDimmed && "opacity-25 grayscale",
       )}
-      onClick={() => handleTimelineSegmentClick(id)}
+      onClick={() => $store.setActiveSegment(id)}
       style={{
         left,
         width: Math.max(width, 4),

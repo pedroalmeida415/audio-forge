@@ -6,7 +6,7 @@ import { RightSidebar } from "./_components/sidebar";
 import { TableView } from "./_components/table";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
 import { WorkspaceHeader } from "./_components/workspace-header";
-import ClippingWorkspaceProviders from "./_context";
+import { ClippingStoreProvider } from "./_context/store.context";
 import { fetchAudioData } from "./_utils/audio-fetch";
 
 export default function ClippingWorkspacePage({
@@ -31,7 +31,7 @@ export default function ClippingWorkspacePage({
     diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
 
   return (
-    <ClippingWorkspaceProviders initialData={{ diarization, audioDataBuffer }}>
+    <ClippingStoreProvider initialData={{ diarization, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
         <WorkspaceHeader fileName={fileName} />
 
@@ -42,6 +42,6 @@ export default function ClippingWorkspacePage({
 
         <TimelineContainer />
       </div>
-    </ClippingWorkspaceProviders>
+    </ClippingStoreProvider>
   );
 }

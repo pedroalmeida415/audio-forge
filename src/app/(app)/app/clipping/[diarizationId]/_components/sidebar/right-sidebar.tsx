@@ -17,7 +17,7 @@ export function RightSidebar() {
   const $store = useClippingStore();
 
   const projectId = useValue($store.projectId);
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const selectedSpeaker = useValue($store.selectedSpeaker);
 
   if (!selectedSpeaker) {
     return (

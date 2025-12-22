@@ -1,0 +1,6 @@
+export const TIMELINE_CONSTANTS = {
+  BASE_TIMESPAN: 60,
+  MIN_ZOOM: 25,
+  MAX_ZOOM: 400,
+  DEFAULT_ZOOM: 100,
+} as const;

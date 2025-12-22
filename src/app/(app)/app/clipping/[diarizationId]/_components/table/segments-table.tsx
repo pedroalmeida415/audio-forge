@@ -32,11 +32,9 @@ function TableRow({ row }: TableRowProps) {
 
   // Subscribe directly to selection state for this specific segment
   const isSelected = useValue(() =>
-    $store.selection.selectedSegmentIds.get().has(row.original.id),
+    $store.selectedSegmentIds.get().has(row.original.id),
   );
-  const isActive = useValue(
-    () => $store.selection.activeSegmentId.get() === row.id,
-  );
+  const isActive = useValue(() => $store.activeSegmentId.get() === row.id);
 
   return (
     <tr
@@ -47,7 +45,7 @@ function TableRow({ row }: TableRowProps) {
         !isSelected && !isActive && "hover:bg-muted/50",
       )}
       data-segment-id={row.original.id}
-      onClick={() => $store.selection.setActiveSegment(row.id)}
+      onClick={() => $store.setActiveSegment(row.id)}
     >
       {row.getVisibleCells().map((cell) => (
         <td
@@ -85,7 +83,7 @@ export function SegmentsTable() {
       .filter(
         ($seg) =>
           !$seg.isDeleted.get() &&
-          $seg.speaker.get() === $store.selection.selectedSpeaker.get(),
+          $seg.speaker.get() === $store.selectedSpeaker.get(),
       )
       .map(($seg) => $seg.peek());
 
@@ -107,7 +105,7 @@ export function SegmentsTable() {
   // Scroll to active segment when it changes (bi-directional navigation)
   useEffect(() => {
     const dispose = observe(() => {
-      const activeId = $store.selection.activeSegmentId.get();
+      const activeId = $store.activeSegmentId.get();
       if (!activeId || !tableContainerRef.current) return;
 
       // Find the row element by data-segment-id attribute

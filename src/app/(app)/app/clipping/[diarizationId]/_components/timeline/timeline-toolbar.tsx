@@ -28,7 +28,6 @@ import {
 } from "~/components/ui/tooltip";
 import { formatTimestamp } from "~/lib/time-utils";
 import { api } from "~/trpc/react";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 
@@ -90,17 +89,11 @@ export function TimelineToolbar() {
   const isLoading = useValue($store.playback.isLoading);
   const playbackRate = useValue($store.playback.playbackRate);
   const zoomLevel = useValue($store.timeline.zoomLevel);
-  const activeSegmentId = useValue($store.selection.activeSegmentId);
+  const activeSegmentId = useValue($store.activeSegmentId);
   const diarizationId = useValue($store.diarizationId);
 
-  const {
-    handleNavigateSegment,
-    togglePlayback,
-    setPlaybackRate,
-    zoomIn,
-    zoomOut,
-    zoomAtPlayhead,
-  } = usePlayback();
+  const { togglePlayback, setPlaybackRate, zoomIn, zoomOut, zoomAtPlayhead } =
+    $store.playback.peek();
 
   const splitSegmentMutation = api.diarization.splitSegment.useMutation();
 
@@ -110,7 +103,7 @@ export function TimelineToolbar() {
   useEffect(() => {
     // Check if split is possible based on current state
     const dispose = observe(() => {
-      const currentActiveId = $store.selection.activeSegmentId.get();
+      const currentActiveId = $store.activeSegmentId.get();
       const currentTime = $store.playback.currentTime.get();
 
       if (!currentActiveId) {
@@ -149,7 +142,7 @@ export function TimelineToolbar() {
       {/* Navigation buttons */}
       <div className="flex items-center gap-1">
         <Button
-          onClick={() => handleNavigateSegment("prev")}
+          onClick={() => $store.navigateSegment("prev")}
           size="icon"
           title="Previous segment"
           variant="ghost"
@@ -157,7 +150,7 @@ export function TimelineToolbar() {
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <Button
-          onClick={() => handleNavigateSegment("next")}
+          onClick={() => $store.navigateSegment("next")}
           size="icon"
           title="Next segment"
           variant="ghost"

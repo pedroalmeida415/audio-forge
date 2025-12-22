@@ -11,9 +11,9 @@ import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 export function SegmentActions() {
   const $store = useClippingStore();
 
-  const selectedSegmentIds = useValue($store.selection.selectedSegmentIds);
-  const activeSegmentId = useValue($store.selection.activeSegmentId);
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const selectedSegmentIds = useValue($store.selectedSegmentIds);
+  const activeSegmentId = useValue($store.activeSegmentId);
+  const selectedSpeaker = useValue($store.selectedSpeaker);
   const diarizationId = useValue($store.diarizationId);
   const speakerCollections = useValue($store.speakerCollections);
   const allSegments = useValue($store.segments);

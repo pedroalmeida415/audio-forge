@@ -3,7 +3,6 @@
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
 import { useCallback, useEffect, useRef } from "react";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 
@@ -11,7 +10,8 @@ const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export function TimelineScrubber() {
   const $store = useClippingStore();
-  const { scrollContainerRef, seek } = usePlayback();
+  const { seek, refs } = $store.playback.peek();
+  const { scrollContainerRef } = refs;
 
   // Subscribe to zoom/container changes via React (infrequent updates)
   const zoomLevel = useValue($store.timeline.zoomLevel);
@@ -70,7 +70,7 @@ export function TimelineScrubber() {
       const clampedTime = Math.max(0, Math.min(time, duration));
       seek(clampedTime);
     },
-    [$store.playback.duration, pixelsToTime, scrollContainerRef, seek],
+    [$store.playback.duration, pixelsToTime, seek],
   );
 
   const handlePointerDown = useCallback(
@@ -96,7 +96,7 @@ export function TimelineScrubber() {
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
     },
-    [handleDrag, scrollContainerRef],
+    [handleDrag],
   );
 
   return (

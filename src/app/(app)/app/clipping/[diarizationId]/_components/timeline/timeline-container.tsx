@@ -1,7 +1,6 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
@@ -15,8 +14,9 @@ import { TimelineWaveform } from "./timeline-waveform";
 const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export function TimelineContainer() {
-  const { handleTimelineClick, scrollContainerRef } = usePlayback();
   const $store = useClippingStore();
+  const { handleTimelineClick, refs } = $store.playback.peek();
+  const { scrollContainerRef } = refs;
 
   // Subscribe only to what's needed for layout
   const duration = useValue($store.playback.duration);

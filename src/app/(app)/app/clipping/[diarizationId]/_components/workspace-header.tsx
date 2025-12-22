@@ -23,8 +23,8 @@ interface WorkspaceHeaderProps {
 export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
   const $store = useClippingStore();
 
-  const viewMode = useValue($store.ui.viewMode);
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const viewMode = useValue($store.viewMode);
+  const selectedSpeaker = useValue($store.selectedSpeaker);
   const speakerCollections = useValue($store.speakerCollections);
   const speakerColors = useValue($store.speakerColors);
 
@@ -35,11 +35,11 @@ export function WorkspaceHeader({ fileName }: WorkspaceHeaderProps) {
   });
 
   const setViewMode = (mode: ViewMode) => {
-    $store.ui.viewMode.set(mode);
+    $store.viewMode.set(mode);
   };
 
   const handleSelectSpeaker = (speaker: string | null) => {
-    $store.selection.selectSpeaker(speaker);
+    $store.selectSpeaker(speaker);
   };
 
   return (

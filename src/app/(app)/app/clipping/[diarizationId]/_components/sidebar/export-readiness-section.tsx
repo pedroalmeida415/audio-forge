@@ -9,7 +9,7 @@ export function ExportReadinessSection() {
   const $store = useClippingStore();
 
   const allSegments = useValue($store.segments);
-  const selectedSpeaker = useValue($store.selection.selectedSpeaker);
+  const selectedSpeaker = useValue($store.selectedSpeaker);
 
   let segments = allSegments;
   if (selectedSpeaker) {

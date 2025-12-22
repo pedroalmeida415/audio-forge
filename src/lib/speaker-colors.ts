@@ -20,7 +20,7 @@ export function generateSpeakerColor(
  * Returns a Record from speaker ID to their HSL color string.
  */
 export function createSpeakerColorMap(
-  speakers: string[],
+  speakers: Set<string>,
 ): Record<string, string> {
   const sorted = [...speakers].sort();
   const total = sorted.length;

@@ -4,7 +4,6 @@ import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
 import {
@@ -18,7 +17,6 @@ const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export function TimelineWaveform() {
   const $store = useClippingStore();
-  const { audioDataBufferRef } = usePlayback();
   const duration = useValue($store.playback.duration);
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
@@ -60,18 +58,18 @@ export function TimelineWaveform() {
     return dispose;
   }, [$store, duration]);
 
-  // Load waveform data only once when audio URL is first available
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Ref should not change
+  // Load waveform data only once when audio buffer is available
   useEffect(() => {
-    if (!audioDataBufferRef.current || duration <= 0) return;
-    // Prevent reloading if we already loaded this URL
-    if (loadedBufferRef.current === audioDataBufferRef.current) return;
+    const audioDataBuffer = $store.audioDataBuffer.peek() as ArrayBuffer | null;
+    if (!audioDataBuffer || duration <= 0) return;
+    // Prevent reloading if we already loaded this buffer
+    if (loadedBufferRef.current === audioDataBuffer) return;
 
-    loadedBufferRef.current = audioDataBufferRef.current;
+    loadedBufferRef.current = audioDataBuffer as ArrayBuffer;
     setIsLoading(true);
     setError(null);
 
-    generateWaveform(audioDataBufferRef.current, 2000)
+    generateWaveform(audioDataBuffer, 2000)
       .then((data) => {
         setWaveformData(data);
         setIsLoading(false);
@@ -82,7 +80,7 @@ export function TimelineWaveform() {
         );
         setIsLoading(false);
       });
-  }, [duration]);
+  }, [$store, duration]);
 
   // Prepare peaks for display based on current zoom level
   const displayPeaks = (() => {

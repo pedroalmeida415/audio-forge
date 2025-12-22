@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, type ReactNode, use, useState } from "react";
-import { api } from "~/trpc/react";
+import { createContext, type ReactNode, use } from "react";
+import { usePlayback } from "../_hooks/use-playback";
 import {
   type $ClippingStore,
   type ClippingStoreInitialData,
@@ -12,9 +12,9 @@ import {
 // Context
 // ============================================================================
 
-const ClippingStoreContext = createContext<$ClippingStore | undefined>(
-  undefined,
-);
+const ClippingStoreContext = createContext<ReturnType<
+  typeof createClippingStore
+> | null>(null);
 
 // ============================================================================
 // Provider
@@ -29,13 +29,12 @@ export function ClippingStoreProvider({
   children,
   initialData,
 }: ClippingStoreProviderProps) {
-  const trpcUtils = api.useUtils();
-
   // useObservable returns a stable observable across renders
-  const [$store] = useState(createClippingStore(initialData, trpcUtils));
+  const $store = createClippingStore(initialData);
 
   return (
     <ClippingStoreContext.Provider value={$store}>
+      <PlaybackInitializer />
       {children}
     </ClippingStoreContext.Provider>
   );
@@ -62,13 +61,12 @@ export function ClippingStoreProvider({
  *
  * @example
  * // Call co-located actions
- * $store.selection.selectSegment(segmentId);
+ * $store.selectSegment(segmentId);
  * $store.timeline.zoomIn();
- * $store.segmentActions.updateTimes(segmentId, start, end);
  *
  * @example
  * // Subscribe to changes with observe
- * observe(() => {
+ * useObserve(() => {
  *   const time = $store.playback.currentTime.get();
  *   // DOM manipulation or side effects
  * });
@@ -83,4 +81,16 @@ export function useClippingStore(): $ClippingStore {
   }
 
   return $store;
+}
+
+// ============================================================================
+// Playback Initializer - separate component to isolate hooks
+// ============================================================================
+
+function PlaybackInitializer() {
+  const $store = useClippingStore();
+
+  usePlayback($store);
+
+  return null;
 }

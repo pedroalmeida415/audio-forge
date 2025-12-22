@@ -3,12 +3,11 @@
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef } from "react";
-import { usePlayback } from "../../_context/playback.context";
 import { useClippingStore } from "../../_context/store.context";
 
 export function TimelineProgressBar() {
-  const { seek } = usePlayback();
   const $store = useClippingStore();
+  const { seek } = $store.playback.peek();
   const duration = useValue($store.playback.duration);
 
   const progressRef = useRef<HTMLDivElement>(null);
