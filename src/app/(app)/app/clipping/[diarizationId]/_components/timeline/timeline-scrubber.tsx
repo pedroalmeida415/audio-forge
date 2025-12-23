@@ -4,34 +4,35 @@ import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
 import { useCallback, useEffect, useRef } from "react";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
-
-const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
+import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
 
 export function TimelineScrubber() {
   const $store = useClippingStore();
   const { seek, refs } = $store.playback.peek();
   const { scrollContainerRef } = refs;
 
-  // Subscribe to zoom/container changes via React (infrequent updates)
+  // Subscribe to zoom/container/duration changes via React (infrequent updates)
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
+  const duration = useValue($store.playback.duration);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
 
-  // Cache pixelsPerSecond in a ref - updated when zoom/width changes
+  // Cache pixelsPerSecond in a ref - updated when zoom/width/duration changes
   const pixelsPerSecondRef = useRef(0);
   useEffect(() => {
-    const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-    pixelsPerSecondRef.current =
-      visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+    pixelsPerSecondRef.current = calculatePixelsPerSecond(
+      zoomLevel,
+      duration,
+      containerWidth,
+    );
 
     // Update position immediately when zoom/width changes
     if (scrubberRef.current) {
       const time = $store.playback.currentTime.peek();
       scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
     }
-  }, [zoomLevel, containerWidth, $store]);
+  }, [zoomLevel, containerWidth, duration, $store]);
 
   // Subscribe to currentTime updates for direct DOM manipulation (bypasses React)
   useEffect(() => {

@@ -30,6 +30,10 @@ export function RightSidebar() {
 
   return (
     <aside className="flex w-[280px] flex-col border-l bg-muted/20">
+      {/* Stats pinned to bottom */}
+      <div className="shrink-0 border-t p-4">
+        <StatsSection />
+      </div>
       {/* Scrollable content area */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
@@ -49,11 +53,6 @@ export function RightSidebar() {
           <SegmentActions />
         </div>
       </ScrollArea>
-
-      {/* Stats pinned to bottom */}
-      <div className="shrink-0 border-t p-4">
-        <StatsSection />
-      </div>
     </aside>
   );
 }

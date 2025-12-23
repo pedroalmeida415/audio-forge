@@ -1,3 +1,4 @@
+import { isZoomEnabled } from "../../_utils/zoom-utils";
 import type { $ClippingStore } from "../clipping-store";
 import { TIMELINE_CONSTANTS } from "../constants";
 
@@ -17,8 +18,20 @@ export function createTimelineState(
     zoomLevel: TIMELINE_CONSTANTS.DEFAULT_ZOOM,
     containerWidth: 800,
 
+    // Progressive waveform state
+    isZooming: false,
+    isCalculatingPeaks: false,
+
     setZoomLevel: (level: number) => {
       const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
+      const duration = $store.playback.duration.peek();
+
+      // Disable zoom for short audio
+      if (!isZoomEnabled(duration)) {
+        $store.timeline.zoomLevel.set(MIN_ZOOM);
+        return;
+      }
+
       $store.timeline.zoomLevel.set(
         Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level)),
       );
@@ -27,12 +40,27 @@ export function createTimelineState(
     setContainerWidth: (width: number) => {
       $store.timeline.containerWidth.set(width);
     },
+
+    setIsZooming: (value: boolean) => {
+      $store.timeline.isZooming.set(value);
+    },
+
+    setIsCalculatingPeaks: (value: boolean) => {
+      $store.timeline.isCalculatingPeaks.set(value);
+    },
   };
 }
 
 export interface TimelineState {
   zoomLevel: number;
   containerWidth: number;
+
+  // Progressive waveform state
+  isZooming: boolean;
+  isCalculatingPeaks: boolean;
+
   setZoomLevel: (level: number) => void;
   setContainerWidth: (width: number) => void;
+  setIsZooming: (value: boolean) => void;
+  setIsCalculatingPeaks: (value: boolean) => void;
 }

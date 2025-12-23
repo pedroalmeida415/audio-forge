@@ -4,9 +4,10 @@ import { useValue } from "@legendapp/state/react";
 import { useMemo } from "react";
 import { formatTimestamp } from "~/lib/time-utils";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
-
-const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
+import {
+  calculatePixelsPerSecond,
+  calculateVisibleTimespan,
+} from "../../_utils/zoom-utils";
 
 export function TimelineTimestamps() {
   const $store = useClippingStore();
@@ -17,29 +18,41 @@ export function TimelineTimestamps() {
   const containerWidth = useValue($store.timeline.containerWidth);
 
   // Compute derived values
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  const pixelsPerSecond =
-    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+  const visibleTimespan = calculateVisibleTimespan(zoomLevel, duration);
+  const pixelsPerSecond = calculatePixelsPerSecond(
+    zoomLevel,
+    duration,
+    containerWidth,
+  );
 
-  // Generate timestamp marks based on zoom level
+  // Generate timestamp marks based on visible timespan
   const marks = useMemo(() => {
     const result: { time: number; major: boolean }[] = [];
 
     let majorInterval: number;
     let minorInterval: number;
 
-    if (zoomLevel >= 200) {
+    // Adjust intervals based on visible timespan instead of zoom level
+    if (visibleTimespan <= 30) {
+      // Very zoomed in: show 2s majors, 0.5s minors
       majorInterval = 2;
       minorInterval = 0.5;
-    } else if (zoomLevel >= 100) {
+    } else if (visibleTimespan <= 60) {
+      // Moderately zoomed: show 5s majors, 1s minors
       majorInterval = 5;
       minorInterval = 1;
-    } else if (zoomLevel >= 50) {
+    } else if (visibleTimespan <= 180) {
+      // Less zoomed: show 10s majors, 2s minors
       majorInterval = 10;
       minorInterval = 2;
-    } else {
+    } else if (visibleTimespan <= 600) {
+      // Wide view: show 30s majors, 5s minors
       majorInterval = 30;
       minorInterval = 5;
+    } else {
+      // Very wide view: show 60s majors, 10s minors
+      majorInterval = 60;
+      minorInterval = 10;
     }
 
     const maxTime = Math.max(duration, visibleTimespan);
@@ -52,7 +65,7 @@ export function TimelineTimestamps() {
     }
 
     return result;
-  }, [duration, visibleTimespan, zoomLevel]);
+  }, [duration, visibleTimespan]);
 
   const timeToPixels = (time: number) => time * pixelsPerSecond;
 

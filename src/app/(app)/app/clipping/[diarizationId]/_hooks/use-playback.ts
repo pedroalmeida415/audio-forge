@@ -1,13 +1,9 @@
 import { observe } from "@legendapp/state";
 import { useObserve } from "@legendapp/state/react";
 import { useEffect } from "react";
-import {
-  type $ClippingStore,
-  TIMELINE_CONSTANTS,
-} from "../_store/clipping-store";
+import type { $ClippingStore } from "../_store/clipping-store";
 import type { PlaybackRefs } from "../_store/slices/playback";
-
-const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
+import { calculatePixelsPerSecond } from "../_utils/zoom-utils";
 
 /**
  * Hook that connects the audio element and RAF loop to the store.
@@ -133,8 +129,13 @@ export function usePlayback($store: $ClippingStore) {
         // Auto-scroll: keep playhead visible, always land on left side
         if (container) {
           const zoomLevel = $store.timeline.zoomLevel.peek();
+          const duration = $store.playback.duration.peek();
           const containerWidth = $store.timeline.containerWidth.peek();
-          const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+          const pps = calculatePixelsPerSecond(
+            zoomLevel,
+            duration,
+            containerWidth,
+          );
           const timeX = currentTime * pps;
           const padding = containerWidth * 0.1;
 
@@ -190,8 +191,9 @@ export function usePlayback($store: $ClippingStore) {
     // Calculate segment center and scroll to it
     const segmentCenter = (segment.start + segment.end) / 2;
     const zoomLevel = $store.timeline.zoomLevel.peek();
+    const duration = $store.playback.duration.peek();
     const containerWidth = $store.timeline.containerWidth.peek();
-    const pps = getPixelsPerSecond(zoomLevel, containerWidth);
+    const pps = calculatePixelsPerSecond(zoomLevel, duration, containerWidth);
     const targetX = segmentCenter * pps;
     const scrollLeft = targetX - containerWidth / 2;
 
@@ -200,13 +202,4 @@ export function usePlayback($store: $ClippingStore) {
       behavior: "smooth",
     });
   });
-}
-
-/**
- * Helper to calculate pixels per second from store state.
- */
-function getPixelsPerSecond(zoomLevel: number, containerWidth: number): number {
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  if (visibleTimespan <= 0) return 0;
-  return containerWidth / visibleTimespan;
 }

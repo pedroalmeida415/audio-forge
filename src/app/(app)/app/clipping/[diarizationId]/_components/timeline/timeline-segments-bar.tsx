@@ -6,9 +6,7 @@ import { withAlpha } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
-
-const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
+import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
 
 // ============================================================================
 // Timeline Segment Component (subscribes to individual segment)
@@ -26,6 +24,7 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   // Subscribe to timeline state for pixel calculations
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
+  const duration = useValue($store.playback.duration);
 
   // Subscribe to selection state
   const isActive = useValue(() => id === $store.activeSegmentId.get());
@@ -42,9 +41,11 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   const speakerColors = useValue($store.speakerColors);
 
   // Compute pixelsPerSecond
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  const pixelsPerSecond =
-    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+  const pixelsPerSecond = calculatePixelsPerSecond(
+    zoomLevel,
+    duration,
+    containerWidth,
+  );
 
   // Derived values
   const left = start * pixelsPerSecond;

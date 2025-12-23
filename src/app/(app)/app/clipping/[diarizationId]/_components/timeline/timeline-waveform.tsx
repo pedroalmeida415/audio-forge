@@ -4,36 +4,88 @@ import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
+import { cn } from "~/lib/utils";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
-import {
-  downsamplePeaks,
-  generateWaveform,
-  normalizePeaks,
-  type WaveformData,
-} from "../../_utils/waveform-utils";
+import { useWaveformWorker } from "../../_hooks/use-waveform-worker";
+import { TIMELINE_CONSTANTS } from "../../_store/constants";
+import { downsamplePeaks, normalizePeaks } from "../../_utils/waveform-utils";
+import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
 
-const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
+const { COARSE_PEAKS, DETAILED_PEAKS, WAVEFORM_DEBOUNCE_MS } =
+  TIMELINE_CONSTANTS;
+
+/**
+ * Generates peaks from raw channel data (runs on main thread for coarse initial render).
+ */
+function generatePeaksFromChannelData(
+  channelData: Float32Array,
+  targetPeaks: number,
+): number[] {
+  const samplesPerPeak = Math.floor(channelData.length / targetPeaks);
+  const peaks: number[] = [];
+
+  for (let i = 0; i < targetPeaks; i++) {
+    const start = i * samplesPerPeak;
+    const end = Math.min(start + samplesPerPeak, channelData.length);
+
+    let max = 0;
+    for (let j = start; j < end; j++) {
+      const value = Math.abs(channelData[j] ?? 0);
+      if (value > max) max = value;
+    }
+
+    peaks.push(max);
+  }
+
+  return peaks;
+}
 
 export function TimelineWaveform() {
   const $store = useClippingStore();
   const duration = useValue($store.playback.duration);
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const containerWidth = useValue($store.timeline.containerWidth);
+  const isZooming = useValue($store.timeline.isZooming);
 
-  const [waveformData, setWaveformData] = useState<WaveformData | null>(null);
+  // Waveform data state
+  const [coarsePeaks, setCoarsePeaks] = useState<number[] | null>(null);
+  const [detailedPeaks, setDetailedPeaks] = useState<number[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const loadedBufferRef = useRef<ArrayBuffer | null>(null);
   const playedWrapperRef = useRef<HTMLDivElement>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const zoomDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Worker for detailed peak calculation
+  const {
+    peaks: workerPeaks,
+    isCalculating: workerIsCalculating,
+    calculatePeaks,
+  } = useWaveformWorker();
 
   // Calculate derived values
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  const pixelsPerSecond =
-    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+  const pixelsPerSecond = calculatePixelsPerSecond(
+    zoomLevel,
+    duration,
+    containerWidth,
+  );
 
   // Calculate total width based on duration and zoom
   const totalWidth = Math.max(1, duration * pixelsPerSecond);
+
+  // Update store with worker calculation state
+  useEffect(() => {
+    $store.timeline.setIsCalculatingPeaks(workerIsCalculating);
+  }, [workerIsCalculating, $store]);
+
+  // Update detailed peaks when worker finishes
+  useEffect(() => {
+    if (workerPeaks) {
+      setDetailedPeaks(workerPeaks);
+    }
+  }, [workerPeaks]);
 
   // Subscribe to time updates for direct DOM manipulation (bypasses React)
   useEffect(() => {
@@ -58,37 +110,79 @@ export function TimelineWaveform() {
     return dispose;
   }, [$store, duration]);
 
-  // Load waveform data only once when audio buffer is available
+  // Load initial coarse waveform data
   useEffect(() => {
     const audioDataBuffer = $store.audioDataBuffer.peek() as ArrayBuffer | null;
     if (!audioDataBuffer || duration <= 0) return;
     // Prevent reloading if we already loaded this buffer
     if (loadedBufferRef.current === audioDataBuffer) return;
 
-    loadedBufferRef.current = audioDataBuffer as ArrayBuffer;
+    loadedBufferRef.current = audioDataBuffer;
     setIsLoading(true);
     setError(null);
 
-    generateWaveform(audioDataBuffer, 2000)
-      .then((data) => {
-        setWaveformData(data);
+    const audioContext = new AudioContext();
+
+    audioContext
+      .decodeAudioData(audioDataBuffer.slice(0))
+      .then((audioBuffer) => {
+        audioBufferRef.current = audioBuffer;
+
+        // Generate coarse peaks for fast initial render
+        const channelData = audioBuffer.getChannelData(0);
+        const peaks = generatePeaksFromChannelData(channelData, COARSE_PEAKS);
+        setCoarsePeaks(normalizePeaks(peaks));
         setIsLoading(false);
+
+        // Also trigger detailed calculation immediately for initial load
+        calculatePeaks(channelData, DETAILED_PEAKS);
       })
       .catch((err) => {
         setError(
           err instanceof Error ? err.message : "Failed to load waveform",
         );
         setIsLoading(false);
+      })
+      .finally(() => {
+        audioContext.close();
       });
-  }, [$store, duration]);
+  }, [$store, duration, calculatePeaks]);
 
-  // Prepare peaks for display based on current zoom level
+  // Trigger detailed peak calculation when zoom stops
+  useEffect(() => {
+    if (isZooming || !audioBufferRef.current) return;
+
+    // Clear any pending debounce
+    if (zoomDebounceRef.current) {
+      clearTimeout(zoomDebounceRef.current);
+    }
+
+    zoomDebounceRef.current = setTimeout(() => {
+      const audioBuffer = audioBufferRef.current;
+      if (!audioBuffer) return;
+
+      // Calculate detailed peaks via worker
+      const channelData = audioBuffer.getChannelData(0);
+      calculatePeaks(channelData, DETAILED_PEAKS);
+    }, WAVEFORM_DEBOUNCE_MS);
+
+    return () => {
+      if (zoomDebounceRef.current) {
+        clearTimeout(zoomDebounceRef.current);
+      }
+    };
+  }, [isZooming, calculatePeaks]);
+
+  // Choose which peaks to display
   const displayPeaks = (() => {
-    if (!waveformData) return null;
+    // Use detailed peaks if available and not currently zooming
+    const sourcePeaks =
+      !isZooming && detailedPeaks ? detailedPeaks : coarsePeaks;
+    if (!sourcePeaks) return null;
 
     // Calculate how many peaks we want based on current width (2px per bar minimum)
     const targetPeaks = Math.max(100, Math.floor(totalWidth / 2));
-    const downsampled = downsamplePeaks(waveformData.peaks, targetPeaks);
+    const downsampled = downsamplePeaks(sourcePeaks, targetPeaks);
     return normalizePeaks(downsampled);
   })();
 
@@ -132,6 +226,9 @@ export function TimelineWaveform() {
     return pathCommands.join(" ");
   })();
 
+  // Show shimmer when worker is calculating or zooming rapidly
+  const showShimmer = isZooming || workerIsCalculating;
+
   if (isLoading || (!displayPeaks && !error)) {
     return (
       <div className="flex flex-1 items-center justify-center bg-muted/20">
@@ -154,10 +251,25 @@ export function TimelineWaveform() {
 
   return (
     <div className="relative flex-1 overflow-hidden">
+      {/* Shimmer overlay when calculating */}
+      {showShimmer && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 animate-shimmer"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, rgba(245, 166, 35, 0.08), transparent)",
+            backgroundSize: "200% 100%",
+          }}
+        />
+      )}
+
       {/* Unplayed waveform (dark/muted) */}
       <svg
         aria-hidden="true"
-        className="h-full"
+        className={cn(
+          "h-full transition-opacity duration-200",
+          showShimmer && "opacity-80",
+        )}
         height={height}
         preserveAspectRatio="none"
         style={{ width: totalWidth }}
@@ -174,7 +286,10 @@ export function TimelineWaveform() {
       >
         <svg
           aria-hidden="true"
-          className="h-full"
+          className={cn(
+            "h-full transition-opacity duration-200",
+            showShimmer && "opacity-80",
+          )}
           height={height}
           preserveAspectRatio="none"
           style={{ width: totalWidth }}

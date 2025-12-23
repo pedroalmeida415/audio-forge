@@ -1,18 +1,14 @@
 import { ObservableHint } from "@legendapp/state";
 import { createRef, type RefObject } from "react";
+import {
+  isZoomEnabled,
+  pixelsToTime as zoomPixelsToTime,
+  timeToPixels as zoomTimeToPixels,
+} from "../../_utils/zoom-utils";
 import type { $ClippingStore } from "../clipping-store";
 import { TIMELINE_CONSTANTS } from "../constants";
 
-const { BASE_TIMESPAN, MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
-
-/**
- * Helper to calculate pixels per second from store state.
- */
-function getPixelsPerSecond(zoomLevel: number, containerWidth: number): number {
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  if (visibleTimespan <= 0) return 0;
-  return containerWidth / visibleTimespan;
-}
+const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 
 export function createPlaybackState(
   getStore: () => $ClippingStore,
@@ -38,16 +34,16 @@ export function createPlaybackState(
 
   const timeToPixels = (time: number): number => {
     const zoomLevel = $store.timeline.zoomLevel.peek();
+    const duration = $store.playback.duration.peek();
     const containerWidth = $store.timeline.containerWidth.peek();
-    return time * getPixelsPerSecond(zoomLevel, containerWidth);
+    return zoomTimeToPixels(time, zoomLevel, duration, containerWidth);
   };
 
   const pixelsToTime = (pixels: number): number => {
     const zoomLevel = $store.timeline.zoomLevel.peek();
+    const duration = $store.playback.duration.peek();
     const containerWidth = $store.timeline.containerWidth.peek();
-    const pps = getPixelsPerSecond(zoomLevel, containerWidth);
-    if (pps <= 0) return 0;
-    return pixels / pps;
+    return zoomPixelsToTime(pixels, zoomLevel, duration, containerWidth);
   };
 
   const scrollToTime = (time: number, behavior: ScrollBehavior = "smooth") => {
@@ -116,6 +112,43 @@ export function createPlaybackState(
   // Zoom actions
   // ============================================================================
 
+  /**
+   * Zooms while keeping a specific time position at the same viewport location.
+   * @param newZoomLevel - The new zoom level to apply
+   * @param focalTime - The time (in seconds) to keep stationary during zoom
+   * @param viewportOffset - The pixel offset from viewport left where focalTime should remain
+   */
+  const zoomAtPoint = (
+    newZoomLevel: number,
+    focalTime: number,
+    viewportOffset: number,
+  ) => {
+    const container = refs.scrollContainerRef.current;
+    const duration = $store.playback.duration.peek();
+
+    if (!container || !isZoomEnabled(duration)) {
+      return;
+    }
+
+    const containerWidth = $store.timeline.containerWidth.peek();
+
+    // Apply zoom
+    $store.timeline.setZoomLevel(newZoomLevel);
+
+    // Calculate new position of focal point after zoom
+    const actualNewZoom = $store.timeline.zoomLevel.peek();
+    const newFocalPixelPos = zoomTimeToPixels(
+      focalTime,
+      actualNewZoom,
+      duration,
+      containerWidth,
+    );
+
+    // Adjust scroll to keep focal point at same viewport offset
+    const newScrollLeft = newFocalPixelPos - viewportOffset;
+    container.scrollLeft = Math.max(0, newScrollLeft);
+  };
+
   const zoomAtPlayhead = (newZoomLevel: number) => {
     const container = refs.scrollContainerRef.current;
     if (!container) {
@@ -124,38 +157,40 @@ export function createPlaybackState(
     }
 
     const currentTime = $store.playback.currentTime.peek();
-    const containerWidth = $store.timeline.containerWidth.peek();
-    const oldZoomLevel = $store.timeline.zoomLevel.peek();
-
-    // Calculate playhead position before zoom
-    const oldVisibleTimespan = (BASE_TIMESPAN * 100) / oldZoomLevel;
-    const oldPps = containerWidth / oldVisibleTimespan;
-    const playheadPixelPos = currentTime * oldPps;
-
-    // Get playhead's offset from left edge of viewport
+    const playheadPixelPos = timeToPixels(currentTime);
     const playheadViewportOffset = playheadPixelPos - container.scrollLeft;
 
-    // Apply zoom
-    $store.timeline.setZoomLevel(newZoomLevel);
+    zoomAtPoint(newZoomLevel, currentTime, playheadViewportOffset);
+  };
 
-    // Calculate new playhead position after zoom
-    const newVisibleTimespan = (BASE_TIMESPAN * 100) / newZoomLevel;
-    const newPps = containerWidth / newVisibleTimespan;
-    const newPlayheadPixelPos = currentTime * newPps;
+  /**
+   * Zooms towards mouse position on timeline.
+   * @param newZoomLevel - Target zoom level
+   * @param mouseClientX - Mouse X position relative to viewport
+   */
+  const zoomAtMouse = (newZoomLevel: number, mouseClientX: number) => {
+    const container = refs.scrollContainerRef.current;
+    if (!container) {
+      zoomAtPlayhead(newZoomLevel);
+      return;
+    }
 
-    // Adjust scroll to keep playhead at same viewport offset
-    const newScrollLeft = newPlayheadPixelPos - playheadViewportOffset;
-    container.scrollLeft = Math.max(0, newScrollLeft);
+    const rect = container.getBoundingClientRect();
+    const mouseViewportOffset = mouseClientX - rect.left;
+    const mousePixelPos = container.scrollLeft + mouseViewportOffset;
+    const mouseTime = pixelsToTime(mousePixelPos);
+
+    zoomAtPoint(newZoomLevel, mouseTime, mouseViewportOffset);
   };
 
   const zoomIn = () => {
     const current = $store.timeline.zoomLevel.peek();
-    zoomAtPlayhead(Math.min(MAX_ZOOM, current + 25));
+    zoomAtPlayhead(Math.min(MAX_ZOOM, current + 5));
   };
 
   const zoomOut = () => {
     const current = $store.timeline.zoomLevel.peek();
-    zoomAtPlayhead(Math.max(MIN_ZOOM, current - 25));
+    zoomAtPlayhead(Math.max(MIN_ZOOM, current - 5));
   };
 
   // ============================================================================
@@ -215,6 +250,7 @@ export function createPlaybackState(
     zoomIn,
     zoomOut,
     zoomAtPlayhead,
+    zoomAtMouse,
 
     // Playback-only handlers
     handleSegmentPlay,
@@ -259,6 +295,7 @@ export interface PlaybackState {
   zoomIn: () => void;
   zoomOut: () => void;
   zoomAtPlayhead: (newZoomLevel: number) => void;
+  zoomAtMouse: (newZoomLevel: number, mouseClientX: number) => void;
 
   // Playback-only handlers (no selection logic)
   handleSegmentPlay: (segmentId: string) => void;

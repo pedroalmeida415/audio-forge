@@ -29,7 +29,8 @@ import {
 import { formatTimestamp } from "~/lib/time-utils";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
+import { TIMELINE_CONSTANTS } from "../../_store/constants";
+import { isZoomEnabled } from "../../_utils/zoom-utils";
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 
@@ -91,6 +92,10 @@ export function TimelineToolbar() {
   const zoomLevel = useValue($store.timeline.zoomLevel);
   const activeSegmentId = useValue($store.activeSegmentId);
   const diarizationId = useValue($store.diarizationId);
+  const duration = useValue($store.playback.duration);
+
+  // Disable zoom for short audio (< 15 seconds)
+  const zoomEnabled = isZoomEnabled(duration);
 
   const { togglePlayback, setPlaybackRate, zoomIn, zoomOut, zoomAtPlayhead } =
     $store.playback.peek();
@@ -221,9 +226,10 @@ export function TimelineToolbar() {
       {/* Zoom controls */}
       <div className="flex items-center gap-2">
         <Button
-          disabled={zoomLevel <= MIN_ZOOM}
+          disabled={!zoomEnabled || zoomLevel <= MIN_ZOOM}
           onClick={zoomOut}
           size="icon"
+          title="Zoom out"
           variant="ghost"
         >
           <Minus className="h-4 w-4" />
@@ -231,25 +237,36 @@ export function TimelineToolbar() {
 
         <Slider
           className="w-24"
+          disabled={!zoomEnabled}
           max={MAX_ZOOM}
           min={MIN_ZOOM}
           onValueChange={([value]) => value && zoomAtPlayhead(value)}
-          step={5}
+          step={1}
           value={[zoomLevel]}
         />
 
         <Button
-          disabled={zoomLevel >= MAX_ZOOM}
+          disabled={!zoomEnabled || zoomLevel >= MAX_ZOOM}
           onClick={zoomIn}
           size="icon"
+          title="Zoom in"
           variant="ghost"
         >
           <Plus className="h-4 w-4" />
         </Button>
 
-        <span className="w-12 text-center font-mono text-muted-foreground text-sm">
-          {zoomLevel}%
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="w-12 cursor-help text-center font-mono text-muted-foreground text-sm">
+              {zoomEnabled ? `${zoomLevel}%` : "N/A"}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {zoomEnabled
+              ? "Use Ctrl + mouse wheel to zoom"
+              : "Zoom disabled for short audio"}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );

@@ -3,15 +3,14 @@
 import { useValue } from "@legendapp/state/react";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
-import { TIMELINE_CONSTANTS } from "../../_store/clipping-store";
+import { useWheelZoom } from "../../_hooks/use-wheel-zoom";
+import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
 import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { TimelineSegmentsBar } from "./timeline-segments-bar";
 import { TimelineTimestamps } from "./timeline-timestamps";
 import { TimelineToolbar } from "./timeline-toolbar";
 import { TimelineWaveform } from "./timeline-waveform";
-
-const { BASE_TIMESPAN } = TIMELINE_CONSTANTS;
 
 export function TimelineContainer() {
   const $store = useClippingStore();
@@ -25,10 +24,15 @@ export function TimelineContainer() {
 
   const containerRef = useTimelineResize();
 
+  // Enable Ctrl+wheel zooming
+  useWheelZoom($store);
+
   // Compute total width for the scrollable area
-  const visibleTimespan = (BASE_TIMESPAN * 100) / zoomLevel;
-  const pixelsPerSecond =
-    visibleTimespan > 0 ? containerWidth / visibleTimespan : 0;
+  const pixelsPerSecond = calculatePixelsPerSecond(
+    zoomLevel,
+    duration,
+    containerWidth,
+  );
   const totalWidth = Math.max(duration * pixelsPerSecond, containerWidth);
 
   return (
