@@ -8,8 +8,6 @@ export const TIMELINE_CONSTANTS = {
   // Wheel zoom settings
   WHEEL_ZOOM_SPEED: 10, // Zoom units per deltaY=100
 
-  // Progressive waveform settings
-  WAVEFORM_DEBOUNCE_MS: 300, // Delay before triggering detailed calculation
-  COARSE_PEAKS: 500, // Fast initial render
-  DETAILED_PEAKS: 2000, // High detail after zoom stops
+  // Waveform settings
+  PEAKS_PER_SECOND: 50, // 1 peak per 0.1 seconds - gives ~4px bars at max zoom
 } as const;

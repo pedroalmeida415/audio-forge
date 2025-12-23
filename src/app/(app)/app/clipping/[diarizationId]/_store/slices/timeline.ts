@@ -17,10 +17,8 @@ export function createTimelineState(
   return {
     zoomLevel: TIMELINE_CONSTANTS.DEFAULT_ZOOM,
     containerWidth: 800,
-
-    // Progressive waveform state
+    scrollLeft: 0,
     isZooming: false,
-    isCalculatingPeaks: false,
 
     setZoomLevel: (level: number) => {
       const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
@@ -45,8 +43,8 @@ export function createTimelineState(
       $store.timeline.isZooming.set(value);
     },
 
-    setIsCalculatingPeaks: (value: boolean) => {
-      $store.timeline.isCalculatingPeaks.set(value);
+    setScrollLeft: (value: number) => {
+      $store.timeline.scrollLeft.set(value);
     },
   };
 }
@@ -54,13 +52,11 @@ export function createTimelineState(
 export interface TimelineState {
   zoomLevel: number;
   containerWidth: number;
-
-  // Progressive waveform state
+  scrollLeft: number;
   isZooming: boolean;
-  isCalculatingPeaks: boolean;
 
   setZoomLevel: (level: number) => void;
   setContainerWidth: (width: number) => void;
+  setScrollLeft: (value: number) => void;
   setIsZooming: (value: boolean) => void;
-  setIsCalculatingPeaks: (value: boolean) => void;
 }

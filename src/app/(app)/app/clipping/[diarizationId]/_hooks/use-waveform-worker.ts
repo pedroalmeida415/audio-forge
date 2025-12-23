@@ -2,42 +2,66 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-interface WaveformWorkerResult {
-  peaks: number[] | null;
-  isCalculating: boolean;
+interface WaveformWorkerState {
+  isReady: boolean;
+  peaks: Float32Array | null;
+  totalPeaks: number;
   error: string | null;
-  calculatePeaks: (channelData: Float32Array, targetPeaks: number) => void;
+}
+
+interface WaveformWorkerResult extends WaveformWorkerState {
+  initializeAudio: (
+    channelData: Float32Array,
+    duration: number,
+    sampleRate: number,
+  ) => void;
 }
 
 /**
- * Hook that manages a Web Worker for off-thread waveform peak calculation.
+ * Hook that manages a Web Worker for waveform peak calculation.
+ *
+ * Calculates all peaks upfront at a fixed rate (10 peaks/second).
+ * Peaks only need to be calculated once - SVG scales naturally with zoom.
  */
 export function useWaveformWorker(): WaveformWorkerResult {
   const workerRef = useRef<Worker | null>(null);
-  const [peaks, setPeaks] = useState<number[] | null>(null);
-  const [isCalculating, setIsCalculating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const [state, setState] = useState<WaveformWorkerState>({
+    isReady: false,
+    peaks: null,
+    totalPeaks: 0,
+    error: null,
+  });
 
   useEffect(() => {
-    // Create worker
     workerRef.current = new Worker("/workers/waveform.worker.js");
 
     workerRef.current.onmessage = (e) => {
-      const { type, peaks: resultPeaks, message } = e.data;
+      const { type, peaks, totalPeaks, message } = e.data;
 
-      if (type === "result") {
-        setPeaks(resultPeaks);
-        setIsCalculating(false);
-        setError(null);
-      } else if (type === "error") {
-        setError(message);
-        setIsCalculating(false);
+      switch (type) {
+        case "ready":
+          setState({
+            isReady: true,
+            peaks,
+            totalPeaks,
+            error: null,
+          });
+          break;
+        case "error":
+          setState((prev) => ({
+            ...prev,
+            error: message,
+          }));
+          break;
       }
     };
 
     workerRef.current.onerror = (err) => {
-      setError(err.message);
-      setIsCalculating(false);
+      setState((prev) => ({
+        ...prev,
+        error: err.message || "Worker error",
+      }));
     };
 
     return () => {
@@ -46,24 +70,30 @@ export function useWaveformWorker(): WaveformWorkerResult {
     };
   }, []);
 
-  const calculatePeaks = useCallback(
-    (channelData: Float32Array, targetPeaks: number) => {
+  const initializeAudio = useCallback(
+    (channelData: Float32Array, duration: number, sampleRate: number) => {
       if (!workerRef.current) return;
 
-      setIsCalculating(true);
-      setError(null);
+      setState({
+        isReady: false,
+        peaks: null,
+        totalPeaks: 0,
+        error: null,
+      });
 
-      // Clone the data since we can't transfer the original (might be needed elsewhere)
+      // Clone the data since we transfer ownership to the worker
       const clonedData = new Float32Array(channelData);
 
-      // Transfer the buffer to avoid copying
       workerRef.current.postMessage(
-        { type: "calculate", channelData: clonedData, targetPeaks },
+        { type: "init", channelData: clonedData, duration, sampleRate },
         [clonedData.buffer],
       );
     },
     [],
   );
 
-  return { peaks, isCalculating, error, calculatePeaks };
+  return {
+    ...state,
+    initializeAudio,
+  };
 }
