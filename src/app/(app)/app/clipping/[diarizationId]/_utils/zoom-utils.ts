@@ -5,10 +5,10 @@ const { MIN_ZOOM, MAX_ZOOM, ZOOM_IN_TARGET } = TIMELINE_CONSTANTS;
 /**
  * Calculates visible timespan using logarithmic interpolation.
  *
- * At MIN_ZOOM (10%): visibleTimespan = duration (entire audio visible)
- * At MAX_ZOOM (100%): visibleTimespan = ZOOM_IN_TARGET (15 seconds)
+ * At MIN_ZOOM (50%): visibleTimespan = duration (entire audio visible)
+ * At MAX_ZOOM (150%): visibleTimespan = ZOOM_IN_TARGET (15 seconds)
  *
- * Formula: visibleTimespan = duration * (15/duration)^((zoom-10)/90)
+ * Formula: visibleTimespan = duration * (15/duration)^((zoom-50)/100)
  */
 export function calculateVisibleTimespan(
   zoomLevel: number,

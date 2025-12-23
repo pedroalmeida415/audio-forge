@@ -1,10 +1,9 @@
 "use client";
 
-import { useValue } from "@legendapp/state/react";
+import { $React } from "@legendapp/state/react-web";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { useWheelZoom } from "../../_hooks/use-wheel-zoom";
-import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
 import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { TimelineSegmentsBar } from "./timeline-segments-bar";
@@ -12,28 +11,21 @@ import { TimelineTimestamps } from "./timeline-timestamps";
 import { TimelineToolbar } from "./timeline-toolbar";
 import { TimelineWaveform } from "./timeline-waveform";
 
+/**
+ * Timeline container using Legend-State's "render once" pattern.
+ *
+ * The container renders once. The scrollable content div uses $React.div
+ * with reactive $style to update its width when zoom changes.
+ */
 export function TimelineContainer() {
   const $store = useClippingStore();
   const { handleTimelineClick, refs } = $store.playback.peek();
   const { scrollContainerRef } = refs;
 
-  // Subscribe only to what's needed for layout
-  const duration = useValue($store.playback.duration);
-  const zoomLevel = useValue($store.timeline.zoomLevel);
-  const containerWidth = useValue($store.timeline.containerWidth);
-
   const containerRef = useTimelineResize();
 
   // Enable Ctrl+wheel zooming
   useWheelZoom($store);
-
-  // Compute total width for the scrollable area
-  const pixelsPerSecond = calculatePixelsPerSecond(
-    zoomLevel,
-    duration,
-    containerWidth,
-  );
-  const totalWidth = Math.max(duration * pixelsPerSecond, containerWidth);
 
   return (
     <div
@@ -54,7 +46,10 @@ export function TimelineContainer() {
         ref={scrollContainerRef}
         role="region"
       >
-        <div className="relative h-full" style={{ width: totalWidth }}>
+        <$React.div
+          className="relative h-full"
+          $style={() => ({ width: $store.timeline.getTotalWidth.get() })}
+        >
           {/* Scrubber - subscribes to store internally */}
           <TimelineScrubber />
 
@@ -69,7 +64,7 @@ export function TimelineContainer() {
             {/* Waveform - subscribes to store internally */}
             <TimelineWaveform />
           </div>
-        </div>
+        </$React.div>
       </div>
     </div>
   );

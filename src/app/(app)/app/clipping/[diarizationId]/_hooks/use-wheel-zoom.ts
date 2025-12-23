@@ -1,23 +1,22 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { $ClippingStore } from "../_store/clipping-store";
 import { TIMELINE_CONSTANTS } from "../_store/constants";
 import { isZoomEnabled } from "../_utils/zoom-utils";
 
-const { MIN_ZOOM, MAX_ZOOM, WHEEL_ZOOM_SPEED, WAVEFORM_DEBOUNCE_MS } =
-  TIMELINE_CONSTANTS;
+const { MIN_ZOOM, MAX_ZOOM, ZOOM_FACTOR } = TIMELINE_CONSTANTS;
 
 /**
  * Hook that handles Ctrl+wheel zooming on the timeline.
  *
+ * Features:
+ * - Exponential zoom: each wheel tick multiplies/divides by ZOOM_FACTOR
  * - Zooms towards mouse position when hovering over timeline
  * - Zooms towards playhead when mouse is outside timeline
- * - Debounces waveform detail recalculation
+ * - Updates are batched via zoom actions for atomic state changes
  */
 export function useWheelZoom($store: $ClippingStore) {
-  const zoomDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
     const { scrollContainerRef } = $store.playback.refs.peek();
     const container = scrollContainerRef.current;
@@ -38,17 +37,14 @@ export function useWheelZoom($store: $ClippingStore) {
 
       const currentZoom = $store.timeline.zoomLevel.peek();
 
-      // Calculate zoom delta (negative deltaY = zoom in)
-      const zoomDelta = (-e.deltaY * WHEEL_ZOOM_SPEED) / 100;
-      const newZoom = Math.max(
-        MIN_ZOOM,
-        Math.min(MAX_ZOOM, currentZoom + zoomDelta),
-      );
+      // Exponential zoom: each wheel tick = one zoom step
+      const newZoom =
+        e.deltaY > 0 ? currentZoom / ZOOM_FACTOR : currentZoom * ZOOM_FACTOR;
 
-      if (newZoom === currentZoom) return;
+      // Clamp to zoom bounds
+      const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
 
-      // Mark as zooming (for shimmer effect)
-      $store.timeline.setIsZooming(true);
+      if (clampedZoom === currentZoom) return;
 
       // Check if mouse is over the timeline container
       const rect = container.getBoundingClientRect();
@@ -58,24 +54,12 @@ export function useWheelZoom($store: $ClippingStore) {
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom;
 
+      // Commit zoom directly (zoom actions use batch() internally)
       if (isOverTimeline) {
-        // Zoom towards mouse position
-        $store.playback.zoomAtMouse(newZoom, e.clientX);
+        $store.playback.zoomAtMouse(clampedZoom, e.clientX);
       } else {
-        // Zoom towards playhead
-        $store.playback.zoomAtPlayhead(newZoom);
+        $store.playback.zoomAtPlayhead(clampedZoom);
       }
-
-      // Debounce waveform detail recalculation
-      if (zoomDebounceRef.current) {
-        clearTimeout(zoomDebounceRef.current);
-      }
-
-      zoomDebounceRef.current = setTimeout(() => {
-        $store.timeline.setIsZooming(false);
-        // Trigger detailed waveform calculation
-        // This will be handled by the waveform component
-      }, WAVEFORM_DEBOUNCE_MS);
     };
 
     // Use passive: false to allow preventDefault
@@ -83,9 +67,6 @@ export function useWheelZoom($store: $ClippingStore) {
 
     return () => {
       container.removeEventListener("wheel", handleWheel);
-      if (zoomDebounceRef.current) {
-        clearTimeout(zoomDebounceRef.current);
-      }
     };
   }, [$store]);
 }

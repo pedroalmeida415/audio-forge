@@ -1,4 +1,4 @@
-import { ObservableHint } from "@legendapp/state";
+import { batch, ObservableHint } from "@legendapp/state";
 import { createRef, type RefObject } from "react";
 import {
   isZoomEnabled,
@@ -114,6 +114,7 @@ export function createPlaybackState(
 
   /**
    * Zooms while keeping a specific time position at the same viewport location.
+   * Uses batch() to ensure zoom and scroll updates are atomic.
    * @param newZoomLevel - The new zoom level to apply
    * @param focalTime - The time (in seconds) to keep stationary during zoom
    * @param viewportOffset - The pixel offset from viewport left where focalTime should remain
@@ -132,21 +133,24 @@ export function createPlaybackState(
 
     const containerWidth = $store.timeline.containerWidth.peek();
 
-    // Apply zoom
-    $store.timeline.setZoomLevel(newZoomLevel);
+    // Batch zoom and scroll updates together for atomic state change
+    batch(() => {
+      // Apply zoom
+      $store.timeline.setZoomLevel(newZoomLevel);
 
-    // Calculate new position of focal point after zoom
-    const actualNewZoom = $store.timeline.zoomLevel.peek();
-    const newFocalPixelPos = zoomTimeToPixels(
-      focalTime,
-      actualNewZoom,
-      duration,
-      containerWidth,
-    );
+      // Calculate new position of focal point after zoom
+      const actualNewZoom = $store.timeline.zoomLevel.peek();
+      const newFocalPixelPos = zoomTimeToPixels(
+        focalTime,
+        actualNewZoom,
+        duration,
+        containerWidth,
+      );
 
-    // Adjust scroll to keep focal point at same viewport offset
-    const newScrollLeft = newFocalPixelPos - viewportOffset;
-    container.scrollLeft = Math.max(0, newScrollLeft);
+      // Adjust scroll to keep focal point at same viewport offset
+      const newScrollLeft = newFocalPixelPos - viewportOffset;
+      container.scrollLeft = Math.max(0, newScrollLeft);
+    });
   };
 
   const zoomAtPlayhead = (newZoomLevel: number) => {

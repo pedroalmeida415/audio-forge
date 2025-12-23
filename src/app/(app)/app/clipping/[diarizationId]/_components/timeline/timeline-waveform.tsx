@@ -1,30 +1,26 @@
 "use client";
 
-import { observe } from "@legendapp/state";
-import { useValue } from "@legendapp/state/react";
-import { useEffect, useRef, useState } from "react";
+import { Memo, useSelector } from "@legendapp/state/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useClippingStore } from "../../_context/store.context";
 import { useWaveformWorker } from "../../_hooks/use-waveform-worker";
-import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
+
+const WAVEFORM_HEIGHT = 80;
 
 /**
- * Waveform visualization component.
+ * Waveform visualization component using Legend-State's "render once" pattern.
  *
- * Loads all peaks upfront at 10 peaks/second and renders them as an SVG.
- * The SVG scales naturally with zoom - no recalculation needed.
+ * The path is generated once with a fixed coordinate system (1 unit per peak).
+ * On zoom, only the SVG width changes - the browser scales the path automatically.
  */
 export function TimelineWaveform() {
   const $store = useClippingStore();
-  const duration = useValue($store.playback.duration);
-  const zoomLevel = useValue($store.timeline.zoomLevel);
-  const containerWidth = useValue($store.timeline.containerWidth);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadedBufferRef = useRef<ArrayBuffer | null>(null);
-  const playedWrapperRef = useRef<HTMLDivElement>(null);
 
   const {
     isReady: workerIsReady,
@@ -34,36 +30,10 @@ export function TimelineWaveform() {
     initializeAudio,
   } = useWaveformWorker();
 
-  // Calculate total width based on zoom
-  const pixelsPerSecond = calculatePixelsPerSecond(
-    zoomLevel,
-    duration,
-    containerWidth,
-  );
-  const totalWidth = Math.max(1, duration * pixelsPerSecond);
+  // Subscribe to duration so effect re-runs when audio loads
+  const duration = useSelector(() => $store.playback.duration.get());
 
-  // Subscribe to time updates for playhead progress (direct DOM manipulation)
-  useEffect(() => {
-    if (!duration || duration <= 0) return;
-
-    const initialTime = $store.playback.currentTime.peek();
-    if (playedWrapperRef.current) {
-      const percentage = (initialTime / duration) * 100;
-      playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
-    }
-
-    const dispose = observe(() => {
-      const time = $store.playback.currentTime.get();
-      if (playedWrapperRef.current) {
-        const percentage = (time / duration) * 100;
-        playedWrapperRef.current.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
-      }
-    });
-
-    return dispose;
-  }, [$store, duration]);
-
-  // Initialize worker with audio data (only once)
+  // Initialize worker with audio data (only once when duration becomes available)
   useEffect(() => {
     const audioDataBuffer = $store.audioDataBuffer.peek() as ArrayBuffer | null;
     if (!audioDataBuffer || duration <= 0) return;
@@ -93,42 +63,12 @@ export function TimelineWaveform() {
       });
   }, [$store, duration, initializeAudio]);
 
-  // Generate SVG path from peaks
-  const waveformPath = (() => {
-    if (!peaks || peaks.length === 0 || totalPeaks === 0) return "";
-
-    const height = 80;
-    const barWidth = totalWidth / totalPeaks;
-    const barGap = Math.min(1, barWidth * 0.2); // Gap scales with bar width
-    const effectiveBarWidth = Math.max(0.5, barWidth - barGap);
-    const cornerRadius = Math.min(1, effectiveBarWidth / 2);
-
-    const pathCommands: string[] = [];
-
-    for (let i = 0; i < peaks.length; i++) {
-      const peak = peaks[i] ?? 0;
-      const barHeight = Math.max(2, peak * (height - 4));
-      const x = i * barWidth;
-      const y = (height - barHeight) / 2;
-
-      const r = Math.min(cornerRadius, effectiveBarWidth / 2, barHeight / 2);
-
-      pathCommands.push(
-        `M${x + r},${y}`,
-        `h${effectiveBarWidth - 2 * r}`,
-        `a${r},${r} 0 0 1 ${r},${r}`,
-        `v${barHeight - 2 * r}`,
-        `a${r},${r} 0 0 1 -${r},${r}`,
-        `h-${effectiveBarWidth - 2 * r}`,
-        `a${r},${r} 0 0 1 -${r},-${r}`,
-        `v-${barHeight - 2 * r}`,
-        `a${r},${r} 0 0 1 ${r},-${r}`,
-        "Z",
-      );
-    }
-
-    return pathCommands.join(" ");
-  })();
+  // Generate path once with fixed coordinate system (1 unit per peak)
+  // The SVG viewBox is fixed; only the width changes on zoom
+  const waveformPath = useMemo(() => {
+    if (!peaks || peaks.length === 0 || totalPeaks === 0) return null;
+    return generateWaveformPath(peaks, WAVEFORM_HEIGHT);
+  }, [peaks, totalPeaks]);
 
   const displayError = error || workerError;
 
@@ -148,41 +88,70 @@ export function TimelineWaveform() {
     );
   }
 
-  if (!peaks || !waveformPath) return null;
+  if (!waveformPath || totalPeaks === 0) return null;
 
-  const height = 80;
+  // Fixed viewBox based on peak count - SVG scales automatically
+  const viewBoxWidth = totalPeaks;
 
   return (
     <div className="relative flex-1 overflow-hidden">
-      {/* Unplayed waveform (dark/muted) */}
-      <svg
-        aria-hidden="true"
-        className="h-full"
-        height={height}
-        preserveAspectRatio="none"
-        style={{ width: totalWidth }}
-        viewBox={`0 0 ${totalWidth} ${height}`}
-      >
-        <path className="fill-muted-foreground/30" d={waveformPath} />
-      </svg>
+      <Memo>
+        {() => {
+          const totalWidth = $store.timeline.getTotalWidth.get();
+          if (totalWidth <= 0) return null;
 
-      {/* Played waveform (bright) - clipped via CSS */}
-      <div
-        ref={playedWrapperRef}
-        className="absolute inset-0 will-change-[clip-path]"
-        style={{ clipPath: "inset(0 100% 0 0)" }}
-      >
-        <svg
-          aria-hidden="true"
-          className="h-full"
-          height={height}
-          preserveAspectRatio="none"
-          style={{ width: totalWidth }}
-          viewBox={`0 0 ${totalWidth} ${height}`}
-        >
-          <path className="fill-primary/70" d={waveformPath} />
-        </svg>
-      </div>
+          return (
+            <svg
+              aria-hidden="true"
+              className="h-full"
+              height={WAVEFORM_HEIGHT}
+              preserveAspectRatio="none"
+              style={{ width: totalWidth }}
+              viewBox={`0 0 ${viewBoxWidth} ${WAVEFORM_HEIGHT}`}
+            >
+              <path className="fill-primary/70" d={waveformPath} />
+            </svg>
+          );
+        }}
+      </Memo>
     </div>
   );
+}
+
+/**
+ * Generates an SVG path with fixed coordinates (1 unit per bar).
+ * The path is generated once; SVG scaling handles zoom.
+ */
+function generateWaveformPath(peaks: Float32Array, height: number): string {
+  // Fixed bar width of 1 unit, with 0.2 unit gap
+  const barWidth = 1;
+  const barGap = 0.2;
+  const effectiveBarWidth = barWidth - barGap;
+  const cornerRadius = Math.min(0.15, effectiveBarWidth / 2);
+
+  const pathCommands: string[] = [];
+
+  for (let i = 0; i < peaks.length; i++) {
+    const peak = peaks[i] ?? 0;
+    const barHeight = Math.max(2, peak * (height - 4));
+    const x = i * barWidth;
+    const y = (height - barHeight) / 2;
+
+    const r = Math.min(cornerRadius, effectiveBarWidth / 2, barHeight / 2);
+
+    pathCommands.push(
+      `M${x + r},${y}`,
+      `h${effectiveBarWidth - 2 * r}`,
+      `a${r},${r} 0 0 1 ${r},${r}`,
+      `v${barHeight - 2 * r}`,
+      `a${r},${r} 0 0 1 -${r},${r}`,
+      `h-${effectiveBarWidth - 2 * r}`,
+      `a${r},${r} 0 0 1 -${r},-${r}`,
+      `v-${barHeight - 2 * r}`,
+      `a${r},${r} 0 0 1 ${r},-${r}`,
+      "Z",
+    );
+  }
+
+  return pathCommands.join(" ");
 }

@@ -1,63 +1,42 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useValue } from "@legendapp/state/react";
 import { useCallback, useEffect, useRef } from "react";
 import { useClippingStore } from "../../_context/store.context";
-import { calculatePixelsPerSecond } from "../../_utils/zoom-utils";
 
+/**
+ * Timeline scrubber (playhead) component using Legend-State's observe() pattern.
+ *
+ * Uses observe() for direct DOM manipulation of the playhead position,
+ * bypassing React for high-frequency currentTime updates.
+ */
 export function TimelineScrubber() {
   const $store = useClippingStore();
   const { seek, refs } = $store.playback.peek();
   const { scrollContainerRef } = refs;
 
-  // Subscribe to zoom/container/duration changes via React (infrequent updates)
-  const zoomLevel = useValue($store.timeline.zoomLevel);
-  const containerWidth = useValue($store.timeline.containerWidth);
-  const duration = useValue($store.playback.duration);
-
   const scrubberRef = useRef<HTMLDivElement>(null);
 
-  // Cache pixelsPerSecond in a ref - updated when zoom/width/duration changes
-  const pixelsPerSecondRef = useRef(0);
+  // Subscribe to currentTime and zoom changes for direct DOM updates
   useEffect(() => {
-    pixelsPerSecondRef.current = calculatePixelsPerSecond(
-      zoomLevel,
-      duration,
-      containerWidth,
-    );
-
-    // Update position immediately when zoom/width changes
-    if (scrubberRef.current) {
-      const time = $store.playback.currentTime.peek();
-      scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
-    }
-  }, [zoomLevel, containerWidth, duration, $store]);
-
-  // Subscribe to currentTime updates for direct DOM manipulation (bypasses React)
-  useEffect(() => {
-    // Set initial position
-    if (scrubberRef.current) {
-      const time = $store.playback.currentTime.peek();
-      scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
-    }
-
-    // observe() replaces store.subscribe()
     const dispose = observe(() => {
       const time = $store.playback.currentTime.get();
+      const pps = $store.timeline.getPixelsPerSecond.get();
       if (scrubberRef.current) {
-        scrubberRef.current.style.transform = `translateX(${time * pixelsPerSecondRef.current}px)`;
+        scrubberRef.current.style.transform = `translateX(${time * pps}px)`;
       }
     });
-
     return dispose;
   }, [$store]);
 
   // Convert pixel position to time and seek
-  const pixelsToTime = useCallback((pixels: number) => {
-    const pps = pixelsPerSecondRef.current;
-    return pps > 0 ? pixels / pps : 0;
-  }, []);
+  const pixelsToTime = useCallback(
+    (pixels: number) => {
+      const pps = $store.timeline.getPixelsPerSecond.get();
+      return pps > 0 ? pixels / pps : 0;
+    },
+    [$store],
+  );
 
   const handleDrag = useCallback(
     (clientX: number, rect: DOMRect) => {
@@ -71,7 +50,7 @@ export function TimelineScrubber() {
       const clampedTime = Math.max(0, Math.min(time, duration));
       seek(clampedTime);
     },
-    [$store.playback.duration, pixelsToTime, seek],
+    [$store.playback.duration, pixelsToTime, seek, scrollContainerRef],
   );
 
   const handlePointerDown = useCallback(
@@ -97,7 +76,7 @@ export function TimelineScrubber() {
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
     },
-    [handleDrag],
+    [handleDrag, scrollContainerRef],
   );
 
   return (

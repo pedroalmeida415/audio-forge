@@ -1,4 +1,8 @@
-import { isZoomEnabled } from "../../_utils/zoom-utils";
+import {
+  calculatePixelsPerSecond,
+  calculateVisibleTimespan,
+  isZoomEnabled,
+} from "../../_utils/zoom-utils";
 import type { $ClippingStore } from "../clipping-store";
 import { TIMELINE_CONSTANTS } from "../constants";
 
@@ -18,7 +22,27 @@ export function createTimelineState(
     zoomLevel: TIMELINE_CONSTANTS.DEFAULT_ZOOM,
     containerWidth: 800,
     scrollLeft: 0,
-    isZooming: false,
+
+    // Computed getters - used inside reactive contexts (Memo, observe, $style, etc.)
+    getPixelsPerSecond: () => {
+      const zoomLevel = $store.timeline.zoomLevel.get();
+      const duration = $store.playback.duration.get();
+      const containerWidth = $store.timeline.containerWidth.get();
+      return calculatePixelsPerSecond(zoomLevel, duration, containerWidth);
+    },
+
+    getVisibleTimespan: () => {
+      const zoomLevel = $store.timeline.zoomLevel.get();
+      const duration = $store.playback.duration.get();
+      return calculateVisibleTimespan(zoomLevel, duration);
+    },
+
+    getTotalWidth: () => {
+      const duration = $store.playback.duration.get();
+      const containerWidth = $store.timeline.containerWidth.get();
+      const pps = $store.timeline.getPixelsPerSecond.get();
+      return Math.max(duration * pps, containerWidth);
+    },
 
     setZoomLevel: (level: number) => {
       const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
@@ -39,10 +63,6 @@ export function createTimelineState(
       $store.timeline.containerWidth.set(width);
     },
 
-    setIsZooming: (value: boolean) => {
-      $store.timeline.isZooming.set(value);
-    },
-
     setScrollLeft: (value: number) => {
       $store.timeline.scrollLeft.set(value);
     },
@@ -53,10 +73,13 @@ export interface TimelineState {
   zoomLevel: number;
   containerWidth: number;
   scrollLeft: number;
-  isZooming: boolean;
+
+  // Computed getters - call these inside reactive contexts for fine-grained updates
+  getPixelsPerSecond: () => number;
+  getVisibleTimespan: () => number;
+  getTotalWidth: () => number;
 
   setZoomLevel: (level: number) => void;
   setContainerWidth: (width: number) => void;
   setScrollLeft: (value: number) => void;
-  setIsZooming: (value: boolean) => void;
 }
