@@ -174,10 +174,11 @@ export function TimelineWaveform() {
   }, [isZooming, calculatePeaks]);
 
   // Choose which peaks to display
+  // Always prefer detailed peaks once available - only use coarse for initial load
+  // This prevents jarring switches during zoom; the waveform will stretch/compress
+  // smoothly until new detailed peaks arrive from the worker
   const displayPeaks = (() => {
-    // Use detailed peaks if available and not currently zooming
-    const sourcePeaks =
-      !isZooming && detailedPeaks ? detailedPeaks : coarsePeaks;
+    const sourcePeaks = detailedPeaks ?? coarsePeaks;
     if (!sourcePeaks) return null;
 
     // Calculate how many peaks we want based on current width (2px per bar minimum)

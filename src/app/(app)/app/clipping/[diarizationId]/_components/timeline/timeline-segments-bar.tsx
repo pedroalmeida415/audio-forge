@@ -58,7 +58,7 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
   return (
     <button
       className={cn(
-        "absolute top-1 h-6 overflow-hidden rounded border text-left transition-all",
+        "absolute top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]",
         isActive
           ? "z-10 ring-2 ring-primary ring-offset-1 ring-offset-background"
           : "hover:brightness-110",
