@@ -30,9 +30,8 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
       onClick={() => $store.setActiveSegment(id)}
       $className={() => {
         const isActive = id === $store.activeSegmentId.get();
-        const isDimmed =
-          $store.selectedSpeaker.get() !== null &&
-          speaker !== $store.selectedSpeaker.get();
+        const selectedSpeaker = $store.selectedSpeaker.get();
+        const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
         return cn(
           "absolute top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]",
           isActive
@@ -46,9 +45,8 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
         const start = $segment.start.get();
         const end = $segment.end.get();
         const color = $store.speakerColors[speaker]?.get();
-        const isDimmed =
-          $store.selectedSpeaker.get() !== null &&
-          speaker !== $store.selectedSpeaker.get();
+        const selectedSpeaker = $store.selectedSpeaker.get();
+        const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
 
         return {
           left: start * pps,
@@ -70,9 +68,8 @@ function TimelineSegment({ item$: $segment }: TimelineSegmentProps) {
 
           if (width <= 50) return null;
 
-          const isDimmed =
-            $store.selectedSpeaker.get() !== null &&
-            speaker !== $store.selectedSpeaker.get();
+          const selectedSpeaker = $store.selectedSpeaker.get();
+          const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
           const color = $store.speakerColors[speaker]?.get();
           const speakerCollection = $store.speakerCollections[speaker]?.get();
 

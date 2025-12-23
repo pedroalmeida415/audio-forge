@@ -33,8 +33,8 @@ function SelectAllCheckbox() {
 
   const speakerSegments = useValue(
     () =>
-      $store
-        .segmentsBySpeaker()
+      $store.segmentsBySpeaker
+        .get()
         [$store.selectedSpeaker.get()!]?.filter((seg) => !seg.isDeleted) ?? [],
   );
   const selectedSegmentIds = useValue($store.selectedSegmentIds);

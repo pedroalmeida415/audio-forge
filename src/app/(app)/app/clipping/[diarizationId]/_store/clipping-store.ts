@@ -87,7 +87,7 @@ export function createClippingStore({
     selectAllSegments: () => {
       const selectedSpeaker = $store.selectedSpeaker.peek();
       if (!selectedSpeaker) return;
-      const speakerSegments = $store.segmentsBySpeaker()[selectedSpeaker]!;
+      const speakerSegments = $store.segmentsBySpeaker.get()[selectedSpeaker]!
 
       const visibleSegmentIds = speakerSegments
         .filter((s) => !s.isDeleted && s.speaker === selectedSpeaker)
