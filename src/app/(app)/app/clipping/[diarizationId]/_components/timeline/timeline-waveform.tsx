@@ -1,78 +1,93 @@
 "use client";
 
-import { Memo, useSelector } from "@legendapp/state/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useSelector } from "@legendapp/state/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useClippingStore } from "../../_context/store.context";
-import { useWaveformWorker } from "../../_hooks/use-waveform-worker";
+import { CHUNK_DURATION, getChunkCount } from "../../_utils/chunk-utils";
+import {
+  calculateDurationFromDat,
+  parseWaveformDat,
+  type WaveformDatHeader,
+} from "../../_utils/parse-waveform-dat";
 
 const WAVEFORM_HEIGHT = 80;
+const MAX_PEAKS_PER_CHUNK = 500; // Limit peaks per chunk for reasonable path size
+
+interface WaveformChunk {
+  index: number;
+  pathD: string;
+  nativeWidth: number; // Width of path in local coordinates (peaks * barWidth)
+  duration: number; // Duration this chunk represents in seconds
+}
 
 /**
- * Waveform visualization component using Legend-State's "render once" pattern.
+ * Virtualized waveform visualization.
  *
- * The path is generated once with a fixed coordinate system (1 unit per peak).
- * On zoom, only the SVG width changes - the browser scales the path automatically.
+ * Splits the waveform into 10-second chunks, each with its own SVG path.
+ * Only visible chunks are rendered using TanStack Virtual.
  */
 export function TimelineWaveform() {
   const $store = useClippingStore();
+  const { scrollContainerRef } = $store.playback.peek().refs;
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chunks, setChunks] = useState<WaveformChunk[]>([]);
+  const [duration, setDuration] = useState(0);
 
-  const loadedBufferRef = useRef<ArrayBuffer | null>(null);
-
-  const {
-    isReady: workerIsReady,
-    peaks,
-    totalPeaks,
-    error: workerError,
-    initializeAudio,
-  } = useWaveformWorker();
-
-  // Subscribe to duration so effect re-runs when audio loads
-  const duration = useSelector(() => $store.playback.duration.get());
-
-  // Initialize worker with audio data (only once when duration becomes available)
+  // Load and chunk the waveform data
   useEffect(() => {
-    const audioDataBuffer = $store.audioDataBuffer.peek() as ArrayBuffer | null;
-    if (!audioDataBuffer || duration <= 0) return;
-    if (loadedBufferRef.current === audioDataBuffer) return;
+    fetch("/audiowaveform.dat")
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to fetch .dat: ${res.status}`);
+        return res.arrayBuffer();
+      })
+      .then((buffer) => {
+        const { header, peaks } = parseWaveformDat(buffer);
+        const audioDuration = calculateDurationFromDat(header);
+        setDuration(audioDuration);
 
-    loadedBufferRef.current = audioDataBuffer;
-    setIsLoading(true);
-    setError(null);
-
-    const audioContext = new AudioContext();
-
-    audioContext
-      .decodeAudioData(audioDataBuffer.slice(0))
-      .then((audioBuffer) => {
-        const channelData = audioBuffer.getChannelData(0);
-        initializeAudio(channelData, duration, audioBuffer.sampleRate);
+        // Process peaks into chunks
+        const waveformChunks = createWaveformChunks(peaks, header, audioDuration);
+        setChunks(waveformChunks);
         setIsLoading(false);
       })
       .catch((err) => {
-        setError(
-          err instanceof Error ? err.message : "Failed to load waveform",
-        );
+        console.error("[Waveform] Error:", err);
+        setError(err instanceof Error ? err.message : "Failed to load waveform");
         setIsLoading(false);
-      })
-      .finally(() => {
-        audioContext.close();
       });
-  }, [$store, duration, initializeAudio]);
+  }, []);
 
-  // Generate path once with fixed coordinate system (1 unit per peak)
-  // The SVG viewBox is fixed; only the width changes on zoom
-  const waveformPath = useMemo(() => {
-    if (!peaks || peaks.length === 0 || totalPeaks === 0) return null;
-    return generateWaveformPath(peaks, WAVEFORM_HEIGHT);
-  }, [peaks, totalPeaks]);
+  // Subscribe to reactive values for virtualizer
+  const pixelsPerSecond = useSelector(() => $store.timeline.getPixelsPerSecond.get());
+  const totalWidth = useSelector(() => $store.timeline.getTotalWidth.get());
 
-  const displayError = error || workerError;
+  const virtualizer = useVirtualizer({
+    horizontal: true,
+    count: chunks.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (index) => {
+      // Last chunk may be shorter
+      const chunkDuration =
+        index === chunks.length - 1
+          ? duration - index * CHUNK_DURATION
+          : CHUNK_DURATION;
+      return chunkDuration * pixelsPerSecond;
+    },
+    overscan: 2,
+  });
 
-  if (isLoading || (!workerIsReady && !displayError)) {
+  // Re-measure when zoom changes
+  useEffect(() => {
+    if (chunks.length > 0) {
+      virtualizer.measure();
+    }
+  }, [pixelsPerSecond, virtualizer, chunks.length]);
+
+  if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center bg-muted/20">
         <Skeleton className="h-full w-full" />
@@ -80,61 +95,116 @@ export function TimelineWaveform() {
     );
   }
 
-  if (displayError) {
+  if (error) {
     return (
       <div className="flex flex-1 items-center justify-center bg-muted/20">
-        <span className="text-muted-foreground text-sm">{displayError}</span>
+        <span className="text-muted-foreground text-sm">{error}</span>
       </div>
     );
   }
 
-  if (!waveformPath || totalPeaks === 0) return null;
-
-  // Fixed viewBox based on peak count - SVG scales automatically
-  const viewBoxWidth = totalPeaks;
+  if (chunks.length === 0) return null;
 
   return (
     <div className="relative flex-1 overflow-hidden">
-      <Memo>
-        {() => {
-          const totalWidth = $store.timeline.getTotalWidth.get();
-          if (totalWidth <= 0) return null;
+      <svg
+        aria-hidden="true"
+        className="h-full"
+        height={WAVEFORM_HEIGHT}
+        style={{ width: totalWidth }}
+        viewBox={`0 0 ${totalWidth} ${WAVEFORM_HEIGHT}`}
+        preserveAspectRatio="none"
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const chunk = chunks[virtualItem.index];
+          if (!chunk || chunk.nativeWidth === 0) return null;
+
+          // Calculate scale to stretch/compress path to match chunk width at current zoom
+          const desiredWidth = chunk.duration * pixelsPerSecond;
+          const scaleX = desiredWidth / chunk.nativeWidth;
 
           return (
-            <svg
-              aria-hidden="true"
-              className="h-full"
-              height={WAVEFORM_HEIGHT}
-              preserveAspectRatio="none"
-              style={{ width: totalWidth }}
-              viewBox={`0 0 ${viewBoxWidth} ${WAVEFORM_HEIGHT}`}
-            >
-              <path className="fill-primary/70" d={waveformPath} />
-            </svg>
+            <path
+              key={virtualItem.key}
+              className="fill-primary/70"
+              d={chunk.pathD}
+              transform={`translate(${virtualItem.start}, 0) scale(${scaleX}, 1)`}
+            />
           );
-        }}
-      </Memo>
+        })}
+      </svg>
     </div>
   );
 }
 
+const BAR_WIDTH = 1; // Fixed bar width in path coordinates
+
 /**
- * Generates an SVG path with fixed coordinates (1 unit per bar).
- * The path is generated once; SVG scaling handles zoom.
+ * Create waveform chunks from parsed peaks.
+ * Each chunk contains peaks for a 10-second segment with pre-generated path.
  */
-function generateWaveformPath(peaks: Float32Array, height: number): string {
-  // Fixed bar width of 1 unit, with 0.2 unit gap
-  const barWidth = 1;
-  const barGap = 0.2;
-  const effectiveBarWidth = barWidth - barGap;
-  const cornerRadius = Math.min(0.15, effectiveBarWidth / 2);
+function createWaveformChunks(
+  peaks: Float32Array,
+  header: WaveformDatHeader,
+  duration: number,
+): WaveformChunk[] {
+  const peaksPerSecond = header.sampleRate / header.samplesPerPixel;
+  const peaksPerChunk = Math.ceil(CHUNK_DURATION * peaksPerSecond);
+  const chunkCount = getChunkCount(duration);
+
+  const chunks: WaveformChunk[] = [];
+
+  for (let i = 0; i < chunkCount; i++) {
+    const startPeak = i * peaksPerChunk;
+    const endPeak = Math.min(startPeak + peaksPerChunk, peaks.length);
+    const chunkPeaks = peaks.slice(startPeak, endPeak);
+
+    // Calculate chunk duration (last chunk may be shorter)
+    const chunkStartTime = i * CHUNK_DURATION;
+    const chunkEndTime = Math.min((i + 1) * CHUNK_DURATION, duration);
+    const chunkDuration = chunkEndTime - chunkStartTime;
+
+    // Downsample if too many peaks in this chunk
+    const downsampledPeaks =
+      chunkPeaks.length > MAX_PEAKS_PER_CHUNK
+        ? downsamplePeaks(chunkPeaks, MAX_PEAKS_PER_CHUNK)
+        : chunkPeaks;
+
+    // Generate path for this chunk (coordinates are relative to chunk start)
+    const pathD = generateChunkPath(downsampledPeaks, WAVEFORM_HEIGHT);
+
+    // Native width is the number of rendered peaks times bar width
+    const nativeWidth = downsampledPeaks.length * BAR_WIDTH;
+
+    chunks.push({
+      index: i,
+      pathD,
+      nativeWidth,
+      duration: chunkDuration,
+    });
+  }
+
+  return chunks;
+}
+
+/**
+ * Generate SVG path for a chunk.
+ * Coordinates are relative (starting at x=0) - transform handles positioning and scaling.
+ */
+function generateChunkPath(peaks: Float32Array, height: number): string {
+  if (peaks.length === 0) return "";
+
+  // Bar gap as fraction of bar width (will scale with transform)
+  const barGap = BAR_WIDTH * 0.2;
+  const effectiveBarWidth = BAR_WIDTH - barGap;
+  const cornerRadius = Math.min(BAR_WIDTH * 0.15, effectiveBarWidth / 2);
 
   const pathCommands: string[] = [];
 
   for (let i = 0; i < peaks.length; i++) {
     const peak = peaks[i] ?? 0;
     const barHeight = Math.max(2, peak * (height - 4));
-    const x = i * barWidth;
+    const x = i * BAR_WIDTH;
     const y = (height - barHeight) / 2;
 
     const r = Math.min(cornerRadius, effectiveBarWidth / 2, barHeight / 2);
@@ -154,4 +224,28 @@ function generateWaveformPath(peaks: Float32Array, height: number): string {
   }
 
   return pathCommands.join(" ");
+}
+
+/**
+ * Downsample peaks by taking the max value in each bucket.
+ */
+function downsamplePeaks(peaks: Float32Array, maxPeaks: number): Float32Array {
+  if (peaks.length <= maxPeaks) return peaks;
+
+  const ratio = peaks.length / maxPeaks;
+  const result = new Float32Array(maxPeaks);
+
+  for (let i = 0; i < maxPeaks; i++) {
+    const start = Math.floor(i * ratio);
+    const end = Math.floor((i + 1) * ratio);
+
+    let max = 0;
+    for (let j = start; j < end && j < peaks.length; j++) {
+      const val = peaks[j] ?? 0;
+      if (val > max) max = val;
+    }
+    result[i] = max;
+  }
+
+  return result;
 }

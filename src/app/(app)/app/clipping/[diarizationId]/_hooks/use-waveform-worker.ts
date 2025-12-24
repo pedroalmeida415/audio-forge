@@ -15,6 +15,8 @@ interface WaveformWorkerResult extends WaveformWorkerState {
     duration: number,
     sampleRate: number,
   ) => void;
+  /** Initialize from precomputed peaks (e.g., from .dat file) - no worker needed */
+  initializeFromPeaks: (peaks: Float32Array) => void;
 }
 
 /**
@@ -92,8 +94,18 @@ export function useWaveformWorker(): WaveformWorkerResult {
     [],
   );
 
+  const initializeFromPeaks = useCallback((peaks: Float32Array) => {
+    setState({
+      isReady: true,
+      peaks,
+      totalPeaks: peaks.length,
+      error: null,
+    });
+  }, []);
+
   return {
     ...state,
     initializeAudio,
+    initializeFromPeaks,
   };
 }

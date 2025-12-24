@@ -1,6 +1,7 @@
 "use client";
 
 import { $React } from "@legendapp/state/react-web";
+import { useEffect } from "react";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { useWheelZoom } from "../../_hooks/use-wheel-zoom";
@@ -26,6 +27,19 @@ export function TimelineContainer() {
 
   // Enable Ctrl+wheel zooming
   useWheelZoom($store);
+
+  // Sync scroll position to store for virtualization
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      $store.timeline.setScrollLeft(container.scrollLeft);
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [$store, scrollContainerRef]);
 
   return (
     <div
