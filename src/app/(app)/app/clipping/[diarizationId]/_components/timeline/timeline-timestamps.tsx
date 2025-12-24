@@ -1,31 +1,30 @@
 "use client";
 
 import { useSelector } from "@legendapp/state/react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo } from "react";
+import { $React } from "@legendapp/state/react-web";
+import { useMemo } from "react";
 import { formatTimestamp } from "~/lib/time-utils";
 import { useClippingStore } from "../../_context/store.context";
 import {
   CHUNK_DURATION,
   getChunkCount,
   getChunkTimeRange,
+  getVisibleChunkIndices,
 } from "../../_utils/chunk-utils";
 
+const OVERSCAN = 1; // Number of chunks to render beyond visible area
+
 /**
- * Virtualized timeline timestamps.
+ * Timeline timestamps with manual scroll handling.
  *
- * Generates timestamp marks per chunk and only renders visible chunks
- * using TanStack Virtual.
+ * Uses transform: translateX for GPU-accelerated positioning.
+ * Visibility calculated manually based on scrollOffset.
  */
 export function TimelineTimestamps() {
   const $store = useClippingStore();
-  const { scrollContainerRef } = $store.playback.peek().refs;
 
   // Subscribe to reactive values
   const duration = useSelector(() => $store.playback.duration.get());
-  const pixelsPerSecond = useSelector(() =>
-    $store.timeline.getPixelsPerSecond.get(),
-  );
   const visibleTimespan = useSelector(() =>
     $store.timeline.getVisibleTimespan.get(),
   );
@@ -38,31 +37,30 @@ export function TimelineTimestamps() {
     [visibleTimespan],
   );
 
-  const virtualizer = useVirtualizer({
-    horizontal: true,
-    count: chunkCount,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => CHUNK_DURATION * pixelsPerSecond,
-    overscan: 1,
-  });
+  // Calculate visible chunk indices reactively
+  const visibleChunks = useSelector(() => {
+    const scrollOffset = $store.timeline.scrollOffset.get();
+    const containerWidth = $store.timeline.containerWidth.get();
+    const pps = $store.timeline.getPixelsPerSecond.get();
+    const dur = $store.playback.duration.get();
 
-  // Re-measure when zoom changes
-  useEffect(() => {
-    virtualizer.measure();
-  }, [pixelsPerSecond, virtualizer]);
+    return getVisibleChunkIndices(scrollOffset, containerWidth, pps, dur, OVERSCAN);
+  });
 
   if (chunkCount === 0) return null;
 
+  // Generate array of visible chunk indices
+  const visibleChunkIndices: number[] = [];
+  for (let i = visibleChunks.startIndex; i <= visibleChunks.endIndex; i++) {
+    visibleChunkIndices.push(i);
+  }
+
   return (
     <div className="pointer-events-none relative h-6 shrink-0 overflow-hidden border-b bg-muted/30">
-      {virtualizer.getVirtualItems().map((virtualItem) => (
+      {visibleChunkIndices.map((chunkIndex) => (
         <TimestampChunk
-          key={virtualItem.key}
-          chunkIndex={virtualItem.index}
-          chunkStartPx={virtualItem.start}
-          chunkWidth={virtualItem.size}
-          duration={duration}
-          pixelsPerSecond={pixelsPerSecond}
+          key={chunkIndex}
+          chunkIndex={chunkIndex}
           majorInterval={majorInterval}
           minorInterval={minorInterval}
         />
@@ -77,23 +75,17 @@ export function TimelineTimestamps() {
 
 interface TimestampChunkProps {
   chunkIndex: number;
-  chunkStartPx: number;
-  chunkWidth: number;
-  duration: number;
-  pixelsPerSecond: number;
   majorInterval: number;
   minorInterval: number;
 }
 
 function TimestampChunk({
   chunkIndex,
-  chunkStartPx,
-  chunkWidth,
-  duration,
-  pixelsPerSecond,
   majorInterval,
   minorInterval,
 }: TimestampChunkProps) {
+  const $store = useClippingStore();
+  const duration = useSelector(() => $store.playback.duration.get());
   const timeRange = getChunkTimeRange(chunkIndex, duration);
 
   // Generate marks for this chunk
@@ -118,37 +110,65 @@ function TimestampChunk({
   }, [timeRange.start, timeRange.end, duration, majorInterval, minorInterval]);
 
   return (
-    <div
+    <$React.div
       className="absolute top-0 h-full"
-      style={{
-        left: chunkStartPx,
-        width: chunkWidth,
+      style={{ willChange: "transform, width" }}
+      $style={() => {
+        const pps = $store.timeline.getPixelsPerSecond.get();
+        const scrollOffset = $store.timeline.scrollOffset.get();
+        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
+        const chunkWidth = CHUNK_DURATION * pps;
+
+        return {
+          transform: `translateX(${chunkStartPx - scrollOffset}px)`,
+          width: chunkWidth,
+        };
       }}
     >
-      {marks.map((mark) => {
-        // Position relative to chunk
-        const leftInChunk = (mark.time - timeRange.start) * pixelsPerSecond;
+      {marks.map((mark) => (
+        <TimestampMark
+          key={mark.time}
+          time={mark.time}
+          major={mark.major}
+          chunkStartTime={timeRange.start}
+        />
+      ))}
+    </$React.div>
+  );
+}
 
-        return (
-          <div
-            className="absolute top-0 flex h-full flex-col items-center"
-            key={mark.time}
-            style={{ left: leftInChunk }}
-          >
-            {mark.major ? (
-              <>
-                <div className="h-2 w-px bg-muted-foreground/50" />
-                <span className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                  {formatTimestamp(mark.time)}
-                </span>
-              </>
-            ) : (
-              <div className="mt-1 h-1 w-1 rounded-full bg-muted-foreground/30" />
-            )}
-          </div>
-        );
-      })}
-    </div>
+// ============================================================================
+// Timestamp Mark Component
+// ============================================================================
+
+interface TimestampMarkProps {
+  time: number;
+  major: boolean;
+  chunkStartTime: number;
+}
+
+function TimestampMark({ time, major, chunkStartTime }: TimestampMarkProps) {
+  const $store = useClippingStore();
+
+  return (
+    <$React.div
+      className="absolute top-0 flex h-full flex-col items-center"
+      $style={() => {
+        const pps = $store.timeline.getPixelsPerSecond.get();
+        return { left: (time - chunkStartTime) * pps };
+      }}
+    >
+      {major ? (
+        <>
+          <div className="h-2 w-px bg-muted-foreground/50" />
+          <span className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+            {formatTimestamp(time)}
+          </span>
+        </>
+      ) : (
+        <div className="mt-1 h-1 w-1 rounded-full bg-muted-foreground/30" />
+      )}
+    </$React.div>
   );
 }
 

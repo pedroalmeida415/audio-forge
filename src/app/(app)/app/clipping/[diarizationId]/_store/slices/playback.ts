@@ -46,18 +46,12 @@ export function createPlaybackState(
     return zoomPixelsToTime(pixels, zoomLevel, duration, containerWidth);
   };
 
-  const scrollToTime = (time: number, behavior: ScrollBehavior = "smooth") => {
-    const container = refs.scrollContainerRef.current;
-    if (!container) return;
-
+  const scrollToTime = (time: number) => {
     const containerWidth = $store.timeline.containerWidth.peek();
     const targetX = timeToPixels(time);
-    const scrollLeft = targetX - containerWidth / 2;
+    const scrollOffset = targetX - containerWidth / 2;
 
-    container.scrollTo({
-      left: Math.max(0, scrollLeft),
-      behavior,
-    });
+    $store.timeline.setScrollOffset(scrollOffset);
   };
 
   // ============================================================================
@@ -124,10 +118,9 @@ export function createPlaybackState(
     focalTime: number,
     viewportOffset: number,
   ) => {
-    const container = refs.scrollContainerRef.current;
     const duration = $store.playback.duration.peek();
 
-    if (!container || !isZoomEnabled(duration)) {
+    if (!isZoomEnabled(duration)) {
       return;
     }
 
@@ -147,22 +140,17 @@ export function createPlaybackState(
         containerWidth,
       );
 
-      // Adjust scroll to keep focal point at same viewport offset
-      const newScrollLeft = newFocalPixelPos - viewportOffset;
-      container.scrollLeft = Math.max(0, newScrollLeft);
+      // Adjust scroll offset to keep focal point at same viewport offset
+      const newScrollOffset = newFocalPixelPos - viewportOffset;
+      $store.timeline.setScrollOffset(newScrollOffset);
     });
   };
 
   const zoomAtPlayhead = (newZoomLevel: number) => {
-    const container = refs.scrollContainerRef.current;
-    if (!container) {
-      $store.timeline.setZoomLevel(newZoomLevel);
-      return;
-    }
-
     const currentTime = $store.playback.currentTime.peek();
     const playheadPixelPos = timeToPixels(currentTime);
-    const playheadViewportOffset = playheadPixelPos - container.scrollLeft;
+    const scrollOffset = $store.timeline.scrollOffset.peek();
+    const playheadViewportOffset = playheadPixelPos - scrollOffset;
 
     zoomAtPoint(newZoomLevel, currentTime, playheadViewportOffset);
   };
@@ -181,7 +169,8 @@ export function createPlaybackState(
 
     const rect = container.getBoundingClientRect();
     const mouseViewportOffset = mouseClientX - rect.left;
-    const mousePixelPos = container.scrollLeft + mouseViewportOffset;
+    const scrollOffset = $store.timeline.scrollOffset.peek();
+    const mousePixelPos = scrollOffset + mouseViewportOffset;
     const mouseTime = pixelsToTime(mousePixelPos);
 
     zoomAtPoint(newZoomLevel, mouseTime, mouseViewportOffset);
@@ -214,7 +203,8 @@ export function createPlaybackState(
     if (!container) return;
 
     const rect = container.getBoundingClientRect();
-    const clickX = e.clientX - rect.left + container.scrollLeft;
+    const scrollOffset = $store.timeline.scrollOffset.peek();
+    const clickX = e.clientX - rect.left + scrollOffset;
     const time = pixelsToTime(clickX);
     const duration = $store.playback.duration.peek();
 
@@ -285,7 +275,7 @@ export interface PlaybackState {
   // Timeline utilities
   timeToPixels: (time: number) => number;
   pixelsToTime: (pixels: number) => number;
-  scrollToTime: (time: number, behavior?: ScrollBehavior) => void;
+  scrollToTime: (time: number) => void;
 
   // Audio actions
   play: () => void;

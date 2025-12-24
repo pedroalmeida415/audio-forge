@@ -1,11 +1,10 @@
 "use client";
 
-import { $React } from "@legendapp/state/react-web";
-import { useEffect } from "react";
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { useWheelZoom } from "../../_hooks/use-wheel-zoom";
 import { TimelineProgressBar } from "./timeline-progress-bar";
+import { TimelineScrollbar } from "./timeline-scrollbar";
 import { TimelineScrubber } from "./timeline-scrubber";
 import { TimelineSegmentsBar } from "./timeline-segments-bar";
 import { TimelineTimestamps } from "./timeline-timestamps";
@@ -15,8 +14,8 @@ import { TimelineWaveform } from "./timeline-waveform";
 /**
  * Timeline container using Legend-State's "render once" pattern.
  *
- * The container renders once. The scrollable content div uses $React.div
- * with reactive $style to update its width when zoom changes.
+ * Uses manual scroll handling with transform-based positioning.
+ * Native scroll is disabled - scrollOffset in store controls virtual scroll position.
  */
 export function TimelineContainer() {
   const $store = useClippingStore();
@@ -25,21 +24,8 @@ export function TimelineContainer() {
 
   const containerRef = useTimelineResize();
 
-  // Enable Ctrl+wheel zooming
+  // Enable Ctrl+wheel zooming and Shift+wheel scrolling
   useWheelZoom($store);
-
-  // Sync scroll position to store for virtualization
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      $store.timeline.setScrollLeft(container.scrollLeft);
-    };
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [$store, scrollContainerRef]);
 
   return (
     <div
@@ -52,33 +38,31 @@ export function TimelineContainer() {
       {/* Toolbar - subscribes to store internally */}
       <TimelineToolbar />
 
-      {/* Scrollable timeline content */}
+      {/* Timeline content - no native scroll, manual handling via transforms */}
       <div
-        className="relative flex-1 cursor-crosshair overflow-x-auto overflow-y-hidden"
+        className="relative flex-1 cursor-crosshair overflow-hidden"
         onClick={handleTimelineClick}
         onKeyDown={() => {}}
         ref={scrollContainerRef}
         role="region"
       >
-        <$React.div
-          className="relative h-full"
-          $style={() => ({ width: $store.timeline.getTotalWidth.get() })}
-        >
-          {/* Scrubber - subscribes to store internally */}
-          <TimelineScrubber />
+        {/* Scrubber - subscribes to store internally */}
+        <TimelineScrubber />
 
-          {/* Stacked timeline elements */}
-          <div className="flex h-full flex-col">
-            {/* Timestamps - subscribes to store internally */}
-            <TimelineTimestamps />
+        {/* Stacked timeline elements - each handles its own scroll offset */}
+        <div className="flex h-full flex-col">
+          {/* Timestamps - subscribes to store internally */}
+          <TimelineTimestamps />
 
-            {/* Segments bar - subscribes to store internally */}
-            <TimelineSegmentsBar />
+          {/* Segments bar - subscribes to store internally */}
+          <TimelineSegmentsBar />
 
-            {/* Waveform - subscribes to store internally */}
-            <TimelineWaveform />
-          </div>
-        </$React.div>
+          {/* Waveform - subscribes to store internally */}
+          <TimelineWaveform />
+        </div>
+
+        {/* Custom scrollbar */}
+        <TimelineScrollbar />
       </div>
     </div>
   );

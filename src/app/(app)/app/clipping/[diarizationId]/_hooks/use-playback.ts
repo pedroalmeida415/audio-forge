@@ -81,7 +81,7 @@ export function usePlayback($store: $ClippingStore) {
   // ============================================================================
 
   useEffect(() => {
-    const { audioRef, scrollContainerRef } = $store.playback.refs.peek();
+    const { audioRef } = $store.playback.refs.peek();
 
     // Track the target visible area we're scrolling to
     let targetVisibleRight = 0;
@@ -100,17 +100,13 @@ export function usePlayback($store: $ClippingStore) {
         return;
       }
 
-      // Initialize target boundaries
-      const container = scrollContainerRef.current;
-      if (container) {
-        const containerWidth = $store.timeline.containerWidth.peek();
-        targetVisibleLeft = container.scrollLeft;
-        targetVisibleRight = targetVisibleLeft + containerWidth;
-      }
+      // Initialize target boundaries from store's scrollOffset
+      const containerWidth = $store.timeline.containerWidth.peek();
+      targetVisibleLeft = $store.timeline.scrollOffset.peek();
+      targetVisibleRight = targetVisibleLeft + containerWidth;
 
       const updateTime = () => {
         const audio = audioRef.current;
-        const container = scrollContainerRef.current;
         if (!audio) return;
 
         // Check segment end
@@ -127,33 +123,28 @@ export function usePlayback($store: $ClippingStore) {
         $store.playback.currentTime.set(currentTime);
 
         // Auto-scroll: keep playhead visible, always land on left side
-        if (container) {
-          const zoomLevel = $store.timeline.zoomLevel.peek();
-          const duration = $store.playback.duration.peek();
-          const containerWidth = $store.timeline.containerWidth.peek();
-          const pps = calculatePixelsPerSecond(
-            zoomLevel,
-            duration,
-            containerWidth,
-          );
-          const timeX = currentTime * pps;
-          const padding = containerWidth * 0.1;
+        const zoomLevel = $store.timeline.zoomLevel.peek();
+        const duration = $store.playback.duration.peek();
+        const containerWidth = $store.timeline.containerWidth.peek();
+        const pps = calculatePixelsPerSecond(
+          zoomLevel,
+          duration,
+          containerWidth,
+        );
+        const timeX = currentTime * pps;
+        const padding = containerWidth * 0.1;
 
-          // Check against TARGET boundaries (where we're scrolling to), not current scroll position
-          const pastRightEdge = timeX > targetVisibleRight - padding;
-          const pastLeftEdge = timeX < targetVisibleLeft + padding;
+        // Check against TARGET boundaries (where we're scrolling to), not current scroll position
+        const pastRightEdge = timeX > targetVisibleRight - padding;
+        const pastLeftEdge = timeX < targetVisibleLeft + padding;
 
-          if (pastRightEdge || pastLeftEdge) {
-            // Always position playhead on the left side with padding
-            const newScrollLeft = Math.max(0, timeX - padding);
-            container.scrollTo({
-              left: newScrollLeft,
-              behavior: "smooth",
-            });
-            // Update target boundaries to where we're scrolling
-            targetVisibleLeft = newScrollLeft;
-            targetVisibleRight = newScrollLeft + containerWidth;
-          }
+        if (pastRightEdge || pastLeftEdge) {
+          // Always position playhead on the left side with padding
+          const newScrollOffset = Math.max(0, timeX - padding);
+          $store.timeline.setScrollOffset(newScrollOffset);
+          // Update target boundaries to where we're scrolling
+          targetVisibleLeft = newScrollOffset;
+          targetVisibleRight = newScrollOffset + containerWidth;
         }
 
         $store.playback.animationFrameId.set(requestAnimationFrame(updateTime));
@@ -184,10 +175,6 @@ export function usePlayback($store: $ClippingStore) {
       .find((s) => s.id === activeSegmentId);
     if (!segment) return;
 
-    const { scrollContainerRef } = $store.playback.refs.peek();
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
     // Calculate segment center and scroll to it
     const segmentCenter = (segment.start + segment.end) / 2;
     const zoomLevel = $store.timeline.zoomLevel.peek();
@@ -195,11 +182,8 @@ export function usePlayback($store: $ClippingStore) {
     const containerWidth = $store.timeline.containerWidth.peek();
     const pps = calculatePixelsPerSecond(zoomLevel, duration, containerWidth);
     const targetX = segmentCenter * pps;
-    const scrollLeft = targetX - containerWidth / 2;
+    const scrollOffset = targetX - containerWidth / 2;
 
-    container.scrollTo({
-      left: Math.max(0, scrollLeft),
-      behavior: "smooth",
-    });
+    $store.timeline.setScrollOffset(scrollOffset);
   });
 }

@@ -1,11 +1,15 @@
 "use client";
 
+import { observe } from "@legendapp/state";
 import { useSelector } from "@legendapp/state/react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useClippingStore } from "../../_context/store.context";
-import { CHUNK_DURATION, getChunkCount } from "../../_utils/chunk-utils";
+import {
+  CHUNK_DURATION,
+  getChunkCount,
+  getVisibleChunkIndices,
+} from "../../_utils/chunk-utils";
 import {
   calculateDurationFromDat,
   parseWaveformDat,
@@ -13,31 +17,36 @@ import {
 } from "../../_utils/parse-waveform-dat";
 
 const WAVEFORM_HEIGHT = 80;
-const MAX_PEAKS_PER_CHUNK = 500; // Limit peaks per chunk for reasonable path size
+const MAX_PEAKS_PER_CHUNK = 500;
+const OVERSCAN = 2;
 
-interface WaveformChunk {
+interface WaveformChunkData {
   index: number;
-  pathD: string;
-  nativeWidth: number; // Width of path in local coordinates (peaks * barWidth)
-  duration: number; // Duration this chunk represents in seconds
+  peaks: Float32Array; // Raw peaks for regenerating path
+  nativeWidth: number; // Width in native coordinates
+  duration: number; // Chunk duration in seconds
 }
 
 /**
- * Virtualized waveform visualization.
+ * Waveform visualization with direct DOM manipulation.
  *
- * Splits the waveform into 10-second chunks, each with its own SVG path.
- * Only visible chunks are rendered using TanStack Virtual.
+ * Pre-renders paths once, then updates d attributes directly
+ * when scroll/zoom changes. No React re-renders during interaction.
  */
 export function TimelineWaveform() {
   const $store = useClippingStore();
-  const { scrollContainerRef } = $store.playback.peek().refs;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pathRefsMap = useRef<Map<number, SVGPathElement>>(new Map());
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chunks, setChunks] = useState<WaveformChunk[]>([]);
-  const [duration, setDuration] = useState(0);
+  const [chunksData, setChunksData] = useState<WaveformChunkData[]>([]);
+  const [audioDuration, setAudioDuration] = useState(0);
 
-  // Load and chunk the waveform data
+  // Subscribe to container width for SVG sizing
+  const containerWidth = useSelector(() => $store.timeline.containerWidth.get());
+
+  // Load waveform data once
   useEffect(() => {
     fetch("/audiowaveform.dat")
       .then((res) => {
@@ -46,12 +55,12 @@ export function TimelineWaveform() {
       })
       .then((buffer) => {
         const { header, peaks } = parseWaveformDat(buffer);
-        const audioDuration = calculateDurationFromDat(header);
-        setDuration(audioDuration);
+        const duration = calculateDurationFromDat(header);
+        setAudioDuration(duration);
 
-        // Process peaks into chunks
-        const waveformChunks = createWaveformChunks(peaks, header, audioDuration);
-        setChunks(waveformChunks);
+        // Create chunk data with raw peaks
+        const chunks = createChunksData(peaks, header, duration);
+        setChunksData(chunks);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -61,31 +70,59 @@ export function TimelineWaveform() {
       });
   }, []);
 
-  // Subscribe to reactive values for virtualizer
-  const pixelsPerSecond = useSelector(() => $store.timeline.getPixelsPerSecond.get());
-  const totalWidth = useSelector(() => $store.timeline.getTotalWidth.get());
-
-  const virtualizer = useVirtualizer({
-    horizontal: true,
-    count: chunks.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: (index) => {
-      // Last chunk may be shorter
-      const chunkDuration =
-        index === chunks.length - 1
-          ? duration - index * CHUNK_DURATION
-          : CHUNK_DURATION;
-      return chunkDuration * pixelsPerSecond;
-    },
-    overscan: 2,
-  });
-
-  // Re-measure when zoom changes
+  // Direct DOM manipulation for scroll/zoom
   useEffect(() => {
-    if (chunks.length > 0) {
-      virtualizer.measure();
-    }
-  }, [pixelsPerSecond, virtualizer, chunks.length]);
+    if (chunksData.length === 0) return;
+
+    const dispose = observe(() => {
+      const scrollOffset = $store.timeline.scrollOffset.get();
+      const pps = $store.timeline.getPixelsPerSecond.get();
+      const containerW = $store.timeline.containerWidth.get();
+      const duration = $store.playback.duration.get();
+
+      // Calculate visible chunks
+      const { startIndex, endIndex } = getVisibleChunkIndices(
+        scrollOffset,
+        containerW,
+        pps,
+        duration,
+        OVERSCAN,
+      );
+
+      // Update each visible path's d attribute directly
+      pathRefsMap.current.forEach((pathEl, chunkIndex) => {
+        const chunk = chunksData[chunkIndex];
+        if (!chunk) return;
+
+        const isVisible = chunkIndex >= startIndex && chunkIndex <= endIndex;
+
+        if (!isVisible) {
+          // Hide non-visible paths
+          pathEl.setAttribute("d", "");
+          return;
+        }
+
+        // Calculate chunk position relative to viewport
+        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
+        const offsetX = chunkStartPx - scrollOffset;
+
+        // Calculate scale factor
+        const desiredWidth = chunk.duration * pps;
+        const scaleX = chunk.nativeWidth > 0 ? desiredWidth / chunk.nativeWidth : 1;
+
+        // Generate path with offset and scale baked in
+        const pathD = generatePathWithTransform(
+          chunk.peaks,
+          WAVEFORM_HEIGHT,
+          offsetX,
+          scaleX,
+        );
+        pathEl.setAttribute("d", pathD);
+      });
+    });
+
+    return dispose;
+  }, [chunksData, $store]);
 
   if (isLoading) {
     return (
@@ -103,56 +140,53 @@ export function TimelineWaveform() {
     );
   }
 
-  if (chunks.length === 0) return null;
+  if (chunksData.length === 0) return null;
 
   return (
     <div className="relative flex-1 overflow-hidden">
       <svg
+        ref={svgRef}
         aria-hidden="true"
-        className="h-full"
+        className="h-full w-full"
         height={WAVEFORM_HEIGHT}
-        style={{ width: totalWidth }}
-        viewBox={`0 0 ${totalWidth} ${WAVEFORM_HEIGHT}`}
+        width={containerWidth}
+        viewBox={`0 0 ${containerWidth} ${WAVEFORM_HEIGHT}`}
         preserveAspectRatio="none"
       >
-        {virtualizer.getVirtualItems().map((virtualItem) => {
-          const chunk = chunks[virtualItem.index];
-          if (!chunk || chunk.nativeWidth === 0) return null;
-
-          // Calculate scale to stretch/compress path to match chunk width at current zoom
-          const desiredWidth = chunk.duration * pixelsPerSecond;
-          const scaleX = desiredWidth / chunk.nativeWidth;
-
-          return (
-            <path
-              key={virtualItem.key}
-              className="fill-primary/70"
-              d={chunk.pathD}
-              transform={`translate(${virtualItem.start}, 0) scale(${scaleX}, 1)`}
-            />
-          );
-        })}
+        {chunksData.map((chunk) => (
+          <path
+            key={chunk.index}
+            ref={(el) => {
+              if (el) {
+                pathRefsMap.current.set(chunk.index, el);
+              } else {
+                pathRefsMap.current.delete(chunk.index);
+              }
+            }}
+            className="fill-primary/70"
+          />
+        ))}
       </svg>
     </div>
   );
 }
 
-const BAR_WIDTH = 1; // Fixed bar width in path coordinates
+const BAR_WIDTH = 1; // Fixed bar width in native coordinates
 
 /**
- * Create waveform chunks from parsed peaks.
- * Each chunk contains peaks for a 10-second segment with pre-generated path.
+ * Create chunk data from parsed peaks.
+ * Stores raw peaks for path regeneration on scroll/zoom.
  */
-function createWaveformChunks(
+function createChunksData(
   peaks: Float32Array,
   header: WaveformDatHeader,
   duration: number,
-): WaveformChunk[] {
+): WaveformChunkData[] {
   const peaksPerSecond = header.sampleRate / header.samplesPerPixel;
   const peaksPerChunk = Math.ceil(CHUNK_DURATION * peaksPerSecond);
   const chunkCount = getChunkCount(duration);
 
-  const chunks: WaveformChunk[] = [];
+  const chunks: WaveformChunkData[] = [];
 
   for (let i = 0; i < chunkCount; i++) {
     const startPeak = i * peaksPerChunk;
@@ -164,22 +198,16 @@ function createWaveformChunks(
     const chunkEndTime = Math.min((i + 1) * CHUNK_DURATION, duration);
     const chunkDuration = chunkEndTime - chunkStartTime;
 
-    // Downsample if too many peaks in this chunk
+    // Downsample if too many peaks
     const downsampledPeaks =
       chunkPeaks.length > MAX_PEAKS_PER_CHUNK
         ? downsamplePeaks(chunkPeaks, MAX_PEAKS_PER_CHUNK)
         : chunkPeaks;
 
-    // Generate path for this chunk (coordinates are relative to chunk start)
-    const pathD = generateChunkPath(downsampledPeaks, WAVEFORM_HEIGHT);
-
-    // Native width is the number of rendered peaks times bar width
-    const nativeWidth = downsampledPeaks.length * BAR_WIDTH;
-
     chunks.push({
       index: i,
-      pathD,
-      nativeWidth,
+      peaks: downsampledPeaks,
+      nativeWidth: downsampledPeaks.length * BAR_WIDTH,
       duration: chunkDuration,
     });
   }
@@ -188,23 +216,28 @@ function createWaveformChunks(
 }
 
 /**
- * Generate SVG path for a chunk.
- * Coordinates are relative (starting at x=0) - transform handles positioning and scaling.
+ * Generate SVG path with transform baked in.
+ * Applies offsetX and scaleX directly to coordinates.
  */
-function generateChunkPath(peaks: Float32Array, height: number): string {
+function generatePathWithTransform(
+  peaks: Float32Array,
+  height: number,
+  offsetX: number,
+  scaleX: number,
+): string {
   if (peaks.length === 0) return "";
 
-  // Bar gap as fraction of bar width (will scale with transform)
-  const barGap = BAR_WIDTH * 0.2;
-  const effectiveBarWidth = BAR_WIDTH - barGap;
-  const cornerRadius = Math.min(BAR_WIDTH * 0.15, effectiveBarWidth / 2);
+  const scaledBarWidth = BAR_WIDTH * scaleX;
+  const barGap = scaledBarWidth * 0.2;
+  const effectiveBarWidth = scaledBarWidth - barGap;
+  const cornerRadius = Math.min(scaledBarWidth * 0.15, effectiveBarWidth / 2);
 
   const pathCommands: string[] = [];
 
   for (let i = 0; i < peaks.length; i++) {
     const peak = peaks[i] ?? 0;
     const barHeight = Math.max(2, peak * (height - 4));
-    const x = i * BAR_WIDTH;
+    const x = offsetX + i * scaledBarWidth;
     const y = (height - barHeight) / 2;
 
     const r = Math.min(cornerRadius, effectiveBarWidth / 2, barHeight / 2);

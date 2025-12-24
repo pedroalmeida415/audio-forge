@@ -17,13 +17,14 @@ export function TimelineScrubber() {
 
   const scrubberRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to currentTime and zoom changes for direct DOM updates
+  // Subscribe to currentTime, zoom, and scroll changes for direct DOM updates
   useEffect(() => {
     const dispose = observe(() => {
       const time = $store.playback.currentTime.get();
       const pps = $store.timeline.getPixelsPerSecond.get();
+      const scrollOffset = $store.timeline.scrollOffset.get();
       if (scrubberRef.current) {
-        scrubberRef.current.style.transform = `translateX(${time * pps}px)`;
+        scrubberRef.current.style.transform = `translateX(${time * pps - scrollOffset}px)`;
       }
     });
     return dispose;
@@ -40,17 +41,14 @@ export function TimelineScrubber() {
 
   const handleDrag = useCallback(
     (clientX: number, rect: DOMRect) => {
-      const container = scrollContainerRef.current;
-      if (!container) return;
-
-      const scrollLeft = container.scrollLeft;
-      const relativeX = clientX - rect.left + scrollLeft;
+      const scrollOffset = $store.timeline.scrollOffset.peek();
+      const relativeX = clientX - rect.left + scrollOffset;
       const time = pixelsToTime(relativeX);
       const duration = $store.playback.duration.peek();
       const clampedTime = Math.max(0, Math.min(time, duration));
       seek(clampedTime);
     },
-    [$store.playback.duration, pixelsToTime, seek, scrollContainerRef],
+    [$store, pixelsToTime, seek],
   );
 
   const handlePointerDown = useCallback(

@@ -21,7 +21,7 @@ export function createTimelineState(
   return {
     zoomLevel: TIMELINE_CONSTANTS.DEFAULT_ZOOM,
     containerWidth: 800,
-    scrollLeft: 0,
+    scrollOffset: 0, // Virtual scroll position in pixels
 
     // Computed getters - used inside reactive contexts (Memo, observe, $style, etc.)
     getPixelsPerSecond: () => {
@@ -44,6 +44,12 @@ export function createTimelineState(
       return Math.max(duration * pps, containerWidth);
     },
 
+    getMaxScrollOffset: () => {
+      const totalWidth = $store.timeline.getTotalWidth.get();
+      const containerWidth = $store.timeline.containerWidth.get();
+      return Math.max(0, totalWidth - containerWidth);
+    },
+
     setZoomLevel: (level: number) => {
       const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
       const duration = $store.playback.duration.peek();
@@ -63,8 +69,16 @@ export function createTimelineState(
       $store.timeline.containerWidth.set(width);
     },
 
-    setScrollLeft: (value: number) => {
-      $store.timeline.scrollLeft.set(value);
+    setScrollOffset: (value: number) => {
+      const maxOffset = $store.timeline.getMaxScrollOffset.peek();
+      $store.timeline.scrollOffset.set(
+        Math.max(0, Math.min(maxOffset, value)),
+      );
+    },
+
+    scrollBy: (delta: number) => {
+      const current = $store.timeline.scrollOffset.peek();
+      $store.timeline.setScrollOffset(current + delta);
     },
   };
 }
@@ -72,14 +86,16 @@ export function createTimelineState(
 export interface TimelineState {
   zoomLevel: number;
   containerWidth: number;
-  scrollLeft: number;
+  scrollOffset: number;
 
   // Computed getters - call these inside reactive contexts for fine-grained updates
   getPixelsPerSecond: () => number;
   getVisibleTimespan: () => number;
   getTotalWidth: () => number;
+  getMaxScrollOffset: () => number;
 
   setZoomLevel: (level: number) => void;
   setContainerWidth: (width: number) => void;
-  setScrollLeft: (value: number) => void;
+  setScrollOffset: (value: number) => void;
+  scrollBy: (delta: number) => void;
 }

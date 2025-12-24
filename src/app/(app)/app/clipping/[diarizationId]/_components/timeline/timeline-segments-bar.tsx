@@ -2,8 +2,7 @@
 
 import { useSelector } from "@legendapp/state/react";
 import { $React } from "@legendapp/state/react-web";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { withAlpha } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
@@ -12,26 +11,25 @@ import {
   CHUNK_DURATION,
   getChunkCount,
   getChunkForTime,
+  getVisibleChunkIndices,
 } from "../../_utils/chunk-utils";
 
+const OVERSCAN = 2; // Number of chunks to render beyond visible area
+
 /**
- * Virtualized segments bar.
+ * Segments bar with manual scroll handling.
  *
- * Groups segments by chunk (10-second intervals) and only renders
- * segments in visible chunks using TanStack Virtual.
+ * Uses transform: translateX for GPU-accelerated positioning.
+ * Visibility calculated manually based on scrollOffset.
  */
 export function TimelineSegmentsBar() {
   const $store = useClippingStore();
-  const { scrollContainerRef } = $store.playback.peek().refs;
 
-  // Subscribe to reactive values
+  // Subscribe to reactive values for chunk calculation
   const duration = useSelector(() => $store.playback.duration.get());
-  const pixelsPerSecond = useSelector(() =>
-    $store.timeline.getPixelsPerSecond.get(),
-  );
   const segments = useSelector(() => $store.segments.get());
 
-  // Build segment-to-chunk mapping
+  // Build segment-to-chunk mapping (stable unless segments/duration change)
   const { chunkCount, segmentsByChunk } = useMemo(() => {
     const count = getChunkCount(duration);
     const map = new Map<number, DiarizationSegment[]>();
@@ -42,7 +40,6 @@ export function TimelineSegmentsBar() {
     }
 
     // Map each segment to the chunk where it starts
-    // (segments render in their starting chunk only to avoid duplicates)
     for (const segment of segments) {
       if (segment.isDeleted) continue;
 
@@ -56,46 +53,73 @@ export function TimelineSegmentsBar() {
     return { chunkCount: count, segmentsByChunk: map };
   }, [duration, segments]);
 
-  const virtualizer = useVirtualizer({
-    horizontal: true,
-    count: chunkCount,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => CHUNK_DURATION * pixelsPerSecond,
-    overscan: 2,
-  });
+  // Calculate visible chunk indices reactively
+  const visibleChunks = useSelector(() => {
+    const scrollOffset = $store.timeline.scrollOffset.get();
+    const containerWidth = $store.timeline.containerWidth.get();
+    const pps = $store.timeline.getPixelsPerSecond.get();
+    const dur = $store.playback.duration.get();
 
-  // Re-measure when zoom changes
-  useEffect(() => {
-    virtualizer.measure();
-  }, [pixelsPerSecond, virtualizer]);
+    return getVisibleChunkIndices(scrollOffset, containerWidth, pps, dur, OVERSCAN);
+  });
 
   if (chunkCount === 0) return null;
 
+  // Generate array of visible chunk indices
+  const visibleChunkIndices: number[] = [];
+  for (let i = visibleChunks.startIndex; i <= visibleChunks.endIndex; i++) {
+    visibleChunkIndices.push(i);
+  }
+
   return (
-    <div className="relative h-8 shrink-0">
-      {virtualizer.getVirtualItems().map((virtualItem) => {
-        const chunkSegments = segmentsByChunk.get(virtualItem.index) ?? [];
+    <div className="relative h-8 shrink-0 overflow-hidden">
+      {visibleChunkIndices.map((chunkIndex) => {
+        const chunkSegments = segmentsByChunk.get(chunkIndex) ?? [];
 
         return (
-          <div
-            key={virtualItem.key}
-            className="absolute top-0 h-full"
-            style={{
-              left: virtualItem.start,
-              width: virtualItem.size,
-            }}
-          >
-            {chunkSegments.map((segment) => (
-              <TimelineSegment
-                key={segment.id}
-                segment={segment}
-                chunkStartPx={virtualItem.start}
-              />
-            ))}
-          </div>
+          <SegmentChunk
+            key={chunkIndex}
+            chunkIndex={chunkIndex}
+            segments={chunkSegments}
+          />
         );
       })}
     </div>
+  );
+}
+
+// ============================================================================
+// Segment Chunk Component
+// ============================================================================
+
+interface SegmentChunkProps {
+  chunkIndex: number;
+  segments: DiarizationSegment[];
+}
+
+function SegmentChunk({ chunkIndex, segments }: SegmentChunkProps) {
+  const $store = useClippingStore();
+
+  return (
+    <$React.div
+      className="absolute top-0 h-full"
+      style={{ willChange: "transform, width" }}
+      $style={() => {
+        const pps = $store.timeline.getPixelsPerSecond.get();
+        const scrollOffset = $store.timeline.scrollOffset.get();
+        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
+        const chunkWidth = CHUNK_DURATION * pps;
+
+        return {
+          transform: `translateX(${chunkStartPx - scrollOffset}px)`,
+          width: chunkWidth,
+        };
+      }}
+    >
+      {segments.map((segment) => (
+        <TimelineSegment key={segment.id} segment={segment} />
+      ))}
+    </$React.div>
   );
 }
 
@@ -105,12 +129,15 @@ export function TimelineSegmentsBar() {
 
 interface TimelineSegmentProps {
   segment: DiarizationSegment;
-  chunkStartPx: number;
 }
 
-function TimelineSegment({ segment, chunkStartPx }: TimelineSegmentProps) {
+function TimelineSegment({ segment }: TimelineSegmentProps) {
   const $store = useClippingStore();
   const { id, speaker, start, end } = segment;
+
+  // Calculate chunk start position from segment's start time
+  // This avoids receiving chunkStartPx as a prop that changes on zoom
+  const chunkIndex = getChunkForTime(start);
 
   return (
     <$React.button
@@ -134,7 +161,8 @@ function TimelineSegment({ segment, chunkStartPx }: TimelineSegmentProps) {
         const selectedSpeaker = $store.selectedSpeaker.get();
         const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
 
-        // Position relative to parent chunk container
+        // Calculate positions - chunk start derived from chunk index
+        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
         const segmentStartPx = start * pps;
         const leftInChunk = segmentStartPx - chunkStartPx;
 
