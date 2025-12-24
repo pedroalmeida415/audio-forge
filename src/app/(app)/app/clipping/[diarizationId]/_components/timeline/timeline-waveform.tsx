@@ -89,7 +89,7 @@ export function TimelineWaveform() {
         OVERSCAN,
       );
 
-      // Update each visible path's d attribute directly
+      // Update each path's visibility and d attribute directly
       pathRefsMap.current.forEach((pathEl, chunkIndex) => {
         const chunk = chunksData[chunkIndex];
         if (!chunk) return;
@@ -97,10 +97,13 @@ export function TimelineWaveform() {
         const isVisible = chunkIndex >= startIndex && chunkIndex <= endIndex;
 
         if (!isVisible) {
-          // Hide non-visible paths
-          pathEl.setAttribute("d", "");
+          // Hide non-visible paths completely (avoids processing empty d)
+          pathEl.style.display = "none";
           return;
         }
+
+        // Show and update visible paths
+        pathEl.style.display = "";
 
         // Calculate chunk position relative to viewport
         const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;

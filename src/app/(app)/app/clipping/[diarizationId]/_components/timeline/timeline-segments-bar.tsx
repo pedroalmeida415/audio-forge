@@ -1,125 +1,87 @@
 "use client";
 
+import { observe } from "@legendapp/state";
 import { useSelector } from "@legendapp/state/react";
-import { $React } from "@legendapp/state/react-web";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { withAlpha } from "~/lib/speaker-colors";
 import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
-import {
-  CHUNK_DURATION,
-  getChunkCount,
-  getChunkForTime,
-  getVisibleChunkIndices,
-} from "../../_utils/chunk-utils";
 
-const OVERSCAN = 2; // Number of chunks to render beyond visible area
+const OVERSCAN_TIME = 20; // seconds of overscan
 
 /**
- * Segments bar with manual scroll handling.
+ * Segments bar with direct DOM manipulation.
  *
  * Uses transform: translateX for GPU-accelerated positioning.
- * Visibility calculated manually based on scrollOffset.
+ * Updates segment positions directly via refs when scroll/zoom changes.
  */
 export function TimelineSegmentsBar() {
   const $store = useClippingStore();
+  const segmentRefsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  // Subscribe to reactive values for chunk calculation
-  const duration = useSelector(() => $store.playback.duration.get());
+  // Subscribe to segments (only re-renders when segments change)
   const segments = useSelector(() => $store.segments.get());
 
-  // Build segment-to-chunk mapping (stable unless segments/duration change)
-  const { chunkCount, segmentsByChunk } = useMemo(() => {
-    const count = getChunkCount(duration);
-    const map = new Map<number, DiarizationSegment[]>();
+  // Filter to non-deleted segments
+  const visibleSegments = useMemo(
+    () => segments.filter((s) => !s.isDeleted),
+    [segments],
+  );
 
-    // Initialize empty arrays for all chunks
-    for (let i = 0; i < count; i++) {
-      map.set(i, []);
-    }
+  // Direct DOM manipulation for scroll/zoom
+  useEffect(() => {
+    if (visibleSegments.length === 0) return;
 
-    // Map each segment to the chunk where it starts
-    for (const segment of segments) {
-      if (segment.isDeleted) continue;
+    const dispose = observe(() => {
+      const scrollOffset = $store.timeline.scrollOffset.get();
+      const pps = $store.timeline.getPixelsPerSecond.get();
+      const containerWidth = $store.timeline.containerWidth.get();
 
-      const startChunk = getChunkForTime(segment.start);
-      const existing = map.get(startChunk);
-      if (existing) {
-        existing.push(segment);
-      }
-    }
+      // Calculate visible time range
+      const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
+      const visibleEndTime = (scrollOffset + containerWidth) / pps + OVERSCAN_TIME;
 
-    return { chunkCount: count, segmentsByChunk: map };
-  }, [duration, segments]);
+      segmentRefsMap.current.forEach((el, segmentId) => {
+        const segment = visibleSegments.find((s) => s.id === segmentId);
+        if (!segment) return;
 
-  // Calculate visible chunk indices reactively
-  const visibleChunks = useSelector(() => {
-    const scrollOffset = $store.timeline.scrollOffset.get();
-    const containerWidth = $store.timeline.containerWidth.get();
-    const pps = $store.timeline.getPixelsPerSecond.get();
-    const dur = $store.playback.duration.get();
+        const { start, end } = segment;
 
-    return getVisibleChunkIndices(scrollOffset, containerWidth, pps, dur, OVERSCAN);
-  });
+        // Check if segment is visible
+        const isVisible = end >= visibleStartTime && start <= visibleEndTime;
 
-  if (chunkCount === 0) return null;
+        if (!isVisible) {
+          el.style.display = "none";
+          return;
+        }
 
-  // Generate array of visible chunk indices
-  const visibleChunkIndices: number[] = [];
-  for (let i = visibleChunks.startIndex; i <= visibleChunks.endIndex; i++) {
-    visibleChunkIndices.push(i);
-  }
+        // Calculate position and size
+        const x = start * pps - scrollOffset;
+        const width = Math.max((end - start) * pps, 4);
+
+        // Update element
+        el.style.display = "block";
+        el.style.transform = `translateX(${x}px)`;
+        el.style.width = `${width}px`;
+      });
+    });
+
+    return dispose;
+  }, [visibleSegments, $store]);
+
+  if (visibleSegments.length === 0) return null;
 
   return (
     <div className="relative h-8 shrink-0 overflow-hidden">
-      {visibleChunkIndices.map((chunkIndex) => {
-        const chunkSegments = segmentsByChunk.get(chunkIndex) ?? [];
-
-        return (
-          <SegmentChunk
-            key={chunkIndex}
-            chunkIndex={chunkIndex}
-            segments={chunkSegments}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-// ============================================================================
-// Segment Chunk Component
-// ============================================================================
-
-interface SegmentChunkProps {
-  chunkIndex: number;
-  segments: DiarizationSegment[];
-}
-
-function SegmentChunk({ chunkIndex, segments }: SegmentChunkProps) {
-  const $store = useClippingStore();
-
-  return (
-    <$React.div
-      className="absolute top-0 h-full"
-      style={{ willChange: "transform, width" }}
-      $style={() => {
-        const pps = $store.timeline.getPixelsPerSecond.get();
-        const scrollOffset = $store.timeline.scrollOffset.get();
-        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
-        const chunkWidth = CHUNK_DURATION * pps;
-
-        return {
-          transform: `translateX(${chunkStartPx - scrollOffset}px)`,
-          width: chunkWidth,
-        };
-      }}
-    >
-      {segments.map((segment) => (
-        <TimelineSegment key={segment.id} segment={segment} />
+      {visibleSegments.map((segment) => (
+        <TimelineSegment
+          key={segment.id}
+          segment={segment}
+          segmentRefsMap={segmentRefsMap}
+        />
       ))}
-    </$React.div>
+    </div>
   );
 }
 
@@ -129,76 +91,63 @@ function SegmentChunk({ chunkIndex, segments }: SegmentChunkProps) {
 
 interface TimelineSegmentProps {
   segment: DiarizationSegment;
+  segmentRefsMap: React.RefObject<Map<string, HTMLButtonElement>>;
 }
 
-function TimelineSegment({ segment }: TimelineSegmentProps) {
+function TimelineSegment({
+  segment,
+  segmentRefsMap,
+}: TimelineSegmentProps) {
   const $store = useClippingStore();
-  const { id, speaker, start, end } = segment;
+  const { id, speaker } = segment;
 
-  // Calculate chunk start position from segment's start time
-  // This avoids receiving chunkStartPx as a prop that changes on zoom
-  const chunkIndex = getChunkForTime(start);
+  // Get static values that don't change on scroll/zoom
+  const color = useSelector(() => $store.speakerColors[speaker]?.get());
+  const collectionName = useSelector(
+    () => $store.speakerCollections[speaker]?.collectionName.get() ?? speaker,
+  );
+
+  // Subscribe to active/dimmed state
+  const isActive = useSelector(() => id === $store.activeSegmentId.get());
+  const isDimmed = useSelector(() => {
+    const selectedSpeaker = $store.selectedSpeaker.get();
+    return selectedSpeaker !== null && speaker !== selectedSpeaker;
+  });
 
   return (
-    <$React.button
+    <button
       type="button"
-      onClick={() => $store.setActiveSegment(id)}
-      $className={() => {
-        const isActive = id === $store.activeSegmentId.get();
-        const selectedSpeaker = $store.selectedSpeaker.get();
-        const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
-        return cn(
-          "absolute top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]",
-          isActive
-            ? "z-10 ring-2 ring-primary ring-offset-1 ring-offset-background"
-            : "hover:brightness-110",
-          isDimmed && "opacity-25 grayscale",
-        );
+      ref={(el) => {
+        if (el) {
+          segmentRefsMap.current?.set(id, el);
+        } else {
+          segmentRefsMap.current?.delete(id);
+        }
       }}
-      $style={() => {
-        const pps = $store.timeline.getPixelsPerSecond.get();
-        const color = $store.speakerColors[speaker]?.get();
-        const selectedSpeaker = $store.selectedSpeaker.get();
-        const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
-
-        // Calculate positions - chunk start derived from chunk index
-        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
-        const segmentStartPx = start * pps;
-        const leftInChunk = segmentStartPx - chunkStartPx;
-
-        return {
-          left: leftInChunk,
-          width: Math.max((end - start) * pps, 4),
-          backgroundColor: isDimmed
-            ? "rgba(100, 100, 100, 0.3)"
-            : color && withAlpha(color, 0.4),
-          borderColor: isDimmed ? "rgba(100, 100, 100, 0.5)" : color,
-        };
+      onClick={() => $store.setActiveSegment(id)}
+      className={cn(
+        "absolute left-0 top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]",
+        isActive
+          ? "z-10 ring-2 ring-primary ring-offset-1 ring-offset-background"
+          : "hover:brightness-110",
+        isDimmed && "opacity-25 grayscale",
+      )}
+      style={{
+        willChange: "transform, width",
+        backgroundColor: isDimmed
+          ? "rgba(100, 100, 100, 0.3)"
+          : color && withAlpha(color, 0.4),
+        borderColor: isDimmed ? "rgba(100, 100, 100, 0.5)" : color,
       }}
     >
-      {/* Segment label - only shows when width > 50px */}
-      <$React.span
+      <span
         className="block truncate px-2 font-mono text-[10px] leading-6"
-        $style={() => {
-          const pps = $store.timeline.getPixelsPerSecond.get();
-          const width = (end - start) * pps;
-
-          if (width <= 50) {
-            return { display: "none" };
-          }
-
-          const selectedSpeaker = $store.selectedSpeaker.get();
-          const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
-          const color = $store.speakerColors[speaker]?.get();
-
-          return {
-            display: "block",
-            color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color,
-          };
+        style={{
+          color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color,
         }}
       >
-        {$store.speakerCollections[speaker]?.collectionName.get() ?? speaker}
-      </$React.span>
-    </$React.button>
+        {collectionName}
+      </span>
+    </button>
   );
 }

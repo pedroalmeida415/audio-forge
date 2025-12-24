@@ -75,7 +75,7 @@ export function TimelineScrollbar() {
     [$store],
   );
 
-  // Handle thumb drag
+  // Handle thumb drag with RAF throttling
   const handleThumbMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -87,17 +87,42 @@ export function TimelineScrollbar() {
       const maxOffset = $store.timeline.getMaxScrollOffset.peek();
       const trackWidth = trackRef.current?.clientWidth ?? 1;
 
+      let pendingOffset: number | null = null;
+      let rafId: number | null = null;
+
+      const applyPendingOffset = () => {
+        rafId = null;
+        if (pendingOffset !== null) {
+          $store.timeline.setScrollOffset(pendingOffset);
+          pendingOffset = null;
+        }
+      };
+
       const handleMouseMove = (moveEvent: MouseEvent) => {
         const deltaX = moveEvent.clientX - startX;
         const deltaRatio = deltaX / trackWidth;
-        const newOffset = startOffset + deltaRatio * maxOffset;
-        $store.timeline.setScrollOffset(newOffset);
+        pendingOffset = startOffset + deltaRatio * maxOffset;
+
+        // Schedule RAF if not already pending
+        if (rafId === null) {
+          rafId = requestAnimationFrame(applyPendingOffset);
+        }
       };
 
       const handleMouseUp = () => {
         setIsDragging(false);
         document.removeEventListener("mousemove", handleMouseMove);
         document.removeEventListener("mouseup", handleMouseUp);
+
+        // Cancel any pending RAF
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+        }
+
+        // Apply final offset immediately
+        if (pendingOffset !== null) {
+          $store.timeline.setScrollOffset(pendingOffset);
+        }
 
         // Start fade timer
         fadeTimeoutRef.current = setTimeout(() => {
