@@ -18,30 +18,32 @@ import {
 
 const WAVEFORM_HEIGHT = 80;
 const MAX_PEAKS_PER_CHUNK = 500;
-const OVERSCAN = 2;
+const OVERSCAN = 1;
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 interface WaveformChunkData {
   index: number;
-  peaks: Float32Array; // Raw peaks for regenerating path
-  nativeWidth: number; // Width in native coordinates
-  duration: number; // Chunk duration in seconds
+  peaks: Float32Array;
+  nativeWidth: number;
+  duration: number;
 }
 
 /**
- * Waveform visualization with direct DOM manipulation.
+ * Waveform visualization with true virtualization + path clipping.
  *
- * Pre-renders paths once, then updates d attributes directly
- * when scroll/zoom changes. No React re-renders during interaction.
+ * - DOM elements created/removed directly (no React state for virtualization)
+ * - Path data clipped to viewport bounds (minimal geometry)
+ * - Everything managed via observe() for maximum performance
  */
 export function TimelineWaveform() {
   const $store = useClippingStore();
   const svgRef = useRef<SVGSVGElement>(null);
-  const pathRefsMap = useRef<Map<number, SVGPathElement>>(new Map());
+  const pathElementsMap = useRef<Map<number, SVGPathElement>>(new Map());
+  const chunksDataRef = useRef<WaveformChunkData[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chunksData, setChunksData] = useState<WaveformChunkData[]>([]);
-  const [audioDuration, setAudioDuration] = useState(0);
+  const [isReady, setIsReady] = useState(false);
 
   // Subscribe to container width for SVG sizing
   const containerWidth = useSelector(() => $store.timeline.containerWidth.get());
@@ -56,12 +58,11 @@ export function TimelineWaveform() {
       .then((buffer) => {
         const { header, peaks } = parseWaveformDat(buffer);
         const duration = calculateDurationFromDat(header);
-        setAudioDuration(duration);
 
-        // Create chunk data with raw peaks
-        const chunks = createChunksData(peaks, header, duration);
-        setChunksData(chunks);
+        // Store chunk data in ref (no React state)
+        chunksDataRef.current = createChunksData(peaks, header, duration);
         setIsLoading(false);
+        setIsReady(true);
       })
       .catch((err) => {
         console.error("[Waveform] Error:", err);
@@ -70,9 +71,12 @@ export function TimelineWaveform() {
       });
   }, []);
 
-  // Direct DOM manipulation for scroll/zoom
+  // Manage DOM elements and path data directly
   useEffect(() => {
-    if (chunksData.length === 0) return;
+    if (!isReady || !svgRef.current) return;
+
+    const svg = svgRef.current;
+    const chunksData = chunksDataRef.current;
 
     const dispose = observe(() => {
       const scrollOffset = $store.timeline.scrollOffset.get();
@@ -80,7 +84,7 @@ export function TimelineWaveform() {
       const containerW = $store.timeline.containerWidth.get();
       const duration = $store.playback.duration.get();
 
-      // Calculate visible chunks
+      // Calculate which chunks should be visible
       const { startIndex, endIndex } = getVisibleChunkIndices(
         scrollOffset,
         containerW,
@@ -89,23 +93,35 @@ export function TimelineWaveform() {
         OVERSCAN,
       );
 
-      // Update each path's visibility and d attribute directly
-      pathRefsMap.current.forEach((pathEl, chunkIndex) => {
+      // Build set of visible indices for fast lookup
+      const visibleIndices = new Set<number>();
+      for (let i = startIndex; i <= endIndex; i++) {
+        visibleIndices.add(i);
+      }
+
+      // Remove paths that are no longer visible
+      pathElementsMap.current.forEach((pathEl, chunkIndex) => {
+        if (!visibleIndices.has(chunkIndex)) {
+          pathEl.remove();
+          pathElementsMap.current.delete(chunkIndex);
+        }
+      });
+
+      // Add/update paths for visible chunks
+      visibleIndices.forEach((chunkIndex) => {
         const chunk = chunksData[chunkIndex];
         if (!chunk) return;
 
-        const isVisible = chunkIndex >= startIndex && chunkIndex <= endIndex;
-
-        if (!isVisible) {
-          // Hide non-visible paths completely (avoids processing empty d)
-          pathEl.style.display = "none";
-          return;
+        // Create path element if it doesn't exist
+        let pathEl = pathElementsMap.current.get(chunkIndex);
+        if (!pathEl) {
+          pathEl = document.createElementNS(SVG_NS, "path");
+          pathEl.classList.add("fill-primary/70");
+          svg.appendChild(pathEl);
+          pathElementsMap.current.set(chunkIndex, pathEl);
         }
 
-        // Show and update visible paths
-        pathEl.style.display = "";
-
-        // Calculate chunk position relative to viewport
+        // Calculate chunk position
         const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
         const offsetX = chunkStartPx - scrollOffset;
 
@@ -113,19 +129,25 @@ export function TimelineWaveform() {
         const desiredWidth = chunk.duration * pps;
         const scaleX = chunk.nativeWidth > 0 ? desiredWidth / chunk.nativeWidth : 1;
 
-        // Generate path with offset and scale baked in
-        const pathD = generatePathWithTransform(
+        // Generate path with viewport clipping
+        const pathD = generateClippedPath(
           chunk.peaks,
           WAVEFORM_HEIGHT,
           offsetX,
           scaleX,
+          containerW,
         );
         pathEl.setAttribute("d", pathD);
       });
     });
 
-    return dispose;
-  }, [chunksData, $store]);
+    return () => {
+      dispose();
+      // Clean up all path elements
+      pathElementsMap.current.forEach((pathEl) => pathEl.remove());
+      pathElementsMap.current.clear();
+    };
+  }, [isReady, $store]);
 
   if (isLoading) {
     return (
@@ -143,8 +165,6 @@ export function TimelineWaveform() {
     );
   }
 
-  if (chunksData.length === 0) return null;
-
   return (
     <div className="relative flex-1 overflow-hidden">
       <svg
@@ -155,30 +175,15 @@ export function TimelineWaveform() {
         width={containerWidth}
         viewBox={`0 0 ${containerWidth} ${WAVEFORM_HEIGHT}`}
         preserveAspectRatio="none"
-      >
-        {chunksData.map((chunk) => (
-          <path
-            key={chunk.index}
-            ref={(el) => {
-              if (el) {
-                pathRefsMap.current.set(chunk.index, el);
-              } else {
-                pathRefsMap.current.delete(chunk.index);
-              }
-            }}
-            className="fill-primary/70"
-          />
-        ))}
-      </svg>
+      />
     </div>
   );
 }
 
-const BAR_WIDTH = 1; // Fixed bar width in native coordinates
+const BAR_WIDTH = 1;
 
 /**
  * Create chunk data from parsed peaks.
- * Stores raw peaks for path regeneration on scroll/zoom.
  */
 function createChunksData(
   peaks: Float32Array,
@@ -196,12 +201,10 @@ function createChunksData(
     const endPeak = Math.min(startPeak + peaksPerChunk, peaks.length);
     const chunkPeaks = peaks.slice(startPeak, endPeak);
 
-    // Calculate chunk duration (last chunk may be shorter)
     const chunkStartTime = i * CHUNK_DURATION;
     const chunkEndTime = Math.min((i + 1) * CHUNK_DURATION, duration);
     const chunkDuration = chunkEndTime - chunkStartTime;
 
-    // Downsample if too many peaks
     const downsampledPeaks =
       chunkPeaks.length > MAX_PEAKS_PER_CHUNK
         ? downsamplePeaks(chunkPeaks, MAX_PEAKS_PER_CHUNK)
@@ -219,14 +222,15 @@ function createChunksData(
 }
 
 /**
- * Generate SVG path with transform baked in.
- * Applies offsetX and scaleX directly to coordinates.
+ * Generate SVG path with viewport clipping.
+ * Only includes bars that are actually visible in the viewport.
  */
-function generatePathWithTransform(
+function generateClippedPath(
   peaks: Float32Array,
   height: number,
   offsetX: number,
   scaleX: number,
+  viewportWidth: number,
 ): string {
   if (peaks.length === 0) return "";
 
@@ -238,11 +242,15 @@ function generatePathWithTransform(
   const pathCommands: string[] = [];
 
   for (let i = 0; i < peaks.length; i++) {
+    const x = offsetX + i * scaledBarWidth;
+
+    // Skip bars completely outside viewport (clipping)
+    if (x + scaledBarWidth < 0) continue;
+    if (x > viewportWidth) continue;
+
     const peak = peaks[i] ?? 0;
     const barHeight = Math.max(2, peak * (height - 4));
-    const x = offsetX + i * scaledBarWidth;
     const y = (height - barHeight) / 2;
-
     const r = Math.min(cornerRadius, effectiveBarWidth / 2, barHeight / 2);
 
     pathCommands.push(

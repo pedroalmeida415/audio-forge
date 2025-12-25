@@ -1,153 +1,187 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useSelector } from "@legendapp/state/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { withAlpha } from "~/lib/speaker-colors";
-import { cn } from "~/lib/utils";
 import type { DiarizationSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
 /**
- * Segments bar with direct DOM manipulation.
+ * Segments bar with true virtualization.
  *
- * Uses transform: translateX for GPU-accelerated positioning.
- * Updates segment positions directly via refs when scroll/zoom changes.
+ * - DOM elements created/removed directly based on visibility
+ * - Click handlers attached to segment buttons
+ * - Styling updated reactively for active/dimmed states
  */
 export function TimelineSegmentsBar() {
   const $store = useClippingStore();
-  const segmentRefsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const segmentsDataRef = useRef<DiarizationSegment[]>([]);
 
-  // Subscribe to segments (only re-renders when segments change)
-  const segments = useSelector(() => $store.segments.get());
+  const [isReady, setIsReady] = useState(false);
 
-  // Filter to non-deleted segments
-  const visibleSegments = useMemo(
-    () => segments.filter((s) => !s.isDeleted),
-    [segments],
-  );
-
-  // Direct DOM manipulation for scroll/zoom
+  // Store segments data once loaded
   useEffect(() => {
-    if (visibleSegments.length === 0) return;
+    const dispose = observe(() => {
+      const segments = $store.segments.get();
+      const filtered = segments.filter((s) => !s.isDeleted);
+      segmentsDataRef.current = filtered;
+
+      if (filtered.length > 0) {
+        setIsReady(true);
+      }
+    });
+
+    return dispose;
+  }, [$store]);
+
+  // Manage DOM elements directly based on visibility
+  useEffect(() => {
+    if (!isReady || !containerRef.current) return;
+
+    const container = containerRef.current;
 
     const dispose = observe(() => {
       const scrollOffset = $store.timeline.scrollOffset.get();
       const pps = $store.timeline.getPixelsPerSecond.get();
       const containerWidth = $store.timeline.containerWidth.get();
+      const activeSegmentId = $store.activeSegmentId.get();
+      const selectedSpeaker = $store.selectedSpeaker.get();
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
       const visibleEndTime = (scrollOffset + containerWidth) / pps + OVERSCAN_TIME;
 
-      segmentRefsMap.current.forEach((el, segmentId) => {
-        const segment = visibleSegments.find((s) => s.id === segmentId);
-        if (!segment) return;
-
-        const { start, end } = segment;
-
-        // Check if segment is visible
-        const isVisible = end >= visibleStartTime && start <= visibleEndTime;
-
-        if (!isVisible) {
-          el.style.display = "none";
-          return;
+      // Build set of segment IDs that should be visible
+      const visibleIds = new Set<string>();
+      for (const segment of segmentsDataRef.current) {
+        const { id, start, end } = segment;
+        if (end >= visibleStartTime && start <= visibleEndTime) {
+          visibleIds.add(id);
         }
+      }
+
+      // Remove segments that are no longer visible
+      segmentElementsMap.current.forEach((el, id) => {
+        if (!visibleIds.has(id)) {
+          el.remove();
+          segmentElementsMap.current.delete(id);
+        }
+      });
+
+      // Add/update segments for visible IDs
+      for (const segment of segmentsDataRef.current) {
+        const { id, speaker, start, end } = segment;
+        if (!visibleIds.has(id)) continue;
+
+        // Get speaker color
+        const color = $store.speakerColors[speaker]?.get();
+        const collectionName =
+          $store.speakerCollections[speaker]?.collectionName.get() ?? speaker;
+
+        // Determine states
+        const isActive = id === activeSegmentId;
+        const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
 
         // Calculate position and size
         const x = start * pps - scrollOffset;
         const width = Math.max((end - start) * pps, 4);
 
-        // Update element
-        el.style.display = "block";
+        // Create element if it doesn't exist
+        let el = segmentElementsMap.current.get(id);
+        if (!el) {
+          el = createSegmentElement(id, collectionName, () => {
+            $store.setActiveSegment(id);
+          });
+          container.appendChild(el);
+          segmentElementsMap.current.set(id, el);
+        }
+
+        // Update position
         el.style.transform = `translateX(${x}px)`;
         el.style.width = `${width}px`;
-      });
+
+        // Update styling based on states
+        updateSegmentStyles(el, isActive, isDimmed, color);
+      }
     });
 
-    return dispose;
-  }, [visibleSegments, $store]);
+    return () => {
+      dispose();
+      // Clean up all segment elements
+      for (const el of segmentElementsMap.current.values()) {
+        el.remove();
+      }
+      segmentElementsMap.current.clear();
+    };
+  }, [isReady, $store]);
 
-  if (visibleSegments.length === 0) return null;
-
-  return (
-    <div className="relative h-8 shrink-0 overflow-hidden">
-      {visibleSegments.map((segment) => (
-        <TimelineSegment
-          key={segment.id}
-          segment={segment}
-          segmentRefsMap={segmentRefsMap}
-        />
-      ))}
-    </div>
-  );
+  return <div ref={containerRef} className="relative h-8 shrink-0 overflow-hidden" />;
 }
 
-// ============================================================================
-// Timeline Segment Component
-// ============================================================================
+/**
+ * Create a segment button element.
+ */
+function createSegmentElement(
+  id: string,
+  label: string,
+  onClick: () => void,
+): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.dataset.segmentId = id;
+  el.className =
+    "absolute left-0 top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]";
+  el.style.willChange = "transform, width";
+  el.onclick = onClick;
 
-interface TimelineSegmentProps {
-  segment: DiarizationSegment;
-  segmentRefsMap: React.RefObject<Map<string, HTMLButtonElement>>;
+  // Label span
+  const span = document.createElement("span");
+  span.className = "block truncate px-2 font-mono text-[10px] leading-6";
+  span.textContent = label;
+  el.appendChild(span);
+
+  return el;
 }
 
-function TimelineSegment({
-  segment,
-  segmentRefsMap,
-}: TimelineSegmentProps) {
-  const $store = useClippingStore();
-  const { id, speaker } = segment;
+/**
+ * Update segment element styling based on active/dimmed states.
+ */
+function updateSegmentStyles(
+  el: HTMLButtonElement,
+  isActive: boolean,
+  isDimmed: boolean,
+  color: string | undefined,
+): void {
+  const span = el.firstElementChild as HTMLSpanElement | null;
 
-  // Get static values that don't change on scroll/zoom
-  const color = useSelector(() => $store.speakerColors[speaker]?.get());
-  const collectionName = useSelector(
-    () => $store.speakerCollections[speaker]?.collectionName.get() ?? speaker,
-  );
+  // Base classes
+  let className =
+    "absolute left-0 top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]";
 
-  // Subscribe to active/dimmed state
-  const isActive = useSelector(() => id === $store.activeSegmentId.get());
-  const isDimmed = useSelector(() => {
-    const selectedSpeaker = $store.selectedSpeaker.get();
-    return selectedSpeaker !== null && speaker !== selectedSpeaker;
-  });
+  if (isActive) {
+    className += " z-10 ring-2 ring-primary ring-offset-1 ring-offset-background";
+  } else {
+    className += " hover:brightness-110";
+  }
 
-  return (
-    <button
-      type="button"
-      ref={(el) => {
-        if (el) {
-          segmentRefsMap.current?.set(id, el);
-        } else {
-          segmentRefsMap.current?.delete(id);
-        }
-      }}
-      onClick={() => $store.setActiveSegment(id)}
-      className={cn(
-        "absolute left-0 top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]",
-        isActive
-          ? "z-10 ring-2 ring-primary ring-offset-1 ring-offset-background"
-          : "hover:brightness-110",
-        isDimmed && "opacity-25 grayscale",
-      )}
-      style={{
-        willChange: "transform, width",
-        backgroundColor: isDimmed
-          ? "rgba(100, 100, 100, 0.3)"
-          : color && withAlpha(color, 0.4),
-        borderColor: isDimmed ? "rgba(100, 100, 100, 0.5)" : color,
-      }}
-    >
-      <span
-        className="block truncate px-2 font-mono text-[10px] leading-6"
-        style={{
-          color: isDimmed ? "rgba(150, 150, 150, 0.7)" : color,
-        }}
-      >
-        {collectionName}
-      </span>
-    </button>
-  );
+  if (isDimmed) {
+    className += " opacity-25 grayscale";
+  }
+
+  el.className = className;
+
+  // Colors
+  if (isDimmed) {
+    el.style.backgroundColor = "rgba(100, 100, 100, 0.3)";
+    el.style.borderColor = "rgba(100, 100, 100, 0.5)";
+    if (span) span.style.color = "rgba(150, 150, 150, 0.7)";
+  } else {
+    el.style.backgroundColor = color ? withAlpha(color, 0.4) : "";
+    el.style.borderColor = color ?? "";
+    if (span) span.style.color = color ?? "";
+  }
 }
