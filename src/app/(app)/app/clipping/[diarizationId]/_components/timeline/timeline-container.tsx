@@ -3,6 +3,7 @@
 import { useClippingStore } from "../../_context/store.context";
 import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { useWheelZoom } from "../../_hooks/use-wheel-zoom";
+import { SegmentResizeHandles } from "./segment-resize-handles";
 import { TimelineProgressBar } from "./timeline-progress-bar";
 import { TimelineScrollbar } from "./timeline-scrollbar";
 import { TimelineScrubber } from "./timeline-scrubber";
@@ -64,6 +65,9 @@ export function TimelineContainer() {
         {/* Custom scrollbar */}
         <TimelineScrollbar />
       </div>
+
+      {/* Segment resize handles - portal renders to document.body */}
+      <SegmentResizeHandles />
     </div>
   );
 }

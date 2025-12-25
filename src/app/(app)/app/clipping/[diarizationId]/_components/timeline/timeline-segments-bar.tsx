@@ -53,7 +53,8 @@ export function TimelineSegmentsBar() {
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
-      const visibleEndTime = (scrollOffset + containerWidth) / pps + OVERSCAN_TIME;
+      const visibleEndTime =
+        (scrollOffset + containerWidth) / pps + OVERSCAN_TIME;
 
       // Build set of segment IDs that should be visible
       const visibleIds = new Set<string>();
@@ -84,7 +85,8 @@ export function TimelineSegmentsBar() {
 
         // Determine states
         const isActive = id === activeSegmentId;
-        const isDimmed = selectedSpeaker !== null && speaker !== selectedSpeaker;
+        const isDimmed =
+          selectedSpeaker !== null && speaker !== selectedSpeaker;
 
         // Calculate position and size
         const x = start * pps - scrollOffset;
@@ -119,7 +121,13 @@ export function TimelineSegmentsBar() {
     };
   }, [isReady, $store]);
 
-  return <div ref={containerRef} className="relative h-8 shrink-0 overflow-hidden" />;
+  return (
+    <div
+      ref={containerRef}
+      data-timeline-segments-bar
+      className="relative h-8 shrink-0 overflow-hidden"
+    />
+  );
 }
 
 /**
@@ -163,7 +171,8 @@ function updateSegmentStyles(
     "absolute left-0 top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]";
 
   if (isActive) {
-    className += " z-10 ring-2 ring-primary ring-offset-1 ring-offset-background";
+    className +=
+      " z-10 ring-2 ring-primary ring-offset-1 ring-offset-background";
   } else {
     className += " hover:brightness-110";
   }
