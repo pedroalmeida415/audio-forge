@@ -1,6 +1,7 @@
 import { batch, ObservableHint } from "@legendapp/state";
 import { createRef, type RefObject } from "react";
 import {
+  calculatePixelsPerSecond,
   isZoomEnabled,
   pixelsToTime as zoomPixelsToTime,
   timeToPixels as zoomTimeToPixels,
@@ -126,23 +127,31 @@ export function createPlaybackState(
 
     const containerWidth = $store.timeline.containerWidth.peek();
 
-    // Batch zoom and scroll updates together for atomic state change
+    // Clamp zoom level
+    const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
+    const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoomLevel));
+
+    // Calculate new position of focal point at the NEW zoom level
+    const newFocalPixelPos = zoomTimeToPixels(
+      focalTime,
+      clampedZoom,
+      duration,
+      containerWidth,
+    );
+
+    // Calculate scroll offset to keep focal point at same viewport offset
+    const newScrollOffset = newFocalPixelPos - viewportOffset;
+
+    // Calculate max scroll offset at the NEW zoom level
+    const newPps = calculatePixelsPerSecond(clampedZoom, duration, containerWidth);
+    const newTotalWidth = Math.max(duration * newPps, containerWidth);
+    const newMaxOffset = Math.max(0, newTotalWidth - containerWidth);
+    const clampedScrollOffset = Math.max(0, Math.min(newMaxOffset, newScrollOffset));
+
+    // Batch the state updates (calculations already done with new values)
     batch(() => {
-      // Apply zoom
-      $store.timeline.setZoomLevel(newZoomLevel);
-
-      // Calculate new position of focal point after zoom
-      const actualNewZoom = $store.timeline.zoomLevel.peek();
-      const newFocalPixelPos = zoomTimeToPixels(
-        focalTime,
-        actualNewZoom,
-        duration,
-        containerWidth,
-      );
-
-      // Adjust scroll offset to keep focal point at same viewport offset
-      const newScrollOffset = newFocalPixelPos - viewportOffset;
-      $store.timeline.setScrollOffset(newScrollOffset);
+      $store.timeline.zoomLevel.set(clampedZoom);
+      $store.timeline.scrollOffset.set(clampedScrollOffset);
     });
   };
 

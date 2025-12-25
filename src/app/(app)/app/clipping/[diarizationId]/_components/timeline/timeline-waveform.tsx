@@ -21,7 +21,7 @@ const OVERSCAN = 1;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 // LOD settings: adjust detail based on zoom level
-const MIN_BAR_WIDTH_PX = 2; // Minimum pixels per bar (determines max bars per chunk)
+const MIN_BAR_WIDTH_PX = 3; // Minimum pixels per bar (determines max bars per chunk)
 
 interface WaveformChunkData {
   index: number;

@@ -6,7 +6,7 @@ export const TIMELINE_CONSTANTS = {
   ZOOM_IN_TARGET: 10, // Seconds visible at max zoom
 
   // Wheel zoom settings
-  ZOOM_FACTOR: 1.32, // Exponential zoom multiplier per wheel tick
+  ZOOM_FACTOR: 1.2, // Exponential zoom multiplier per wheel tick
 
   // Waveform settings
   PEAKS_PER_SECOND: 50, // 1 peak per 0.02 seconds - gives ~4px bars at max zoom
