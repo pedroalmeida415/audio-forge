@@ -17,9 +17,11 @@ import {
 } from "../../_utils/parse-waveform-dat";
 
 const WAVEFORM_HEIGHT = 80;
-const MAX_PEAKS_PER_CHUNK = 500;
 const OVERSCAN = 1;
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+// LOD settings: adjust detail based on zoom level
+const MIN_BAR_WIDTH_PX = 2; // Minimum pixels per bar (determines max bars per chunk)
 
 interface WaveformChunkData {
   index: number;
@@ -46,7 +48,9 @@ export function TimelineWaveform() {
   const [isReady, setIsReady] = useState(false);
 
   // Subscribe to container width for SVG sizing
-  const containerWidth = useSelector(() => $store.timeline.containerWidth.get());
+  const containerWidth = useSelector(() =>
+    $store.timeline.containerWidth.get(),
+  );
 
   // Load waveform data once
   useEffect(() => {
@@ -66,7 +70,9 @@ export function TimelineWaveform() {
       })
       .catch((err) => {
         console.error("[Waveform] Error:", err);
-        setError(err instanceof Error ? err.message : "Failed to load waveform");
+        setError(
+          err instanceof Error ? err.message : "Failed to load waveform",
+        );
         setIsLoading(false);
       });
   }, []);
@@ -121,20 +127,29 @@ export function TimelineWaveform() {
           pathElementsMap.current.set(chunkIndex, pathEl);
         }
 
+        // Calculate chunk pixel width for LOD
+        const chunkPixelWidth = chunk.duration * pps;
+
+        // Dynamic downsampling: target 1 bar per MIN_BAR_WIDTH_PX pixels
+        const targetBars = Math.max(
+          1,
+          Math.floor(chunkPixelWidth / MIN_BAR_WIDTH_PX),
+        );
+        const lodPeaks =
+          targetBars < chunk.peaks.length
+            ? downsamplePeaks(chunk.peaks, targetBars)
+            : chunk.peaks;
+
         // Calculate chunk position
         const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
         const offsetX = chunkStartPx - scrollOffset;
 
-        // Calculate scale factor
-        const desiredWidth = chunk.duration * pps;
-        const scaleX = chunk.nativeWidth > 0 ? desiredWidth / chunk.nativeWidth : 1;
-
-        // Generate path with viewport clipping
+        // Generate path with viewport clipping and LOD
         const pathD = generateClippedPath(
-          chunk.peaks,
+          lodPeaks,
           WAVEFORM_HEIGHT,
           offsetX,
-          scaleX,
+          chunkPixelWidth,
           containerW,
         );
         pathEl.setAttribute("d", pathD);
@@ -144,7 +159,9 @@ export function TimelineWaveform() {
     return () => {
       dispose();
       // Clean up all path elements
-      pathElementsMap.current.forEach((pathEl) => pathEl.remove());
+      for (const pathEl of pathElementsMap.current.values()) {
+        pathEl.remove();
+      }
       pathElementsMap.current.clear();
     };
   }, [isReady, $store]);
@@ -180,10 +197,12 @@ export function TimelineWaveform() {
   );
 }
 
-const BAR_WIDTH = 1;
+// Store raw peaks without pre-downsampling - LOD handles this dynamically
+const MAX_STORED_PEAKS_PER_CHUNK = 1000;
 
 /**
  * Create chunk data from parsed peaks.
+ * Stores peaks for later LOD-based downsampling.
  */
 function createChunksData(
   peaks: Float32Array,
@@ -205,15 +224,16 @@ function createChunksData(
     const chunkEndTime = Math.min((i + 1) * CHUNK_DURATION, duration);
     const chunkDuration = chunkEndTime - chunkStartTime;
 
-    const downsampledPeaks =
-      chunkPeaks.length > MAX_PEAKS_PER_CHUNK
-        ? downsamplePeaks(chunkPeaks, MAX_PEAKS_PER_CHUNK)
+    // Pre-downsample to reasonable max for memory, LOD will further reduce
+    const storedPeaks =
+      chunkPeaks.length > MAX_STORED_PEAKS_PER_CHUNK
+        ? downsamplePeaks(chunkPeaks, MAX_STORED_PEAKS_PER_CHUNK)
         : chunkPeaks;
 
     chunks.push({
       index: i,
-      peaks: downsampledPeaks,
-      nativeWidth: downsampledPeaks.length * BAR_WIDTH,
+      peaks: storedPeaks,
+      nativeWidth: storedPeaks.length, // Just count, not scaled
       duration: chunkDuration,
     });
   }
@@ -222,49 +242,68 @@ function createChunksData(
 }
 
 /**
- * Generate SVG path with viewport clipping.
- * Only includes bars that are actually visible in the viewport.
+ * Generate SVG path with viewport clipping and LOD-aware rendering.
+ * Only includes bars visible in viewport, with simplified rendering for tiny bars.
  */
 function generateClippedPath(
   peaks: Float32Array,
   height: number,
   offsetX: number,
-  scaleX: number,
+  chunkWidth: number,
   viewportWidth: number,
 ): string {
   if (peaks.length === 0) return "";
 
-  const scaledBarWidth = BAR_WIDTH * scaleX;
-  const barGap = scaledBarWidth * 0.2;
-  const effectiveBarWidth = scaledBarWidth - barGap;
-  const cornerRadius = Math.min(scaledBarWidth * 0.15, effectiveBarWidth / 2);
+  // Calculate bar width based on peaks count and chunk width
+  const barWidth = chunkWidth / peaks.length;
+  const barGap = barWidth * 0.2;
+  const effectiveBarWidth = Math.max(0.5, barWidth - barGap);
+
+  // Use simple rectangles for tiny bars (< 3px), rounded for larger
+  const useRounded = effectiveBarWidth >= 3;
 
   const pathCommands: string[] = [];
 
   for (let i = 0; i < peaks.length; i++) {
-    const x = offsetX + i * scaledBarWidth;
+    const x = offsetX + i * barWidth;
 
     // Skip bars completely outside viewport (clipping)
-    if (x + scaledBarWidth < 0) continue;
-    if (x > viewportWidth) continue;
+    if (x + barWidth < 0) continue;
+    if (x > viewportWidth) break; // Can break since bars are sequential
 
     const peak = peaks[i] ?? 0;
     const barHeight = Math.max(2, peak * (height - 4));
     const y = (height - barHeight) / 2;
-    const r = Math.min(cornerRadius, effectiveBarWidth / 2, barHeight / 2);
 
-    pathCommands.push(
-      `M${x + r},${y}`,
-      `h${effectiveBarWidth - 2 * r}`,
-      `a${r},${r} 0 0 1 ${r},${r}`,
-      `v${barHeight - 2 * r}`,
-      `a${r},${r} 0 0 1 -${r},${r}`,
-      `h-${effectiveBarWidth - 2 * r}`,
-      `a${r},${r} 0 0 1 -${r},-${r}`,
-      `v-${barHeight - 2 * r}`,
-      `a${r},${r} 0 0 1 ${r},-${r}`,
-      "Z",
-    );
+    if (useRounded) {
+      // Full rounded rectangle path
+      const r = Math.min(
+        effectiveBarWidth * 0.15,
+        effectiveBarWidth / 2,
+        barHeight / 2,
+      );
+      pathCommands.push(
+        `M${x + r},${y}`,
+        `h${effectiveBarWidth - 2 * r}`,
+        `a${r},${r} 0 0 1 ${r},${r}`,
+        `v${barHeight - 2 * r}`,
+        `a${r},${r} 0 0 1 -${r},${r}`,
+        `h-${effectiveBarWidth - 2 * r}`,
+        `a${r},${r} 0 0 1 -${r},-${r}`,
+        `v-${barHeight - 2 * r}`,
+        `a${r},${r} 0 0 1 ${r},-${r}`,
+        "Z",
+      );
+    } else {
+      // Simple rectangle (much faster for tiny bars)
+      pathCommands.push(
+        `M${x},${y}`,
+        `h${effectiveBarWidth}`,
+        `v${barHeight}`,
+        `h-${effectiveBarWidth}`,
+        "Z",
+      );
+    }
   }
 
   return pathCommands.join(" ");
