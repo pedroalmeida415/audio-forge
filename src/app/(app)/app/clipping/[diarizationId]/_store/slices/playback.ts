@@ -127,9 +127,9 @@ export function createPlaybackState(
 
     const containerWidth = $store.timeline.containerWidth.peek();
 
-    // Clamp zoom level
+    // Clamp and round zoom level (avoids floating-point precision issues)
     const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
-    const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoomLevel));
+    const clampedZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoomLevel)));
 
     // Calculate new position of focal point at the NEW zoom level
     const newFocalPixelPos = zoomTimeToPixels(
