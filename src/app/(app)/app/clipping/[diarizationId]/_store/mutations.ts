@@ -165,4 +165,71 @@ export function setupMutationDefaults(
       }
     },
   });
+
+  // createSegment: handles creating new segments from click-and-drag
+  trpcUtils.diarization.createSegment.setMutationDefaults({
+    onMutate: async (variables) => {
+      // Create optimistic segment with temporary ID
+      const tempId = crypto.randomUUID();
+      const newSegment: DiarizationSegment = {
+        id: tempId,
+        speaker: variables.segment.speaker,
+        start: variables.segment.start,
+        end: variables.segment.end,
+        isDeleted: false,
+        isReviewed: true,
+      };
+
+      // Find insertion index to maintain sort order by start time
+      const segments = $store.segments.peek();
+      let insertIndex = segments.findIndex((s) => s.start > newSegment.start);
+      if (insertIndex === -1) {
+        insertIndex = segments.length;
+      }
+
+      // Insert segment at correct position
+      $store.segments.splice(insertIndex, 0, newSegment);
+
+      // Ensure speaker exists in the set
+      $store.speakers.add(newSegment.speaker);
+
+      // Clear selection state
+      $store.selection.cancelSelection();
+
+      // Select the new segment
+      $store.setActiveSegment(tempId);
+
+      return { tempId, insertIndex };
+    },
+    onSuccess: (result, _variables, context) => {
+      if (!context?.tempId) return;
+
+      // Replace temp ID with real ID from server
+      const segments = $store.segments.peek();
+      const index = segments.findIndex((s) => s.id === context.tempId);
+      if (index !== -1) {
+        $store.segments[index]?.id.set(result.segmentId);
+
+        // Update active segment to real ID
+        if ($store.activeSegmentId.peek() === context.tempId) {
+          $store.activeSegmentId.set(result.segmentId);
+        }
+      }
+    },
+    onError: (_err, _variables, context) => {
+      if (!context?.tempId) return;
+
+      // Remove the optimistically added segment
+      const segments = $store.segments.peek();
+      const index = segments.findIndex((s) => s.id === context.tempId);
+      if (index !== -1) {
+        $store.segments.splice(index, 1);
+      }
+
+      // Clear active segment if it was the removed one
+      if ($store.activeSegmentId.peek() === context.tempId) {
+        $store.activeSegmentId.set(null);
+      }
+    },
+  });
 }

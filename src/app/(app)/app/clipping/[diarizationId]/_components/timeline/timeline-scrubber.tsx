@@ -82,6 +82,7 @@ export function TimelineScrubber() {
       className="absolute inset-y-0 left-0 z-20 cursor-ew-resize will-change-transform"
       ref={scrubberRef}
       onPointerDown={handlePointerDown}
+      data-scrubber
     >
       {/* Vertical line */}
       <div className="-translate-x-px absolute inset-y-0 left-0 w-0.5 bg-primary" />

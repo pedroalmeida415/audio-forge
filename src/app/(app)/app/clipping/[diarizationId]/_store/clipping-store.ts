@@ -5,8 +5,13 @@ import type { Diarization, DiarizationSegment } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
 import { setupMutationDefaults } from "./mutations";
-import { createPlaybackState, createTimelineState } from "./slices";
+import {
+  createPlaybackState,
+  createSelectionState,
+  createTimelineState,
+} from "./slices";
 import type { PlaybackState } from "./slices/playback";
+import type { SelectionState } from "./slices/selection";
 import type { TimelineState } from "./slices/timeline";
 
 export { TIMELINE_CONSTANTS } from "./constants";
@@ -169,6 +174,9 @@ export function createClippingStore({
 
     // Timeline state + actions
     timeline: createTimelineState(() => $store),
+
+    // Selection state for click-and-drag segment creation
+    selection: createSelectionState(() => $store),
   }) as $ClippingStore;
 
   const trpcUtils = api.useUtils();
@@ -215,6 +223,7 @@ interface ClippingStoreState {
   // State slices
   playback: PlaybackState;
   timeline: TimelineState;
+  selection: SelectionState;
 }
 
 export type $ClippingStore = Observable<ClippingStoreState>;

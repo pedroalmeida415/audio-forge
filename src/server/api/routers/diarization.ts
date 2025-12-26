@@ -459,4 +459,67 @@ export const diarizationRouter = createTRPCRouter({
         secondSegmentId: secondSegment.id,
       };
     }),
+
+  // Create a new segment (for click-and-drag segment creation)
+  createSegment: protectedProcedure
+    .input(
+      z.object({
+        diarizationId: z.string().uuid(),
+        segment: z.object({
+          speaker: z.string().min(1),
+          start: z.number().min(0),
+          end: z.number().min(0),
+        }),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const diarization = await ctx.db.query.diarizations.findFirst({
+        where: and(
+          eq(diarizations.id, input.diarizationId),
+          eq(diarizations.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!diarization) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Diarization not found",
+        });
+      }
+
+      // Validate time constraints
+      if (input.segment.end <= input.segment.start) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "End time must be greater than start time",
+        });
+      }
+
+      // Create new segment with UUID
+      const newSegment: DiarizationSegment = {
+        id: randomUUID(),
+        speaker: input.segment.speaker,
+        start: input.segment.start,
+        end: input.segment.end,
+        confidence: undefined,
+        isDeleted: false,
+        isReviewed: true, // User-created segments are marked as reviewed
+      };
+
+      const currentSegments = diarization.output?.segments ?? [];
+      const updatedSegments = [...currentSegments, newSegment];
+
+      // Sort by start time for consistency
+      updatedSegments.sort((a, b) => a.start - b.start);
+
+      await ctx.db
+        .update(diarizations)
+        .set({ output: { segments: updatedSegments } })
+        .where(eq(diarizations.id, input.diarizationId));
+
+      return {
+        success: true,
+        segmentId: newSegment.id,
+      };
+    }),
 });
