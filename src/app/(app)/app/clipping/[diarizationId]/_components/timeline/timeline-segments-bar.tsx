@@ -106,6 +106,12 @@ export function TimelineSegmentsBar() {
         el.style.transform = `translateX(${x}px)`;
         el.style.width = `${width}px`;
 
+        // Update label text (collection name may change)
+        const span = el.firstElementChild as HTMLSpanElement | null;
+        if (span && span.textContent !== collectionName) {
+          span.textContent = collectionName;
+        }
+
         // Update styling based on states
         updateSegmentStyles(el, isActive, isDimmed, color);
       }
