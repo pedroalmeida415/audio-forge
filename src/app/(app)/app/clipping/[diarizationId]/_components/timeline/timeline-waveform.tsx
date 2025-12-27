@@ -2,95 +2,100 @@
 
 import { observe } from "@legendapp/state";
 import { useSelector } from "@legendapp/state/react";
-import { useEffect, useRef, useState } from "react";
+import { scaleLinear } from "d3-scale";
+import { select } from "d3-selection";
+import { area, curveLinear } from "d3-shape";
+import { useEffect, useRef } from "react";
+import type WaveformData from "waveform-data";
+
 import { Skeleton } from "~/components/ui/skeleton";
 import { useClippingStore } from "../../_context/store.context";
+import { useWaveformData } from "../../_hooks/use-waveform-data";
 import {
   CHUNK_DURATION,
   getChunkCount,
   getVisibleChunkIndices,
 } from "../../_utils/chunk-utils";
-import {
-  calculateDurationFromDat,
-  parseWaveformDat,
-  type WaveformDatHeader,
-} from "../../_utils/parse-waveform-dat";
 
-const WAVEFORM_HEIGHT = 80;
+const WAVEFORM_HEIGHT = 40;
 const OVERSCAN = 1;
-const SVG_NS = "http://www.w3.org/2000/svg";
 
-// LOD settings: adjust detail based on zoom level
-const MIN_BAR_WIDTH_PX = 3; // Minimum pixels per bar (determines max bars per chunk)
+// Target pixels per data point for LOD (lower = more points = more detail)
+const TARGET_PIXELS_PER_POINT = 1;
 
-interface WaveformChunkData {
+// Minimum amplitude fraction for silent sections (ensures visible baseline)
+const MIN_AMPLITUDE_FRACTION = 0.02;
+
+interface ChunkRenderData {
   index: number;
-  peaks: Float32Array;
-  nativeWidth: number;
-  duration: number;
+  pathD: string;
+}
+
+interface WaveformPoint {
+  x: number;
+  min: number;
+  max: number;
 }
 
 /**
- * Waveform visualization with true virtualization + path clipping.
+ * Waveform visualization using waveform-data.js + D3 for virtualization.
  *
- * - DOM elements created/removed directly (no React state for virtualization)
- * - Path data clipped to viewport bounds (minimal geometry)
- * - Everything managed via observe() for maximum performance
+ * - Filled area envelope (D3 area + curveLinear for sharp peaks)
+ * - waveform-data.js resample() for peak-preserving LOD
+ * - Global peak normalization for consistent amplitude display
+ * - D3 data join pattern for chunk virtualization
+ * - Legend-State observe() for reactive updates
  */
 export function TimelineWaveform() {
   const $store = useClippingStore();
   const svgRef = useRef<SVGSVGElement>(null);
-  const pathElementsMap = useRef<Map<number, SVGPathElement>>(new Map());
-  const chunksDataRef = useRef<WaveformChunkData[]>([]);
+  const waveformRef = useRef<WaveformData | null>(null);
+  const peakAmplitudeRef = useRef<number>(1);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  // Load waveform data via waveform-data.js
+  const { waveform, isLoading, error } = useWaveformData({
+    datUrl: "/audiowaveform.dat",
+  });
+
+  // Store waveform and calculate actual peak amplitude for normalization
+  useEffect(() => {
+    waveformRef.current = waveform;
+    if (waveform) {
+      peakAmplitudeRef.current = calculatePeakAmplitude(waveform);
+    }
+  }, [waveform]);
 
   // Subscribe to container width for SVG sizing
   const containerWidth = useSelector(() =>
     $store.timeline.containerWidth.get(),
   );
 
-  // Load waveform data once
+  // Reactive rendering via observe()
   useEffect(() => {
-    fetch("/audiowaveform.dat")
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch .dat: ${res.status}`);
-        return res.arrayBuffer();
-      })
-      .then((buffer) => {
-        const { header, peaks } = parseWaveformDat(buffer);
-        const duration = calculateDurationFromDat(header);
+    if (!waveform || !svgRef.current) return;
 
-        // Store chunk data in ref (no React state)
-        chunksDataRef.current = createChunksData(peaks, header, duration);
-        setIsLoading(false);
-        setIsReady(true);
-      })
-      .catch((err) => {
-        console.error("[Waveform] Error:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load waveform",
-        );
-        setIsLoading(false);
-      });
-  }, []);
-
-  // Manage DOM elements and path data directly
-  useEffect(() => {
-    if (!isReady || !svgRef.current) return;
-
-    const svg = svgRef.current;
-    const chunksData = chunksDataRef.current;
+    const svg = select(svgRef.current);
 
     const dispose = observe(() => {
-      const scrollOffset = $store.timeline.scrollOffset.get();
-      const pps = $store.timeline.getPixelsPerSecond.get();
-      const containerW = $store.timeline.containerWidth.get();
-      const duration = $store.playback.duration.get();
+      const currentWaveform = waveformRef.current;
+      if (!currentWaveform) return;
 
-      // Calculate which chunks should be visible
+      const scrollOffset = $store.timeline.scrollOffset.get();
+      const containerW = $store.timeline.containerWidth.get();
+
+      // Use waveform's own duration (more reliable than store during initial load)
+      const duration = currentWaveform.duration;
+
+      if (duration <= 0 || containerW <= 0) return;
+
+      // Get pps from store, but fallback to simple calculation if store duration not set
+      let pps = $store.timeline.getPixelsPerSecond.get();
+      if (!pps || pps <= 0 || !Number.isFinite(pps)) {
+        // Fallback: show entire waveform at default zoom
+        pps = containerW / duration;
+      }
+
+      // Calculate visible chunks
       const { startIndex, endIndex } = getVisibleChunkIndices(
         scrollOffset,
         containerW,
@@ -99,72 +104,47 @@ export function TimelineWaveform() {
         OVERSCAN,
       );
 
-      // Build set of visible indices for fast lookup
-      const visibleIndices = new Set<number>();
+      // Use global peak for normalization
+      const peakAmplitude = peakAmplitudeRef.current;
+
+      // Build chunk render data
+      const chunksData: ChunkRenderData[] = [];
+
       for (let i = startIndex; i <= endIndex; i++) {
-        visibleIndices.add(i);
+        const chunkData = generateChunkPath(
+          currentWaveform,
+          i,
+          pps,
+          duration,
+          scrollOffset,
+          containerW,
+          peakAmplitude,
+        );
+        if (chunkData) {
+          chunksData.push(chunkData);
+        }
       }
 
-      // Remove paths that are no longer visible
-      pathElementsMap.current.forEach((pathEl, chunkIndex) => {
-        if (!visibleIndices.has(chunkIndex)) {
-          pathEl.remove();
-          pathElementsMap.current.delete(chunkIndex);
-        }
-      });
-
-      // Add/update paths for visible chunks
-      visibleIndices.forEach((chunkIndex) => {
-        const chunk = chunksData[chunkIndex];
-        if (!chunk) return;
-
-        // Create path element if it doesn't exist
-        let pathEl = pathElementsMap.current.get(chunkIndex);
-        if (!pathEl) {
-          pathEl = document.createElementNS(SVG_NS, "path");
-          pathEl.classList.add("fill-primary/70");
-          svg.appendChild(pathEl);
-          pathElementsMap.current.set(chunkIndex, pathEl);
-        }
-
-        // Calculate chunk pixel width for LOD
-        const chunkPixelWidth = chunk.duration * pps;
-
-        // Dynamic downsampling: target 1 bar per MIN_BAR_WIDTH_PX pixels
-        const targetBars = Math.max(
-          1,
-          Math.floor(chunkPixelWidth / MIN_BAR_WIDTH_PX),
+      // D3 data join for virtualized chunks - filled area envelope
+      svg
+        .selectAll<SVGPathElement, ChunkRenderData>("path.waveform-chunk")
+        .data(chunksData, (d) => d.index)
+        .join(
+          (enter) =>
+            enter
+              .append("path")
+              .attr("class", "waveform-chunk fill-primary/70")
+              .attr("d", (d) => d.pathD),
+          (update) => update.attr("d", (d) => d.pathD),
+          (exit) => exit.remove(),
         );
-        const lodPeaks =
-          targetBars < chunk.peaks.length
-            ? downsamplePeaks(chunk.peaks, targetBars)
-            : chunk.peaks;
-
-        // Calculate chunk position
-        const chunkStartPx = chunkIndex * CHUNK_DURATION * pps;
-        const offsetX = chunkStartPx - scrollOffset;
-
-        // Generate path with viewport clipping and LOD
-        const pathD = generateClippedPath(
-          lodPeaks,
-          WAVEFORM_HEIGHT,
-          offsetX,
-          chunkPixelWidth,
-          containerW,
-        );
-        pathEl.setAttribute("d", pathD);
-      });
     });
 
     return () => {
       dispose();
-      // Clean up all path elements
-      for (const pathEl of pathElementsMap.current.values()) {
-        pathEl.remove();
-      }
-      pathElementsMap.current.clear();
+      svg.selectAll("path.waveform-chunk").remove();
     };
-  }, [isReady, $store]);
+  }, [waveform, $store]);
 
   if (isLoading) {
     return (
@@ -183,11 +163,10 @@ export function TimelineWaveform() {
   }
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative flex h-full flex-1 flex-col justify-center overflow-hidden">
       <svg
         ref={svgRef}
         aria-hidden="true"
-        className="h-full w-full"
         height={WAVEFORM_HEIGHT}
         width={containerWidth}
         viewBox={`0 0 ${containerWidth} ${WAVEFORM_HEIGHT}`}
@@ -197,138 +176,144 @@ export function TimelineWaveform() {
   );
 }
 
-// Store raw peaks without pre-downsampling - LOD handles this dynamically
-const MAX_STORED_PEAKS_PER_CHUNK = 1000;
+/**
+ * Calculate the actual peak amplitude in the waveform.
+ * This is used for global normalization so the loudest part reaches max height.
+ */
+function calculatePeakAmplitude(waveform: WaveformData): number {
+  const channel = waveform.channel(0);
+  const minArray = channel.min_array();
+  const maxArray = channel.max_array();
+
+  let peak = 0;
+  for (let i = 0; i < waveform.length; i++) {
+    const minVal = Math.abs(minArray[i] ?? 0);
+    const maxVal = Math.abs(maxArray[i] ?? 0);
+    peak = Math.max(peak, minVal, maxVal);
+  }
+
+  // Return at least 1 to avoid division by zero
+  return Math.max(1, peak);
+}
 
 /**
- * Create chunk data from parsed peaks.
- * Stores peaks for later LOD-based downsampling.
+ * Generate SVG path data for a single chunk using D3 area generator.
+ * Uses smooth curves with proper peak normalization.
  */
-function createChunksData(
-  peaks: Float32Array,
-  header: WaveformDatHeader,
+function generateChunkPath(
+  waveform: WaveformData,
+  chunkIndex: number,
+  pps: number,
   duration: number,
-): WaveformChunkData[] {
-  const peaksPerSecond = header.sampleRate / header.samplesPerPixel;
-  const peaksPerChunk = Math.ceil(CHUNK_DURATION * peaksPerSecond);
+  scrollOffset: number,
+  containerWidth: number,
+  peakAmplitude: number,
+): ChunkRenderData | null {
   const chunkCount = getChunkCount(duration);
+  if (chunkIndex < 0 || chunkIndex >= chunkCount) return null;
 
-  const chunks: WaveformChunkData[] = [];
+  const chunkStartTime = chunkIndex * CHUNK_DURATION;
+  const chunkEndTime = Math.min((chunkIndex + 1) * CHUNK_DURATION, duration);
+  const chunkDuration = chunkEndTime - chunkStartTime;
 
-  for (let i = 0; i < chunkCount; i++) {
-    const startPeak = i * peaksPerChunk;
-    const endPeak = Math.min(startPeak + peaksPerChunk, peaks.length);
-    const chunkPeaks = peaks.slice(startPeak, endPeak);
+  if (chunkDuration <= 0) return null;
 
-    const chunkStartTime = i * CHUNK_DURATION;
-    const chunkEndTime = Math.min((i + 1) * CHUNK_DURATION, duration);
-    const chunkDuration = chunkEndTime - chunkStartTime;
+  // Calculate pixel dimensions
+  const chunkPixelWidth = chunkDuration * pps;
+  const chunkStartPx = chunkStartTime * pps;
+  const offsetX = chunkStartPx - scrollOffset;
 
-    // Pre-downsample to reasonable max for memory, LOD will further reduce
-    const storedPeaks =
-      chunkPeaks.length > MAX_STORED_PEAKS_PER_CHUNK
-        ? downsamplePeaks(chunkPeaks, MAX_STORED_PEAKS_PER_CHUNK)
-        : chunkPeaks;
+  // Early exit if chunk is completely outside viewport
+  if (offsetX + chunkPixelWidth < 0 || offsetX > containerWidth) {
+    return null;
+  }
 
-    chunks.push({
-      index: i,
-      peaks: storedPeaks,
-      nativeWidth: storedPeaks.length, // Just count, not scaled
-      duration: chunkDuration,
+  // Slice waveform for this chunk using time-based slicing
+  let chunkWaveform: WaveformData;
+  try {
+    chunkWaveform = waveform.slice({
+      startTime: chunkStartTime,
+      endTime: chunkEndTime,
     });
+  } catch {
+    return null;
   }
 
-  return chunks;
-}
+  if (chunkWaveform.length === 0) return null;
 
-/**
- * Generate SVG path with viewport clipping and LOD-aware rendering.
- * Only includes bars visible in viewport, with simplified rendering for tiny bars.
- */
-function generateClippedPath(
-  peaks: Float32Array,
-  height: number,
-  offsetX: number,
-  chunkWidth: number,
-  viewportWidth: number,
-): string {
-  if (peaks.length === 0) return "";
+  // Calculate target points for LOD based on pixel width
+  const targetPoints = Math.max(
+    10,
+    Math.floor(chunkPixelWidth / TARGET_PIXELS_PER_POINT),
+  );
 
-  // Calculate bar width based on peaks count and chunk width
-  const barWidth = chunkWidth / peaks.length;
-  const barGap = barWidth * 0.2;
-  const effectiveBarWidth = Math.max(0.5, barWidth - barGap);
+  // Use waveform-data.js resample for LOD (peak-preserving downsampling)
+  // Only resample if we have more points than needed
+  const resampled =
+    chunkWaveform.length > targetPoints
+      ? chunkWaveform.resample({ width: targetPoints })
+      : chunkWaveform;
 
-  // Use simple rectangles for tiny bars (< 3px), rounded for larger
-  const useRounded = effectiveBarWidth >= 3;
+  const channel = resampled.channel(0);
+  const minArray = channel.min_array();
+  const maxArray = channel.max_array();
 
-  const pathCommands: string[] = [];
+  // Minimum threshold for silent sections
+  const minThreshold = peakAmplitude * MIN_AMPLITUDE_FRACTION;
 
-  for (let i = 0; i < peaks.length; i++) {
-    const x = offsetX + i * barWidth;
+  // Build data points for D3 area
+  const points: WaveformPoint[] = [];
+  const numPoints = minArray.length;
 
-    // Skip bars completely outside viewport (clipping)
-    if (x + barWidth < 0) continue;
-    if (x > viewportWidth) break; // Can break since bars are sequential
+  for (let i = 0; i < numPoints; i++) {
+    // Position points at exact intervals from chunk start to chunk end
+    const x = offsetX + (i / Math.max(1, numPoints - 1)) * chunkPixelWidth;
 
-    const peak = peaks[i] ?? 0;
-    const barHeight = Math.max(2, peak * (height - 4));
-    const y = (height - barHeight) / 2;
+    let min = minArray[i] ?? 0;
+    let max = maxArray[i] ?? 0;
 
-    if (useRounded) {
-      // Full rounded rectangle path
-      const r = Math.min(
-        effectiveBarWidth * 0.15,
-        effectiveBarWidth / 2,
-        barHeight / 2,
-      );
-      pathCommands.push(
-        `M${x + r},${y}`,
-        `h${effectiveBarWidth - 2 * r}`,
-        `a${r},${r} 0 0 1 ${r},${r}`,
-        `v${barHeight - 2 * r}`,
-        `a${r},${r} 0 0 1 -${r},${r}`,
-        `h-${effectiveBarWidth - 2 * r}`,
-        `a${r},${r} 0 0 1 -${r},-${r}`,
-        `v-${barHeight - 2 * r}`,
-        `a${r},${r} 0 0 1 ${r},-${r}`,
-        "Z",
-      );
-    } else {
-      // Simple rectangle (much faster for tiny bars)
-      pathCommands.push(
-        `M${x},${y}`,
-        `h${effectiveBarWidth}`,
-        `v${barHeight}`,
-        `h-${effectiveBarWidth}`,
-        "Z",
-      );
+    // Ensure minimum visible amplitude for silent sections
+    if (Math.abs(max - min) < minThreshold * 2) {
+      min = -minThreshold;
+      max = minThreshold;
     }
+
+    points.push({ x, min, max });
   }
 
-  return pathCommands.join(" ");
-}
-
-/**
- * Downsample peaks by taking the max value in each bucket.
- */
-function downsamplePeaks(peaks: Float32Array, maxPeaks: number): Float32Array {
-  if (peaks.length <= maxPeaks) return peaks;
-
-  const ratio = peaks.length / maxPeaks;
-  const result = new Float32Array(maxPeaks);
-
-  for (let i = 0; i < maxPeaks; i++) {
-    const start = Math.floor(i * ratio);
-    const end = Math.floor((i + 1) * ratio);
-
-    let max = 0;
-    for (let j = start; j < end && j < peaks.length; j++) {
-      const val = peaks[j] ?? 0;
-      if (val > max) max = val;
-    }
-    result[i] = max;
+  // Handle single-point edge case
+  if (points.length === 1 && points[0]) {
+    points[0].x = offsetX + chunkPixelWidth / 2;
   }
 
-  return result;
+  // Filter to visible points for clipping
+  const visiblePoints = points.filter(
+    (p) =>
+      p.x >= -chunkPixelWidth * 0.1 &&
+      p.x <= containerWidth + chunkPixelWidth * 0.1,
+  );
+
+  if (visiblePoints.length === 0) return null;
+
+  // Create y-scale normalized to actual peak amplitude (full height)
+  const yScale = scaleLinear()
+    .domain([-peakAmplitude, peakAmplitude])
+    .range([WAVEFORM_HEIGHT, 0])
+    .clamp(true);
+
+  // Create D3 area generator for filled envelope (curveLinear for sharp peaks)
+  const areaGenerator = area<WaveformPoint>()
+    .x((d) => d.x)
+    .y0((d) => yScale(d.min))
+    .y1((d) => yScale(d.max))
+    .curve(curveLinear);
+
+  const pathD = areaGenerator(visiblePoints);
+
+  if (!pathD) return null;
+
+  return {
+    index: chunkIndex,
+    pathD,
+  };
 }

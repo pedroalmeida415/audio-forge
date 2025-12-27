@@ -13,8 +13,9 @@ import {
 } from "~/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { useClippingStore } from "../_context/store.context";
-import type { ViewMode } from "../_store/clipping-store";
 import { getSpeakerDisplayName } from "../_utils/segment-utils";
+
+type ViewMode = "table" | "focus";
 
 interface WorkspaceHeaderProps {
   fileName: string;

@@ -3,7 +3,7 @@ export const TIMELINE_CONSTANTS = {
   MIN_ZOOM: 50,
   MAX_ZOOM: 150,
   DEFAULT_ZOOM: 100, // Start fully zoomed out
-  ZOOM_IN_TARGET: 10, // Seconds visible at max zoom
+  ZOOM_IN_TARGET: 5, // Seconds visible at max zoom
 
   // Wheel zoom settings
   ZOOM_FACTOR: 1.2, // Exponential zoom multiplier per wheel tick
