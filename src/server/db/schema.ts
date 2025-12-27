@@ -135,10 +135,11 @@ export const collections = pgTable(
 );
 
 export const clipStatus = pgEnum("clip_status", [
-  "pending",
-  "processing",
-  "completed",
-  "failed",
+  "virtual",    // Clip exists as timestamps only, streamed via media proxy (default)
+  "pending",    // Export queued, waiting for worker
+  "processing", // Worker is generating the file
+  "completed",  // File generated and stored in R2
+  "failed",     // Export failed
 ]);
 
 export const clips = pgTable(
@@ -176,8 +177,8 @@ export const clips = pgTable(
     // Speaker label at time of export (denormalized for history)
     speakerLabel: varchar("speaker_label", { length: 255 }),
 
-    // Job status (clip record doubles as job record)
-    status: clipStatus("status").default("pending").notNull(),
+    // Clip status: virtual (default) means streamed via proxy, completed means file exists
+    status: clipStatus("status").default("virtual").notNull(),
     errorMessage: text("error_message"),
 
     // Optional metadata
