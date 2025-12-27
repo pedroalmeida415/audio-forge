@@ -1,181 +1,189 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useEffect, useRef, useState } from "react";
+import { useSelector } from "@legendapp/state/react";
+import { axisBottom } from "d3-axis";
+import { scaleLinear } from "d3-scale";
+import { select } from "d3-selection";
+import { useEffect, useRef } from "react";
+
 import { formatTimestamp } from "~/lib/time-utils";
 import { useClippingStore } from "../../_context/store.context";
 
-const OVERSCAN_TIME = 2; // seconds of overscan
-
-interface MarkData {
-  time: number;
-}
+const TIMESTAMPS_HEIGHT = 24;
 
 /**
- * Timeline timestamps with true virtualization.
+ * Timeline timestamps using D3-axis with smart tick intervals.
  *
- * - DOM elements created/removed directly based on visibility
- * - No React state for virtualization - everything via observe()
- * - Minimal DOM footprint at any given time
+ * - Major ticks: lines with labels (at intervals based on zoom)
+ * - Minor ticks: small dots between major ticks
+ * - Automatic interval adjustment based on visible timespan
  */
 export function TimelineTimestamps() {
   const $store = useClippingStore();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const markElementsMap = useRef<Map<number, HTMLDivElement>>(new Map());
-  const marksDataRef = useRef<MarkData[]>([]);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  const [isReady, setIsReady] = useState(false);
+  const containerWidth = useSelector(() =>
+    $store.timeline.containerWidth.get(),
+  );
 
-  // Generate marks data once when duration is available
   useEffect(() => {
-    const dispose = observe(() => {
-      const duration = $store.playback.duration.get();
-      if (duration <= 0) return;
+    if (!svgRef.current) return;
 
-      // Generate marks at 1-second intervals
-      const marks: MarkData[] = [];
-      for (let t = 0; t <= duration; t += 1) {
-        marks.push({ time: Math.round(t * 1000) / 1000 });
-      }
+    const svg = select(svgRef.current);
 
-      marksDataRef.current = marks;
-      setIsReady(true);
-    });
+    // Create groups for major axis and minor dots (positioned at top)
+    let axisGroup = svg.select<SVGGElement>("g.axis-major");
+    if (axisGroup.empty()) {
+      axisGroup = svg
+        .append("g")
+        .attr("class", "axis-major")
+        .attr("transform", "translate(0, 0)");
+    }
 
-    return dispose;
-  }, [$store]);
-
-  // Manage DOM elements directly based on visibility
-  useEffect(() => {
-    if (!isReady || !containerRef.current) return;
-
-    const container = containerRef.current;
-    const marksData = marksDataRef.current;
+    let minorGroup = svg.select<SVGGElement>("g.axis-minor");
+    if (minorGroup.empty()) {
+      minorGroup = svg
+        .append("g")
+        .attr("class", "axis-minor")
+        .attr("transform", "translate(0, 5)");
+    }
 
     const dispose = observe(() => {
       const scrollOffset = $store.timeline.scrollOffset.get();
       const pps = $store.timeline.getPixelsPerSecond.get();
-      const containerWidth = $store.timeline.containerWidth.get();
-      const visibleTimespan = $store.timeline.getVisibleTimespan.get();
+      const containerW = $store.timeline.containerWidth.get();
+      const duration = $store.playback.duration.get();
 
-      // Calculate visible time range
-      const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
-      const visibleEndTime = (scrollOffset + containerWidth) / pps + OVERSCAN_TIME;
+      if (duration <= 0 || containerW <= 0 || pps <= 0) return;
 
-      // Determine visibility settings based on zoom
-      const { showMinor, majorInterval } = getVisibilitySettings(visibleTimespan);
+      // Calculate visible time range with overscan
+      const visibleStartTime = Math.max(0, scrollOffset / pps - 2);
+      const visibleEndTime = Math.min(
+        duration,
+        (scrollOffset + containerW) / pps + 2,
+      );
+      const visibleTimespan = visibleEndTime - visibleStartTime;
 
-      // Build set of times that should be visible
-      const visibleTimes = new Set<number>();
-      for (const mark of marksData) {
-        const { time } = mark;
-        if (time < visibleStartTime || time > visibleEndTime) continue;
+      // Get tick intervals based on zoom level
+      const { majorInterval, minorInterval } =
+        getTickIntervals(visibleTimespan);
 
-        const isMajor = time % majorInterval < 0.001;
-        if (!isMajor && !showMinor) continue;
+      // Create time scale
+      const timeScale = scaleLinear()
+        .domain([scrollOffset / pps, (scrollOffset + containerW) / pps])
+        .range([0, containerW]);
 
-        visibleTimes.add(time);
+      // Generate major tick values
+      const majorTicks: number[] = [];
+      const firstMajor =
+        Math.ceil(visibleStartTime / majorInterval) * majorInterval;
+      for (let t = firstMajor; t <= visibleEndTime; t += majorInterval) {
+        majorTicks.push(Math.round(t * 1000) / 1000);
       }
 
-      // Remove marks that are no longer visible
-      markElementsMap.current.forEach((el, time) => {
-        if (!visibleTimes.has(time)) {
-          el.remove();
-          markElementsMap.current.delete(time);
+      // Generate minor tick values (excluding positions that have major ticks)
+      const minorTicks: number[] = [];
+      if (minorInterval > 0) {
+        const firstMinor =
+          Math.ceil(visibleStartTime / minorInterval) * minorInterval;
+        for (let t = firstMinor; t <= visibleEndTime; t += minorInterval) {
+          const roundedT = Math.round(t * 1000) / 1000;
+          // Skip if this is a major tick position
+          if (Math.abs(roundedT % majorInterval) < 0.001) continue;
+          minorTicks.push(roundedT);
         }
-      });
+      }
 
-      // Add/update marks for visible times
-      visibleTimes.forEach((time) => {
-        const isMajor = time % majorInterval < 0.001;
-        const x = time * pps - scrollOffset;
+      // Render major axis (ticks point downward from top)
+      const majorAxis = axisBottom(timeScale)
+        .tickValues(majorTicks)
+        .tickSize(6)
+        .tickPadding(4)
+        .tickFormat((d) => formatTimestamp(d as number));
 
-        // Create element if it doesn't exist
-        let el = markElementsMap.current.get(time);
-        if (!el) {
-          el = createMarkElement(time, isMajor);
-          container.appendChild(el);
-          markElementsMap.current.set(time, el);
-        }
+      axisGroup.call(majorAxis);
 
-        // Update position and styling
-        el.style.transform = `translateX(${x}px)`;
+      // Style major axis
+      axisGroup.select(".domain").remove(); // Remove the axis line
+      axisGroup
+        .selectAll(".tick line")
+        .attr("class", "stroke-muted-foreground/50");
+      axisGroup
+        .selectAll(".tick text")
+        .attr("class", "fill-muted-foreground text-[10px] font-mono");
 
-        // Update major/minor styling if needed
-        const dot = el.firstElementChild as HTMLElement | null;
-        const label = el.lastElementChild as HTMLElement | null;
+      // Render minor dots using D3 data join
+      const dots = minorGroup
+        .selectAll<SVGCircleElement, number>("circle.minor-tick")
+        .data(minorTicks, (d) => d);
 
-        if (isMajor) {
-          if (dot) dot.className = "h-2 w-px bg-muted-foreground/50";
-          if (label) label.style.display = "flex";
-        } else {
-          if (dot) dot.className = "h-1.5 w-1.5 rounded-full bg-muted-foreground/30 mt-0.5";
-          if (label) label.style.display = "none";
-        }
-      });
+      dots.join(
+        (enter) =>
+          enter
+            .append("circle")
+            .attr("class", "minor-tick fill-muted-foreground/40")
+            .attr("r", 1.5)
+            .attr("cx", (d) => timeScale(d))
+            .attr("cy", 0),
+        (update) => update.attr("cx", (d) => timeScale(d)),
+        (exit) => exit.remove(),
+      );
     });
 
     return () => {
       dispose();
-      // Clean up all mark elements
-      for (const el of markElementsMap.current.values()) {
-        el.remove();
-      }
-      markElementsMap.current.clear();
+      svg.selectAll("g.axis-major, g.axis-minor").remove();
     };
-  }, [isReady, $store]);
+  }, [$store]);
 
   return (
-    <div
-      ref={containerRef}
-      className="pointer-events-none relative h-6 shrink-0 overflow-hidden border-b bg-muted/30"
-    />
+    <div className="relative h-6 shrink-0 overflow-hidden border-b bg-muted/30">
+      <svg
+        ref={svgRef}
+        aria-hidden="true"
+        className="h-full w-full"
+        height={TIMESTAMPS_HEIGHT}
+        width={containerWidth}
+        viewBox={`0 0 ${containerWidth} ${TIMESTAMPS_HEIGHT}`}
+        preserveAspectRatio="none"
+      />
+    </div>
   );
 }
 
 /**
- * Create a mark element with dot and label.
+ * Get tick intervals based on visible timespan.
+ * Returns major interval (with labels) and minor interval (dots only).
  */
-function createMarkElement(time: number, isMajor: boolean): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = "absolute top-0 flex h-full flex-col items-center";
-
-  // Dot/tick
-  const dot = document.createElement("div");
-  dot.className = isMajor
-    ? "h-2 w-px bg-muted-foreground/50"
-    : "h-1.5 w-1.5 rounded-full bg-muted-foreground/30 mt-0.5";
-  el.appendChild(dot);
-
-  // Label (width:0 + flex center keeps it centered on the mark)
-  const label = document.createElement("span");
-  label.className =
-    "mt-0.5 flex w-0 justify-center font-mono text-[10px] text-muted-foreground whitespace-nowrap";
-  label.textContent = formatTimestamp(time);
-  label.style.display = isMajor ? "flex" : "none";
-  el.appendChild(label);
-
-  return el;
-}
-
-/**
- * Get visibility settings based on visible timespan.
- */
-function getVisibilitySettings(visibleTimespan: number): {
-  showMinor: boolean;
+function getTickIntervals(visibleTimespan: number): {
   majorInterval: number;
+  minorInterval: number;
 } {
+  // Very zoomed in: show every second with subsecond dots
+  if (visibleTimespan <= 10) {
+    return { majorInterval: 1, minorInterval: 0.5 };
+  }
+  // Zoomed in: show every 2 seconds with 1-second dots
   if (visibleTimespan <= 30) {
-    return { showMinor: true, majorInterval: 2 };
+    return { majorInterval: 2, minorInterval: 1 };
   }
+  // Medium zoom: show every 5 seconds with 1-second dots
   if (visibleTimespan <= 60) {
-    return { showMinor: true, majorInterval: 5 };
+    return { majorInterval: 5, minorInterval: 1 };
   }
+  // Zoomed out: show every 10 seconds with 5-second dots
   if (visibleTimespan <= 180) {
-    return { showMinor: false, majorInterval: 10 };
+    return { majorInterval: 10, minorInterval: 5 };
   }
+  // More zoomed out: show every 30 seconds with 10-second dots
   if (visibleTimespan <= 600) {
-    return { showMinor: false, majorInterval: 30 };
+    return { majorInterval: 30, minorInterval: 10 };
   }
-  return { showMinor: false, majorInterval: 60 };
+  // Very zoomed out: show every minute with 30-second dots
+  if (visibleTimespan <= 1800) {
+    return { majorInterval: 60, minorInterval: 30 };
+  }
+  // Extremely zoomed out: show every 5 minutes with 1-minute dots
+  return { majorInterval: 300, minorInterval: 60 };
 }

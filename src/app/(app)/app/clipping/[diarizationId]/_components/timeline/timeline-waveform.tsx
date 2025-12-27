@@ -17,7 +17,7 @@ import {
   getVisibleChunkIndices,
 } from "../../_utils/chunk-utils";
 
-const WAVEFORM_HEIGHT = 40;
+const WAVEFORM_HEIGHT = 60;
 const OVERSCAN = 1;
 
 // Target pixels per data point for LOD (lower = more points = more detail)
