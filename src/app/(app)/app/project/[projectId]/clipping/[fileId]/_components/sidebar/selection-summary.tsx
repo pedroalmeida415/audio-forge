@@ -28,15 +28,22 @@ export function SelectionSummary() {
     selectedSegmentIds,
   );
 
-  if (selectedSegmentIds.size === 0) {
-    return null;
-  }
+  const hasSelection = selectedSegmentIds.size > 0;
 
   return (
-    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-      <div className="mb-2 font-medium text-primary text-sm">
-        {selectedSegmentIds.size} segment{selectedSegmentIds.size !== 1 && "s"}{" "}
-        selected
+    <div
+      className={`rounded-lg border p-3 transition-opacity ${
+        hasSelection
+          ? "border-primary/20 bg-primary/5"
+          : "border-border bg-muted/30 opacity-50"
+      }`}
+    >
+      <div
+        className={`mb-2 font-medium text-sm ${hasSelection ? "text-primary" : "text-muted-foreground"}`}
+      >
+        {hasSelection
+          ? `${selectedSegmentIds.size} segment${selectedSegmentIds.size !== 1 ? "s" : ""} selected`
+          : "No segments selected"}
       </div>
       <div className="flex gap-4">
         <div className="flex flex-col gap-0.5">
@@ -44,13 +51,13 @@ export function SelectionSummary() {
             Total Duration
           </span>
           <span className="font-mono text-xs">
-            {formatDuration(selectionData.totalDuration)}
+            {hasSelection ? formatDuration(selectionData.totalDuration) : "—"}
           </span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] text-muted-foreground">Avg Length</span>
           <span className="font-mono text-xs">
-            {formatDuration(selectionData.avgLength)}
+            {hasSelection ? formatDuration(selectionData.avgLength) : "—"}
           </span>
         </div>
       </div>

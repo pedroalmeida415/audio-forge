@@ -5,9 +5,11 @@ import { Upload, Users } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { Separator } from "~/components/ui/separator";
 import { useClippingStore } from "../../_context/store.context";
 import { ExportDialog } from "../dialogs";
 import { SegmentActions } from "./bulk-actions";
+import { DurationDistributionChart } from "./duration-distribution-chart";
 import { SelectionSummary } from "./selection-summary";
 
 export function RightSidebar() {
@@ -35,19 +37,20 @@ export function RightSidebar() {
       {/* Scrollable content area */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
-          {/* Selection Summary - shows when items selected */}
+          {/* Selection Summary - always visible, dimmed when no selection */}
           <SelectionSummary />
 
-          {/* Actions - for checkbox-selected segments only */}
+          {/* Actions - always visible, disabled when no selection */}
           <SegmentActions />
         </div>
       </ScrollArea>
 
-      {/* Export section pinned to bottom */}
-      <div className="shrink-0 border-t bg-background p-4">
+      {/* Bottom section pinned */}
+      {/* Export button */}
+      <div className="p-4">
         <Button
           size="lg"
-          className="w-full"
+          className="h-10 w-full"
           onClick={() => setExportDialogOpen(true)}
           disabled={selectionCount === 0}
         >
@@ -56,6 +59,14 @@ export function RightSidebar() {
             ? `Export ${selectionCount} Segment${selectionCount !== 1 ? "s" : ""}`
             : "Export to Collection"}
         </Button>
+      </div>
+
+      {/* Separator */}
+      <Separator />
+
+      {/* Duration distribution chart */}
+      <div className="px-4 py-2">
+        <DurationDistributionChart speakerId={selectedSpeakerId} />
       </div>
 
       {/* Export Dialog */}

@@ -23,7 +23,7 @@ export function OuterSidebar() {
   };
 
   return (
-    <aside className="flex w-14 flex-col items-center border-l bg-muted/30 py-3">
+    <aside className="flex w-20 flex-col items-center border-l bg-background py-3">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -35,7 +35,7 @@ export function OuterSidebar() {
             <Users className="h-5 w-5" />
             {/* Speaker count badge */}
             {speakerCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-medium text-[10px] text-primary-foreground">
+              <span className="-top-0.5 -right-0.5 absolute flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-medium text-[10px] text-primary-foreground">
                 {speakerCount}
               </span>
             )}

@@ -30,9 +30,9 @@ export function SegmentActions() {
   // Only use checkbox-selected segments, NOT active segment
   const targetIds = Array.from(selectedSegmentIds);
   const hasSelection = targetIds.length > 0;
-  const selectionCount = targetIds.length;
 
   const handleMarkAsReviewed = () => {
+    if (!hasSelection) return;
     updateSegmentsMutation.mutate({
       fileId,
       segmentIds: targetIds,
@@ -41,6 +41,7 @@ export function SegmentActions() {
   };
 
   const handleDelete = () => {
+    if (!hasSelection) return;
     updateSegmentsMutation.mutate({
       fileId,
       segmentIds: targetIds,
@@ -48,24 +49,10 @@ export function SegmentActions() {
     });
   };
 
-  // Don't render section if no segments are selected
-  if (!hasSelection) {
-    return (
-      <div className="space-y-2">
-        <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
-          Actions
-        </h3>
-        <p className="text-muted-foreground text-xs">
-          Select segments using checkboxes to enable bulk actions.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
       <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
-        Actions ({selectionCount} selected)
+        Actions
       </h3>
       <div className="flex flex-col gap-1.5">
         <Button
@@ -73,6 +60,7 @@ export function SegmentActions() {
           size="sm"
           className="h-9 justify-start"
           onClick={handleMarkAsReviewed}
+          disabled={!hasSelection}
         >
           <Check className="mr-2 h-4 w-4" />
           Mark as Reviewed
@@ -82,6 +70,7 @@ export function SegmentActions() {
           size="sm"
           className="h-9 justify-start"
           onClick={() => setChangeSpeakerOpen(true)}
+          disabled={!hasSelection}
         >
           <User className="mr-2 h-4 w-4" />
           Change Speaker
@@ -89,8 +78,9 @@ export function SegmentActions() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500"
+          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500 disabled:text-red-500/50"
           onClick={handleDelete}
+          disabled={!hasSelection}
         >
           <Trash2 className="mr-2 h-4 w-4" />
           Delete Selected
