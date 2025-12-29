@@ -2,16 +2,8 @@
 
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Minus,
-  Pause,
-  Play,
-  Plus,
-  Scissors,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Minus, Pause, Play, Plus } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Select,
@@ -27,10 +19,11 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { formatTimestamp } from "~/lib/time-utils";
-import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
 import { TIMELINE_CONSTANTS } from "../../_store/constants";
 import { isZoomEnabled } from "../../_utils/zoom-utils";
+import { ActiveSegmentActions } from "./active-segment-actions";
+import { InlineSelectionControls } from "./inline-selection-controls";
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 
@@ -90,8 +83,6 @@ export function TimelineToolbar() {
   const isLoading = useValue($store.playback.isLoading);
   const playbackRate = useValue($store.playback.playbackRate);
   const zoomLevel = useValue($store.timeline.zoomLevel);
-  const activeSegmentId = useValue($store.activeSegmentId);
-  const diarizationId = useValue($store.diarizationId);
   const duration = useValue($store.playback.duration);
 
   // Disable zoom for short audio (< 15 seconds)
@@ -99,48 +90,6 @@ export function TimelineToolbar() {
 
   const { togglePlayback, setPlaybackRate, zoomIn, zoomOut, zoomAtPlayhead } =
     $store.playback.peek();
-
-  const splitSegmentMutation = api.diarization.splitSegment.useMutation();
-
-  // Track if split is possible via subscription (updates as playhead moves)
-  const [canSplit, setCanSplit] = useState(false);
-
-  useEffect(() => {
-    // Check if split is possible based on current state
-    const dispose = observe(() => {
-      const currentActiveId = $store.activeSegmentId.get();
-      const currentTime = $store.playback.currentTime.get();
-
-      if (!currentActiveId) {
-        setCanSplit(false);
-        return;
-      }
-
-      const activeSegment = $store.segments
-        .get()
-        .find((s) => s.id === currentActiveId);
-      if (!activeSegment) {
-        setCanSplit(false);
-        return;
-      }
-
-      const isWithinSegment =
-        currentTime > activeSegment.start && currentTime < activeSegment.end;
-      setCanSplit(isWithinSegment);
-    });
-
-    return dispose;
-  }, [$store]);
-
-  const handleSplit = () => {
-    if (!activeSegmentId || !canSplit) return;
-    const splitTime = $store.playback.currentTime.peek();
-    splitSegmentMutation.mutate({
-      diarizationId,
-      segmentId: activeSegmentId,
-      splitTime,
-    });
-  };
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-2">
@@ -163,27 +112,6 @@ export function TimelineToolbar() {
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
-
-      {/* Split button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <Button
-              disabled={!canSplit || splitSegmentMutation.isPending}
-              onClick={handleSplit}
-              size="icon"
-              variant="ghost"
-            >
-              <Scissors className="h-4 w-4" />
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {canSplit
-            ? "Split segment at playhead"
-            : "Move playhead inside a segment to split"}
-        </TooltipContent>
-      </Tooltip>
 
       {/* Play/Pause button */}
       <Button
@@ -219,6 +147,12 @@ export function TimelineToolbar() {
 
       {/* Current time / Duration */}
       <TimeDisplay />
+
+      {/* Active segment actions (shown when a segment is selected) */}
+      <ActiveSegmentActions />
+
+      {/* Selection controls (shown during drag-to-select) */}
+      <InlineSelectionControls />
 
       {/* Spacer */}
       <div className="flex-1" />

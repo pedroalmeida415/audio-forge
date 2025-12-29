@@ -1,7 +1,6 @@
 "use client";
 
-import { useValue } from "@legendapp/state/react";
-import { useParams } from "next/navigation";
+import { useSelector } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
 import { formatTimestamp, parseTimestamp } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
@@ -28,9 +27,10 @@ export function EditableTimeCell({
   const [hasError, setHasError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { diarizationId } = useParams<{ diarizationId: string }>();
+  const $store = useClippingStore();
+  const fileId = useSelector(() => $store.fileId.get());
 
-  const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
+  const updateSegmentsMutation = api.file.updateSegments.useMutation();
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -65,7 +65,7 @@ export function EditableTimeCell({
       const updates = field === "start" ? { start: parsed } : { end: parsed };
 
       updateSegmentsMutation.mutate({
-        diarizationId,
+        fileId,
         segmentIds: segmentId,
         updates,
       });

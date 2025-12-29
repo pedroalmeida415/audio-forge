@@ -12,14 +12,14 @@ import {
 } from "@tanstack/react-table";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
-import type { DiarizationSegment } from "~/server/db/schema";
+import type { FileSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
 import { createColumns } from "./columns";
 
 const columns = createColumns();
 
 interface TableRowProps {
-  row: Row<DiarizationSegment>;
+  row: Row<FileSegment>;
 }
 
 // Memoized with custom comparison to prevent re-renders when only sort order changes.
@@ -72,7 +72,7 @@ export function SegmentsTable() {
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<DiarizationSegment[]>([]);
+  const [data, setData] = useState<FileSegment[]>([]);
 
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -83,7 +83,7 @@ export function SegmentsTable() {
       .filter(
         ($seg) =>
           !$seg.isDeleted.get() &&
-          $seg.speaker.get() === $store.selectedSpeaker.get(),
+          $seg.speakerId.get() === $store.selectedSpeakerId.get(),
       )
       .map(($seg) => $seg.peek());
 

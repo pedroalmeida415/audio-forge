@@ -4,13 +4,14 @@ export default async function ClippingWorkspaceLayout({
   params,
   children,
 }: {
-  params: Promise<{ diarizationId: string }>;
+  params: Promise<{ projectId: string; fileId: string }>;
   children: React.ReactNode;
 }) {
-  const { diarizationId } = await params;
+  const { fileId } = await params;
 
-  void api.diarization.getById.prefetch({ id: diarizationId });
-  void api.diarization.getAudioUrl.prefetch({ id: diarizationId });
+  // Prefetch file data and audio URL for the workspace
+  void api.file.getById.prefetch({ id: fileId });
+  void api.file.getAudioUrl.prefetch({ fileId });
 
   return <HydrateClient>{children}</HydrateClient>;
 }

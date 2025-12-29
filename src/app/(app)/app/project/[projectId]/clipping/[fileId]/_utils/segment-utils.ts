@@ -1,6 +1,4 @@
-import type { Diarization, DiarizationSegment } from "~/server/db/schema";
-
-type SpeakerCollections = NonNullable<Diarization["speakerCollections"]>;
+import type { FileSegment, WorkspaceSpeaker } from "~/server/db/schema";
 
 // ============================================================================
 // Duration Thresholds (used for visual styling)
@@ -34,9 +32,9 @@ export interface SegmentStats {
   avgDuration: number;
 }
 
-export function calculateStats(segments: DiarizationSegment[]): SegmentStats {
+export function calculateStats(segments: FileSegment[]): SegmentStats {
   const visibleSegments = segments.filter((s) => !s.isDeleted);
-  const speakers = new Set(visibleSegments.map((s) => s.speaker));
+  const speakers = new Set(visibleSegments.map((s) => s.speakerId));
 
   const totalDuration = visibleSegments.reduce(
     (sum, s) => sum + getSegmentDuration(s),
@@ -59,9 +57,7 @@ export function calculateStats(segments: DiarizationSegment[]): SegmentStats {
  * Get duration distribution histogram for chart
  * Returns array of counts for buckets: [0-1s, 1-3s, 3-5s, 5-8s, 8-12s, 12-15s, 15-20s, 20-30s, 30s+]
  */
-export function getDurationDistribution(
-  segments: DiarizationSegment[],
-): number[] {
+export function getDurationDistribution(segments: FileSegment[]): number[] {
   const buckets = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const thresholds = [1, 3, 5, 8, 12, 15, 20, 30];
 
@@ -82,16 +78,16 @@ export function getDurationDistribution(
 // ============================================================================
 
 export function getSelectedSegmentsData(
-  segmentsById: Record<string, DiarizationSegment>,
+  segmentsById: Record<string, FileSegment>,
   selectedIds: Set<string>,
 ): {
-  segments: DiarizationSegment[];
+  segments: FileSegment[];
   totalDuration: number;
   avgLength: number;
 } {
   const segments = Array.from(selectedIds)
     .map((id) => segmentsById[id])
-    .filter((s): s is DiarizationSegment => s !== undefined && !s.isDeleted);
+    .filter((s): s is FileSegment => s !== undefined && !s.isDeleted);
 
   const totalDuration = segments.reduce(
     (sum, s) => sum + getSegmentDuration(s),
@@ -109,19 +105,20 @@ export function getSelectedSegmentsData(
 // Speaker Helpers
 // ============================================================================
 
-export function getUniqueSpeakers(segments: DiarizationSegment[]): string[] {
-  const speakers = new Set<string>();
+export function getUniqueSpeakerIds(segments: FileSegment[]): string[] {
+  const speakerIds = new Set<string>();
   for (const segment of segments) {
     if (!segment.isDeleted) {
-      speakers.add(segment.speaker);
+      speakerIds.add(segment.speakerId);
     }
   }
-  return Array.from(speakers).sort();
+  return Array.from(speakerIds);
 }
 
-export function getSpeakerDisplayName(
-  speaker: string,
-  speakerCollections: SpeakerCollections,
+export function getSpeakerLabel(
+  speakerId: string,
+  speakers: WorkspaceSpeaker[],
 ): string {
-  return speakerCollections[speaker]?.collectionName ?? speaker;
+  const speaker = speakers.find((s) => s.id === speakerId);
+  return speaker?.label ?? speakerId;
 }

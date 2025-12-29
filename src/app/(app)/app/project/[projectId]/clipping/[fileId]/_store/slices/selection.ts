@@ -63,7 +63,7 @@ export function createSelectionState(
         $store.selection.anchorTime.set(anchorTime);
         $store.selection.currentTime.set(anchorTime);
         // Default to current selected speaker
-        $store.selection.selectedSpeaker.set($store.selectedSpeaker.peek());
+        $store.selection.selectedSpeaker.set($store.selectedSpeakerId.peek());
         // Clear hover when dragging
         $store.selection.hoverTime.set(null);
       });

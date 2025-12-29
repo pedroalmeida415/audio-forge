@@ -1,3 +1,5 @@
+import type { WorkspaceSpeaker } from "~/server/db/schema";
+
 /**
  * Dynamic speaker color generation for consistent visual representation.
  * Colors are generated as HSL values and distributed evenly across the color wheel.
@@ -16,16 +18,19 @@ export function generateSpeakerColor(
 }
 
 /**
- * Create a color map for a list of speakers.
- * Returns a Record from speaker ID to their HSL color string.
+ * Create a color map for WorkspaceSpeaker array.
+ * Uses speaker's custom color if set, otherwise generates one.
+ * Returns a Record from speaker ID to their color string.
  */
 export function createSpeakerColorMap(
-  speakers: Set<string>,
+  speakers: WorkspaceSpeaker[],
 ): Record<string, string> {
-  const sorted = [...speakers].sort();
-  const total = sorted.length;
+  const total = speakers.length;
   return Object.fromEntries(
-    sorted.map((speaker, i) => [speaker, generateSpeakerColor(i, total)]),
+    speakers.map((speaker, i) => [
+      speaker.id,
+      speaker.color ?? generateSpeakerColor(i, total),
+    ]),
   );
 }
 

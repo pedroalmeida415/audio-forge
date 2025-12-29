@@ -2,46 +2,60 @@
 
 import { use } from "react";
 import { api } from "~/trpc/react";
+import { SpeakersDrawer } from "./_components/drawers";
+import { OuterHeader, OuterSidebar } from "./_components/layout";
 import { RightSidebar } from "./_components/sidebar";
 import { TableView } from "./_components/table";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
-import { WorkspaceHeader } from "./_components/workspace-header";
 import { ClippingStoreProvider } from "./_context/store.context";
 import { fetchAudioData } from "./_utils/audio-fetch";
 
 export default function ClippingWorkspacePage({
   params,
 }: {
-  params: Promise<{ diarizationId: string }>;
+  params: Promise<{ projectId: string; fileId: string }>;
 }) {
-  const { diarizationId } = use(params);
+  const { projectId, fileId } = use(params);
 
-  const [diarization] = api.diarization.getById.useSuspenseQuery(
-    { id: diarizationId },
+  // Fetch file data with speakers and segments
+  const [file] = api.file.getById.useSuspenseQuery(
+    { id: fileId },
     { refetchOnWindowFocus: false },
   );
-  const [audioUrl] = api.diarization.getAudioUrl.useSuspenseQuery(
-    { id: diarizationId },
+  const [audioUrl] = api.file.getAudioUrl.useSuspenseQuery(
+    { fileId },
     { refetchOnWindowFocus: false, staleTime: Infinity },
   );
 
   const audioDataBuffer = use(fetchAudioData(audioUrl));
 
   const fileName =
-    diarization.file?.storageKey?.split("/").pop() ?? "Audio File";
+    file.name ?? file.storageKey?.split("/").pop() ?? "Audio File";
 
   return (
-    <ClippingStoreProvider initialData={{ diarization, audioDataBuffer }}>
+    <ClippingStoreProvider initialData={{ file, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
-        <WorkspaceHeader fileName={fileName} />
+        {/* Outer Header: Back button, file name dropdown, diarize button */}
+        <OuterHeader fileName={fileName} projectId={projectId} />
 
+        {/* Main content area with outer sidebar */}
         <div className="flex min-h-0 flex-1">
-          <TableView />
-          <RightSidebar />
-        </div>
+          {/* Inner content: table + inner sidebar + timeline */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1">
+              <TableView />
+              <RightSidebar />
+            </div>
+            <TimelineContainer />
+          </div>
 
-        <TimelineContainer />
+          {/* Outer Sidebar: Speakers button */}
+          <OuterSidebar />
+        </div>
       </div>
+
+      {/* Speakers Drawer (portal) */}
+      <SpeakersDrawer />
     </ClippingStoreProvider>
   );
 }

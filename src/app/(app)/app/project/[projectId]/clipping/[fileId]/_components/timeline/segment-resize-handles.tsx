@@ -1,7 +1,7 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useParams } from "next/navigation";
+import { useSelector } from "@legendapp/state/react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "~/trpc/react";
@@ -23,8 +23,8 @@ interface HandlePosition {
  */
 export function SegmentResizeHandles() {
   const $store = useClippingStore();
-  const { diarizationId } = useParams<{ diarizationId: string }>();
-  const updateSegmentsMutation = api.diarization.updateSegments.useMutation();
+  const fileId = useSelector(() => $store.fileId.get());
+  const updateSegmentsMutation = api.file.updateSegments.useMutation();
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -159,13 +159,13 @@ export function SegmentResizeHandles() {
       // Only call mutation if value actually changed
       if (edge === "start" && updatedSegment.start !== originalStart) {
         updateSegmentsMutation.mutate({
-          diarizationId,
+          fileId,
           segmentIds: activeId,
           updates: { start: updatedSegment.start },
         });
       } else if (edge === "end" && updatedSegment.end !== originalEnd) {
         updateSegmentsMutation.mutate({
-          diarizationId,
+          fileId,
           segmentIds: activeId,
           updates: { end: updatedSegment.end },
         });

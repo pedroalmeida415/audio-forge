@@ -1,4 +1,4 @@
-import type { DiarizationSegment } from "~/server/db/schema";
+import type { FileSegment, WorkspaceSpeaker } from "~/server/db/schema";
 import type { api } from "~/trpc/react";
 import type { $ClippingStore } from "./clipping-store";
 
@@ -22,8 +22,12 @@ export function setupMutationDefaults(
     },
   });
 
+  // ============================================================================
+  // Segment Mutations
+  // ============================================================================
+
   // updateSegments: handles speaker changes, delete, mark as reviewed, time edits
-  trpcUtils.diarization.updateSegments.setMutationDefaults({
+  trpcUtils.file.updateSegments.setMutationDefaults({
     onMutate: async (variables) => {
       const segmentIds = Array.isArray(variables.segmentIds)
         ? variables.segmentIds
@@ -31,7 +35,7 @@ export function setupMutationDefaults(
       const segmentIdSet = new Set(segmentIds);
 
       // Store previous values for rollback (only affected segments)
-      const previousValues: Record<string, Partial<DiarizationSegment>> = {};
+      const previousValues: Record<string, Partial<FileSegment>> = {};
 
       // Apply optimistic updates using fine-grained mutations
       for (let i = 0; i < $store.segments.length; i++) {
@@ -42,7 +46,7 @@ export function setupMutationDefaults(
 
         if (segmentIdSet.has(segmentId)) {
           // Capture previous values for the fields being updated
-          const prev: Partial<DiarizationSegment> = {};
+          const prev: Partial<FileSegment> = {};
           for (const key of Object.keys(variables.updates) as Array<
             keyof typeof variables.updates
           >) {
@@ -53,11 +57,6 @@ export function setupMutationDefaults(
           // Apply the update
           $segment.assign(variables.updates);
         }
-      }
-
-      // If changing speaker, ensure speaker exists in the set
-      if (variables.updates.speaker) {
-        $store.speakers.add(variables.updates.speaker);
       }
 
       // Clear selection after mutation
@@ -84,7 +83,7 @@ export function setupMutationDefaults(
   });
 
   // splitSegment: handles splitting a segment at a specific time
-  trpcUtils.diarization.splitSegment.setMutationDefaults({
+  trpcUtils.file.splitSegment.setMutationDefaults({
     onMutate: async (variables) => {
       const segments = $store.segments.peek();
       const segmentIndex = segments.findIndex(
@@ -102,14 +101,18 @@ export function setupMutationDefaults(
       $store.segments[segmentIndex]?.end.set(variables.splitTime);
 
       // Create and insert new segment after the split
-      const newSegment: DiarizationSegment = {
+      const now = new Date().toISOString();
+      const newSegment: FileSegment = {
         id: crypto.randomUUID(),
-        speaker: originalSegment.speaker,
+        speakerId: originalSegment.speakerId,
         start: variables.splitTime,
         end: originalEnd,
         confidence: originalSegment.confidence,
+        source: originalSegment.source,
         isDeleted: originalSegment.isDeleted,
         isReviewed: false,
+        createdAt: now,
+        updatedAt: now,
       };
 
       // Insert after the current segment
@@ -138,46 +141,22 @@ export function setupMutationDefaults(
     },
   });
 
-  // setSpeakerCollection: handles mapping speakers to collections
-  trpcUtils.diarization.setSpeakerCollection.setMutationDefaults({
-    onMutate: async (variables) => {
-      const $speakerCollection = $store.speakerCollections[variables.speaker];
-      const previousValue = $speakerCollection?.peek();
-
-      // Optimistically update speaker collection mapping
-      $store.speakerCollections.assign({
-        [variables.speaker]: {
-          collectionId: variables.collectionId,
-          collectionName: variables.collectionName,
-        },
-      });
-
-      return { speaker: variables.speaker, previousValue };
-    },
-    onError: (_err, _variables, context) => {
-      if (!context) return;
-
-      const $speakerCollection = $store.speakerCollections[context.speaker];
-      if (context.previousValue && $speakerCollection) {
-        $speakerCollection.set(context.previousValue);
-      } else if ($speakerCollection) {
-        $speakerCollection.delete();
-      }
-    },
-  });
-
   // createSegment: handles creating new segments from click-and-drag
-  trpcUtils.diarization.createSegment.setMutationDefaults({
+  trpcUtils.file.createSegment.setMutationDefaults({
     onMutate: async (variables) => {
       // Create optimistic segment with temporary ID
       const tempId = crypto.randomUUID();
-      const newSegment: DiarizationSegment = {
+      const now = new Date().toISOString();
+      const newSegment: FileSegment = {
         id: tempId,
-        speaker: variables.segment.speaker,
+        speakerId: variables.segment.speakerId,
         start: variables.segment.start,
         end: variables.segment.end,
+        source: "manual",
         isDeleted: false,
         isReviewed: true,
+        createdAt: now,
+        updatedAt: now,
       };
 
       // Find insertion index to maintain sort order by start time
@@ -189,9 +168,6 @@ export function setupMutationDefaults(
 
       // Insert segment at correct position
       $store.segments.splice(insertIndex, 0, newSegment);
-
-      // Ensure speaker exists in the set
-      $store.speakers.add(newSegment.speaker);
 
       // Clear selection state
       $store.selection.cancelSelection();
@@ -229,6 +205,113 @@ export function setupMutationDefaults(
       // Clear active segment if it was the removed one
       if ($store.activeSegmentId.peek() === context.tempId) {
         $store.activeSegmentId.set(null);
+      }
+    },
+  });
+
+  // ============================================================================
+  // Speaker Mutations
+  // ============================================================================
+
+  // createSpeaker: handles adding a new speaker to the workspace
+  trpcUtils.file.createSpeaker.setMutationDefaults({
+    onMutate: async (variables) => {
+      const tempId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const newSpeaker: WorkspaceSpeaker = {
+        id: tempId,
+        label: variables.label,
+        color: variables.color,
+        createdAt: now,
+      };
+
+      $store.addSpeaker(newSpeaker);
+
+      return { tempId };
+    },
+    onSuccess: (result, _variables, context) => {
+      if (!context?.tempId) return;
+
+      // Replace temp ID with real ID from server
+      const speakers = $store.speakers.peek();
+      const index = speakers.findIndex((s) => s.id === context.tempId);
+      if (index !== -1) {
+        $store.speakers[index]?.id.set(result.speakerId);
+      }
+    },
+    onError: (_err, _variables, context) => {
+      if (!context?.tempId) return;
+      $store.removeSpeaker(context.tempId);
+    },
+  });
+
+  // updateSpeaker: handles renaming a speaker or changing color
+  trpcUtils.file.updateSpeaker.setMutationDefaults({
+    onMutate: async (variables) => {
+      const speakers = $store.speakers.peek();
+      const speaker = speakers.find((s) => s.id === variables.speakerId);
+      const previousValue = speaker ? { ...speaker } : undefined;
+
+      if (speaker) {
+        $store.updateSpeaker(variables.speakerId, variables.updates);
+      }
+
+      return { previousValue };
+    },
+    onError: (_err, variables, context) => {
+      if (!context?.previousValue) return;
+      $store.updateSpeaker(variables.speakerId, context.previousValue);
+    },
+  });
+
+  // deleteSpeaker: handles removing a speaker and optionally reassigning segments
+  trpcUtils.file.deleteSpeaker.setMutationDefaults({
+    onMutate: async (variables) => {
+      const speakers = $store.speakers.peek();
+      const speakerIndex = speakers.findIndex(
+        (s) => s.id === variables.speakerId,
+      );
+      const previousSpeaker =
+        speakerIndex !== -1 ? { ...speakers[speakerIndex]! } : undefined;
+
+      // Store affected segments for rollback
+      const affectedSegments: Array<{ index: number; speakerId: string }> = [];
+
+      // If reassigning segments to another speaker
+      if (variables.reassignToSpeakerId) {
+        for (let i = 0; i < $store.segments.length; i++) {
+          const $segment = $store.segments[i];
+          if (!$segment) continue;
+
+          if ($segment.speakerId.peek() === variables.speakerId) {
+            affectedSegments.push({
+              index: i,
+              speakerId: variables.speakerId,
+            });
+            $segment.speakerId.set(variables.reassignToSpeakerId);
+          }
+        }
+      }
+
+      // Remove the speaker
+      $store.removeSpeaker(variables.speakerId);
+
+      // Clear selection if the deleted speaker was selected
+      if ($store.selectedSpeakerId.peek() === variables.speakerId) {
+        $store.selectedSpeakerId.set(null);
+      }
+
+      return { previousSpeaker, speakerIndex, affectedSegments };
+    },
+    onError: (_err, _variables, context) => {
+      if (!context?.previousSpeaker) return;
+
+      // Restore the speaker at its original position
+      $store.speakers.splice(context.speakerIndex, 0, context.previousSpeaker);
+
+      // Restore segment speaker assignments
+      for (const { index, speakerId } of context.affectedSegments) {
+        $store.segments[index]?.speakerId.set(speakerId);
       }
     },
   });

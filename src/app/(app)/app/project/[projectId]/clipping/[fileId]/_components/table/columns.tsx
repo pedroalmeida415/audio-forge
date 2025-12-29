@@ -3,12 +3,11 @@
 import { useValue } from "@legendapp/state/react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Play } from "lucide-react";
-import { useMemo } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
-import type { DiarizationSegment } from "~/server/db/schema";
+import type { FileSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
 import {
   DURATION_THRESHOLDS,
@@ -35,7 +34,7 @@ function SelectAllCheckbox() {
     () =>
       $store.segmentsBySpeaker
         .get()
-        [$store.selectedSpeaker.get()!]?.filter((seg) => !seg.isDeleted) ?? [],
+        [$store.selectedSpeakerId.get()!]?.filter((seg) => !seg.isDeleted) ?? [],
   );
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
@@ -152,7 +151,7 @@ function ReviewedCell({ isReviewed }: { isReviewed: boolean }) {
 // Column Definitions
 // ============================================================================
 
-export function createColumns(): ColumnDef<DiarizationSegment>[] {
+export function createColumns(): ColumnDef<FileSegment>[] {
   return [
     // Checkbox column - subscribes directly to store
     {

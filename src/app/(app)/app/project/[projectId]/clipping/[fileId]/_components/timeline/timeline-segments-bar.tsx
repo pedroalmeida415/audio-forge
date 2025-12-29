@@ -3,8 +3,9 @@
 import { observe } from "@legendapp/state";
 import { useEffect, useRef, useState } from "react";
 import { withAlpha } from "~/lib/speaker-colors";
-import type { DiarizationSegment } from "~/server/db/schema";
+import type { FileSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
+import { getSpeakerLabel } from "../../_utils/segment-utils";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
@@ -19,7 +20,7 @@ export function TimelineSegmentsBar() {
   const $store = useClippingStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const segmentsDataRef = useRef<DiarizationSegment[]>([]);
+  const segmentsDataRef = useRef<FileSegment[]>([]);
 
   const [isReady, setIsReady] = useState(false);
 
@@ -49,7 +50,9 @@ export function TimelineSegmentsBar() {
       const pps = $store.timeline.getPixelsPerSecond.get();
       const containerWidth = $store.timeline.containerWidth.get();
       const activeSegmentId = $store.activeSegmentId.get();
-      const selectedSpeaker = $store.selectedSpeaker.get();
+      const selectedSpeakerId = $store.selectedSpeakerId.get();
+      const speakers = $store.speakers.get();
+      const speakerColors = $store.speakerColors.get();
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
@@ -75,18 +78,17 @@ export function TimelineSegmentsBar() {
 
       // Add/update segments for visible IDs
       for (const segment of segmentsDataRef.current) {
-        const { id, speaker, start, end } = segment;
+        const { id, speakerId, start, end } = segment;
         if (!visibleIds.has(id)) continue;
 
-        // Get speaker color
-        const color = $store.speakerColors[speaker]?.get();
-        const collectionName =
-          $store.speakerCollections[speaker]?.collectionName.get() ?? speaker;
+        // Get speaker color and label
+        const color = speakerColors[speakerId];
+        const label = getSpeakerLabel(speakerId, speakers);
 
         // Determine states
         const isActive = id === activeSegmentId;
         const isDimmed =
-          selectedSpeaker !== null && speaker !== selectedSpeaker;
+          selectedSpeakerId !== null && speakerId !== selectedSpeakerId;
 
         // Calculate position and size
         const x = start * pps - scrollOffset;
@@ -95,7 +97,7 @@ export function TimelineSegmentsBar() {
         // Create element if it doesn't exist
         let el = segmentElementsMap.current.get(id);
         if (!el) {
-          el = createSegmentElement(id, collectionName, () => {
+          el = createSegmentElement(id, label, () => {
             $store.setActiveSegment(id);
           });
           container.appendChild(el);
@@ -106,10 +108,10 @@ export function TimelineSegmentsBar() {
         el.style.transform = `translateX(${x}px)`;
         el.style.width = `${width}px`;
 
-        // Update label text (collection name may change)
+        // Update label text (speaker label may change)
         const span = el.firstElementChild as HTMLSpanElement | null;
-        if (span && span.textContent !== collectionName) {
-          span.textContent = collectionName;
+        if (span && span.textContent !== label) {
+          span.textContent = label;
         }
 
         // Update styling based on states

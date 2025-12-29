@@ -6,7 +6,6 @@ import { useTimelineResize } from "../../_hooks/use-timeline-resize";
 import { useWheelZoom } from "../../_hooks/use-wheel-zoom";
 import { HoverPlayhead } from "./hover-playhead";
 import { SegmentResizeHandles } from "./segment-resize-handles";
-import { SelectionControls } from "./selection-controls";
 import { SelectionOverlay } from "./selection-overlay";
 import { SelectionResizeHandles } from "./selection-resize-handles";
 import { TimelineProgressBar } from "./timeline-progress-bar";
@@ -87,9 +86,8 @@ export function TimelineContainer() {
       {/* Segment resize handles - portal renders to document.body */}
       <SegmentResizeHandles />
 
-      {/* Selection UI - portal renders to document.body */}
+      {/* Selection resize handles - portal renders to document.body */}
       <SelectionResizeHandles />
-      <SelectionControls />
     </div>
   );
 }

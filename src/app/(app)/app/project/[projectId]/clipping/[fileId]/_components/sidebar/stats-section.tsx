@@ -11,11 +11,11 @@ export function StatsSection() {
   const $store = useClippingStore();
 
   const allSegments = useValue($store.segments);
-  const selectedSpeaker = useValue($store.selectedSpeaker);
+  const selectedSpeakerId = useValue($store.selectedSpeakerId);
 
   let segments = allSegments;
-  if (selectedSpeaker) {
-    segments = segments.filter((s) => s.speaker === selectedSpeaker);
+  if (selectedSpeakerId) {
+    segments = segments.filter((s) => s.speakerId === selectedSpeakerId);
   }
   const stats = calculateStats(segments);
   const distribution = getDurationDistribution(segments);

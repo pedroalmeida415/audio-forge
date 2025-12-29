@@ -1,25 +1,34 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { Users } from "lucide-react";
-import { useParams } from "next/navigation";
+import { Upload, Users } from "lucide-react";
+import { useState } from "react";
+import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { Separator } from "~/components/ui/separator";
 import { useClippingStore } from "../../_context/store.context";
+import { ExportDialog } from "../dialogs";
 import { SegmentActions } from "./bulk-actions";
-import { CollectionCombobox } from "./collection-combobox";
 import { SelectionSummary } from "./selection-summary";
 import { StatsSection } from "./stats-section";
 
 export function RightSidebar() {
-  const { diarizationId } = useParams<{ diarizationId: string }>();
-
   const $store = useClippingStore();
 
-  const projectId = useValue($store.projectId);
-  const selectedSpeaker = useValue($store.selectedSpeaker);
+  const selectedSpeakerId = useValue($store.selectedSpeakerId);
+  const selectedSegmentIds = useValue($store.selectedSegmentIds);
+  const segments = useValue($store.segments);
 
-  if (!selectedSpeaker) {
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  // Count exportable segments (selected or all for current speaker)
+  const exportableCount =
+    selectedSegmentIds.size > 0
+      ? selectedSegmentIds.size
+      : segments.filter(
+          (s) => s.speakerId === selectedSpeakerId && !s.isDeleted,
+        ).length;
+
+  if (!selectedSpeakerId) {
     return (
       <aside className="flex w-[280px] flex-col items-center justify-center border-l bg-muted/20 text-muted-foreground">
         <Users className="mb-2 h-10 w-10 opacity-50" />
@@ -30,29 +39,48 @@ export function RightSidebar() {
 
   return (
     <aside className="flex w-[280px] flex-col border-l bg-muted/20">
-      {/* Stats pinned to bottom */}
-      <div className="shrink-0 border-t p-4">
-        <StatsSection />
-      </div>
       {/* Scrollable content area */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
-          {/* Collection mapping for current speaker */}
-          <CollectionCombobox
-            speaker={selectedSpeaker}
-            diarizationId={diarizationId}
-            projectId={projectId}
-          />
-
-          <Separator />
-
           {/* Selection Summary - shows when items selected */}
           <SelectionSummary />
 
           {/* Actions - for active or selected segments */}
           <SegmentActions />
+
+          {/* Export section */}
+          <div className="space-y-2">
+            <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
+              Export
+            </h3>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => setExportDialogOpen(true)}
+              disabled={exportableCount === 0}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Export to Collection
+            </Button>
+            <p className="text-muted-foreground text-xs">
+              {selectedSegmentIds.size > 0
+                ? `${selectedSegmentIds.size} selected`
+                : `${exportableCount} segments for this speaker`}
+            </p>
+          </div>
         </div>
       </ScrollArea>
+
+      {/* Stats pinned to bottom */}
+      <div className="shrink-0 border-t p-4">
+        <StatsSection />
+      </div>
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+      />
     </aside>
   );
 }
