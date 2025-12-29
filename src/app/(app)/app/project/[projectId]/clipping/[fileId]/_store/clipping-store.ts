@@ -199,7 +199,7 @@ export function createClippingStore({
 
     // Computed values
     speakerColors: () => {
-      return createSpeakerColorMap($store.speakers.peek());
+      return createSpeakerColorMap($store.speakers.get());
     },
 
     // Playback state + actions

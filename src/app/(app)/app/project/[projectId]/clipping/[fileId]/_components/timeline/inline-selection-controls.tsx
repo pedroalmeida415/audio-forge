@@ -1,20 +1,28 @@
 "use client";
 
-import { useSelector, useValue } from "@legendapp/state/react";
-import { Play, Plus, UserPlus } from "lucide-react";
+import { useSelector } from "@legendapp/state/react";
+import { Check, ChevronsUpDown, Play, Plus } from "lucide-react";
+import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "~/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
 
@@ -34,11 +42,9 @@ function formatTimeWithMs(seconds: number): string {
  * Only visible when selection mode is 'active' (drag-to-select completed).
  * Provides:
  * - Time range display (MM:SS.mmm - MM:SS.mmm)
- * - Speaker picker with inline "Create new" option
+ * - Speaker combobox (select existing or type to create new)
  * - Play selection button
  * - Create segment button
- *
- * Replaces the floating portal-based SelectionControls component.
  */
 export function InlineSelectionControls() {
   const $store = useClippingStore();
@@ -55,6 +61,9 @@ export function InlineSelectionControls() {
     return selectionSpeaker ?? $store.selectedSpeakerId.get() ?? "";
   });
 
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
   const createSegmentMutation = api.file.createSegment.useMutation();
   const createSpeakerMutation = api.file.createSpeaker.useMutation();
 
@@ -67,28 +76,28 @@ export function InlineSelectionControls() {
     }
   };
 
-  const handleSpeakerChange = (speakerId: string) => {
+  const handleSpeakerSelect = (speakerId: string) => {
     $store.selection.setSelectedSpeaker(speakerId);
+    setOpen(false);
+    setSearchValue("");
   };
 
-  const handleCreateSpeaker = () => {
-    // Generate a unique label
-    const existingLabels = speakers.map((s) => s.label);
-    let labelNum = speakers.length;
-    let newLabel: string;
-    do {
-      newLabel = `SPEAKER_${String(labelNum).padStart(2, "0")}`;
-      labelNum++;
-    } while (existingLabels.includes(newLabel));
+  const handleCreateSpeaker = (label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
 
     createSpeakerMutation.mutate(
-      { fileId, label: newLabel },
+      { fileId, label: trimmed },
       {
-        onSuccess: (newSpeaker) => {
-          $store.selection.setSelectedSpeaker(newSpeaker.id);
+        onSuccess: (result) => {
+          if (result.speaker) {
+            $store.selection.setSelectedSpeaker(result.speaker.id);
+          }
         },
       },
     );
+    setOpen(false);
+    setSearchValue("");
   };
 
   const handleCreateSegment = () => {
@@ -110,6 +119,11 @@ export function InlineSelectionControls() {
 
   const selectedSpeaker = speakers.find((s) => s.id === selectedSpeakerId);
 
+  // Check if search matches any existing speaker
+  const searchMatchesExisting = speakers.some(
+    (s) => s.label.toLowerCase() === searchValue.toLowerCase().trim(),
+  );
+
   return (
     <div className="flex items-center gap-2 border-l pl-3">
       {/* Time range display */}
@@ -119,52 +133,91 @@ export function InlineSelectionControls() {
         <span>{formatTimeWithMs(range.end)}</span>
       </div>
 
-      {/* Speaker picker dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      {/* Speaker combobox */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
           <Button
             variant="outline"
             size="sm"
-            className="h-8 min-w-[140px] justify-start gap-2"
+            role="combobox"
+            aria-expanded={open}
+            className="h-8 w-[160px] justify-between"
           >
             {selectedSpeaker ? (
-              <>
+              <div className="flex items-center gap-2">
                 <div
                   className="h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: speakerColors[selectedSpeakerId] }}
                 />
                 <span className="truncate">{selectedSpeaker.label}</span>
-              </>
+              </div>
             ) : (
-              <span className="text-muted-foreground">Select speaker</span>
+              <span className="text-muted-foreground">Select speaker...</span>
             )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[180px]">
-          {speakers.map((speaker) => (
-            <DropdownMenuItem
-              key={speaker.id}
-              onClick={() => handleSpeakerChange(speaker.id)}
-              className="flex items-center gap-2"
-            >
-              <div
-                className="h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: speakerColors[speaker.id] }}
-              />
-              <span>{speaker.label}</span>
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={handleCreateSpeaker}
-            className="flex items-center gap-2"
-            disabled={createSpeakerMutation.isPending}
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>Create new speaker</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </PopoverTrigger>
+        <PopoverContent className="w-[200px] p-0" align="start">
+          <Command>
+            <CommandInput
+              placeholder="Search or create..."
+              value={searchValue}
+              onValueChange={setSearchValue}
+            />
+            <CommandList>
+              <CommandEmpty>
+                {searchValue.trim() ? (
+                  <button
+                    type="button"
+                    className="flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent"
+                    onClick={() => handleCreateSpeaker(searchValue)}
+                    disabled={createSpeakerMutation.isPending}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create "{searchValue.trim()}"
+                  </button>
+                ) : (
+                  "No speakers found."
+                )}
+              </CommandEmpty>
+              <CommandGroup>
+                {speakers.map((speaker) => (
+                  <CommandItem
+                    key={speaker.id}
+                    value={speaker.label}
+                    onSelect={() => handleSpeakerSelect(speaker.id)}
+                  >
+                    <div
+                      className="mr-2 h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: speakerColors[speaker.id] }}
+                    />
+                    <span>{speaker.label}</span>
+                    <Check
+                      className={cn(
+                        "ml-auto h-4 w-4",
+                        selectedSpeakerId === speaker.id
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    />
+                  </CommandItem>
+                ))}
+                {/* Show create option if search doesn't match existing */}
+                {searchValue.trim() && !searchMatchesExisting && (
+                  <CommandItem
+                    value={`create-${searchValue}`}
+                    onSelect={() => handleCreateSpeaker(searchValue)}
+                    disabled={createSpeakerMutation.isPending}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create "{searchValue.trim()}"
+                  </CommandItem>
+                )}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
 
       {/* Play selection button */}
       <Tooltip>

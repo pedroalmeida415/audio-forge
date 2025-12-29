@@ -230,13 +230,13 @@ export function setupMutationDefaults(
       return { tempId };
     },
     onSuccess: (result, _variables, context) => {
-      if (!context?.tempId) return;
+      if (!context?.tempId || !result.speaker) return;
 
       // Replace temp ID with real ID from server
       const speakers = $store.speakers.peek();
       const index = speakers.findIndex((s) => s.id === context.tempId);
       if (index !== -1) {
-        $store.speakers[index]?.id.set(result.speakerId);
+        $store.speakers[index]?.id.set(result.speaker.id);
       }
     },
     onError: (_err, _variables, context) => {
