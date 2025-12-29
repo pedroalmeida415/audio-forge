@@ -9,24 +9,17 @@ import { useClippingStore } from "../../_context/store.context";
 import { ExportDialog } from "../dialogs";
 import { SegmentActions } from "./bulk-actions";
 import { SelectionSummary } from "./selection-summary";
-import { StatsSection } from "./stats-section";
 
 export function RightSidebar() {
   const $store = useClippingStore();
 
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
-  const segments = useValue($store.segments);
 
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
-  // Count exportable segments (selected or all for current speaker)
-  const exportableCount =
-    selectedSegmentIds.size > 0
-      ? selectedSegmentIds.size
-      : segments.filter(
-          (s) => s.speakerId === selectedSpeakerId && !s.isDeleted,
-        ).length;
+  // Export only works with checkbox-selected segments
+  const selectionCount = selectedSegmentIds.size;
 
   if (!selectedSpeakerId) {
     return (
@@ -45,35 +38,24 @@ export function RightSidebar() {
           {/* Selection Summary - shows when items selected */}
           <SelectionSummary />
 
-          {/* Actions - for active or selected segments */}
+          {/* Actions - for checkbox-selected segments only */}
           <SegmentActions />
-
-          {/* Export section */}
-          <div className="space-y-2">
-            <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
-              Export
-            </h3>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => setExportDialogOpen(true)}
-              disabled={exportableCount === 0}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Export to Collection
-            </Button>
-            <p className="text-muted-foreground text-xs">
-              {selectedSegmentIds.size > 0
-                ? `${selectedSegmentIds.size} selected`
-                : `${exportableCount} segments for this speaker`}
-            </p>
-          </div>
         </div>
       </ScrollArea>
 
-      {/* Stats pinned to bottom */}
-      <div className="shrink-0 border-t p-4">
-        <StatsSection />
+      {/* Export section pinned to bottom */}
+      <div className="shrink-0 border-t bg-background p-4">
+        <Button
+          size="lg"
+          className="w-full"
+          onClick={() => setExportDialogOpen(true)}
+          disabled={selectionCount === 0}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          {selectionCount > 0
+            ? `Export ${selectionCount} Segment${selectionCount !== 1 ? "s" : ""}`
+            : "Export to Collection"}
+        </Button>
       </div>
 
       {/* Export Dialog */}

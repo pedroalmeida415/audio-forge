@@ -36,9 +36,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
   const fileId = useValue($store.fileId);
   const projectId = useValue($store.projectId);
-  const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
-  const segments = useValue($store.segments);
 
   // Mode: "select" for choosing existing collection, "create" for new collection
   const [mode, setMode] = useState<"select" | "create">("select");
@@ -59,21 +57,8 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
   const trpcUtils = api.useUtils();
 
-  // Determine which segments to export
-  // If segments are selected, export those; otherwise export all for current speaker
-  const segmentIdsToExport = (() => {
-    if (selectedSegmentIds.size > 0) {
-      return Array.from(selectedSegmentIds);
-    }
-    // Export all non-deleted segments for current speaker
-    if (selectedSpeakerId) {
-      return segments
-        .filter((s) => s.speakerId === selectedSpeakerId && !s.isDeleted)
-        .map((s) => s.id);
-    }
-    return [];
-  })();
-
+  // Only export checkbox-selected segments
+  const segmentIdsToExport = Array.from(selectedSegmentIds);
   const segmentCount = segmentIdsToExport.length;
 
   const handleExport = async () => {

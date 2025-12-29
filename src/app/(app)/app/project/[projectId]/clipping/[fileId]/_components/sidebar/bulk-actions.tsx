@@ -8,30 +8,29 @@ import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
 import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 
+/**
+ * Bulk actions for checkbox-selected segments.
+ *
+ * IMPORTANT: This component only operates on segments selected via checkbox
+ * (selectedSegmentIds), NOT the active segment (activeSegmentId).
+ *
+ * - activeSegmentId: Single focused segment in timeline (for timeline actions)
+ * - selectedSegmentIds: Checkbox-selected segments (for bulk sidebar actions)
+ */
 export function SegmentActions() {
   const $store = useClippingStore();
 
   const fileId = useValue($store.fileId);
+  const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
   const updateSegmentsMutation = api.file.updateSegments.useMutation();
 
   const [changeSpeakerOpen, setChangeSpeakerOpen] = useState(false);
 
-  // Determine target IDs: selected segments if any, otherwise active segment
-  const targetIds = useValue(() => {
-    const selectedIds = $store.selectedSegmentIds.get();
-    if (selectedIds.size > 0) {
-      return Array.from(selectedIds);
-    }
-    const activeId = $store.activeSegmentId.get();
-    if (activeId) {
-      return [activeId];
-    }
-    return [];
-  });
-
-  const hasTarget = targetIds.length > 0;
-  const isMultiple = targetIds.length > 1;
+  // Only use checkbox-selected segments, NOT active segment
+  const targetIds = Array.from(selectedSegmentIds);
+  const hasSelection = targetIds.length > 0;
+  const selectionCount = targetIds.length;
 
   const handleMarkAsReviewed = () => {
     updateSegmentsMutation.mutate({
@@ -49,10 +48,24 @@ export function SegmentActions() {
     });
   };
 
+  // Don't render section if no segments are selected
+  if (!hasSelection) {
+    return (
+      <div className="space-y-2">
+        <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
+          Actions
+        </h3>
+        <p className="text-muted-foreground text-xs">
+          Select segments using checkboxes to enable bulk actions.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <h3 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
-        Actions
+        Actions ({selectionCount} selected)
       </h3>
       <div className="flex flex-col gap-1.5">
         <Button
@@ -60,7 +73,6 @@ export function SegmentActions() {
           size="sm"
           className="h-9 justify-start"
           onClick={handleMarkAsReviewed}
-          disabled={!hasTarget}
         >
           <Check className="mr-2 h-4 w-4" />
           Mark as Reviewed
@@ -70,7 +82,6 @@ export function SegmentActions() {
           size="sm"
           className="h-9 justify-start"
           onClick={() => setChangeSpeakerOpen(true)}
-          disabled={!hasTarget}
         >
           <User className="mr-2 h-4 w-4" />
           Change Speaker
@@ -78,12 +89,11 @@ export function SegmentActions() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500 disabled:text-red-500/50"
+          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500"
           onClick={handleDelete}
-          disabled={!hasTarget}
         >
           <Trash2 className="mr-2 h-4 w-4" />
-          {isMultiple ? "Delete Selected" : "Delete"}
+          Delete Selected
         </Button>
       </div>
 

@@ -246,6 +246,7 @@ export function setupMutationDefaults(
   });
 
   // updateSpeaker: handles renaming a speaker or changing color
+  // API expects flat params: { fileId, speakerId, label?, color? }
   trpcUtils.file.updateSpeaker.setMutationDefaults({
     onMutate: async (variables) => {
       const speakers = $store.speakers.peek();
@@ -253,7 +254,11 @@ export function setupMutationDefaults(
       const previousValue = speaker ? { ...speaker } : undefined;
 
       if (speaker) {
-        $store.updateSpeaker(variables.speakerId, variables.updates);
+        // Build updates object from flat variables
+        const updates: Partial<{ label: string; color: string }> = {};
+        if (variables.label !== undefined) updates.label = variables.label;
+        if (variables.color !== undefined) updates.color = variables.color;
+        $store.updateSpeaker(variables.speakerId, updates);
       }
 
       return { previousValue };
