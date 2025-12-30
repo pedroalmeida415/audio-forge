@@ -34,6 +34,13 @@ export function RightSidebar() {
 
   return (
     <aside className="flex w-[280px] flex-col border-l bg-muted/20">
+      {/* Separator */}
+
+      {/* Duration distribution chart */}
+      {/* <div className="px-4 py-2">
+        <DurationDistributionChart speakerId={selectedSpeakerId} />
+      </div> */}
+      {/* <Separator /> */}
       {/* Scrollable content area */}
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
@@ -59,14 +66,6 @@ export function RightSidebar() {
             ? `Export ${selectionCount} Segment${selectionCount !== 1 ? "s" : ""}`
             : "Export to Collection"}
         </Button>
-      </div>
-
-      {/* Separator */}
-      <Separator />
-
-      {/* Duration distribution chart */}
-      <div className="px-4 py-2">
-        <DurationDistributionChart speakerId={selectedSpeakerId} />
       </div>
 
       {/* Export Dialog */}

@@ -3,7 +3,7 @@
 import { use } from "react";
 import { api } from "~/trpc/react";
 import { SpeakersDrawer } from "./_components/drawers";
-import { OuterHeader, OuterSidebar } from "./_components/layout";
+import { OuterHeader } from "./_components/layout";
 import { RightSidebar } from "./_components/sidebar";
 import { TableView } from "./_components/table";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
@@ -38,19 +38,13 @@ export default function ClippingWorkspacePage({
         {/* Outer Header: Back button, file name dropdown, diarize button */}
         <OuterHeader fileName={fileName} projectId={projectId} />
 
-        {/* Main content area with outer sidebar */}
-        <div className="flex min-h-0 flex-1">
-          {/* Inner content: table + inner sidebar + timeline */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1">
-              <TableView />
-              <RightSidebar />
-            </div>
-            <TimelineContainer />
+        {/* Main content area */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1">
+            <TableView />
+            <RightSidebar />
           </div>
-
-          {/* Outer Sidebar: Speakers button */}
-          <OuterSidebar />
+          <TimelineContainer />
         </div>
       </div>
 

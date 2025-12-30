@@ -34,7 +34,8 @@ function SelectAllCheckbox() {
     () =>
       $store.segmentsBySpeaker
         .get()
-        [$store.selectedSpeakerId.get()!]?.filter((seg) => !seg.isDeleted) ?? [],
+        [$store.selectedSpeakerId.get()!]?.filter((seg) => !seg.isDeleted) ??
+      [],
   );
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
@@ -163,14 +164,6 @@ export function createColumns(): ColumnDef<FileSegment>[] {
       size: 40,
     },
 
-    // Index column - uses row index from table
-    {
-      id: "index",
-      header: () => <span className="block text-center">#</span>,
-      cell: ({ row }) => <IndexCell index={row.index} />,
-      size: 50,
-    },
-
     // Play button column - subscribes directly to playback context
     {
       id: "play",
@@ -265,6 +258,14 @@ export function createColumns(): ColumnDef<FileSegment>[] {
         <ReviewedCell isReviewed={row.original.isReviewed ?? false} />
       ),
       size: 90,
+    },
+
+    // Index column - uses row index from table
+    {
+      id: "index",
+      header: () => <span className="block text-center">#</span>,
+      cell: ({ row }) => <IndexCell index={row.index} />,
+      size: 50,
     },
   ];
 }
