@@ -2,7 +2,6 @@
 
 import { use } from "react";
 import { api } from "~/trpc/react";
-import { SpeakersDrawer } from "./_components/drawers";
 import { OuterHeader } from "./_components/layout";
 import { RightSidebar } from "./_components/sidebar";
 import { TableView } from "./_components/table";
@@ -47,9 +46,6 @@ export default function ClippingWorkspacePage({
           <TimelineContainer />
         </div>
       </div>
-
-      {/* Speakers Drawer (portal) */}
-      <SpeakersDrawer />
     </ClippingStoreProvider>
   );
 }

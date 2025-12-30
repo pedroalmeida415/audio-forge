@@ -58,8 +58,6 @@ export function createClippingStore({
 
     audioDataBuffer: ObservableHint.opaque(audioDataBuffer),
 
-    isSpeakersDrawerOpen: false,
-
     // Computed Values
     segmentsBySpeaker: () =>
       $store.segments.reduce(
@@ -169,15 +167,6 @@ export function createClippingStore({
       }
     },
 
-    // Speakers drawer actions
-    openSpeakersDrawer: () => {
-      $store.isSpeakersDrawerOpen.set(true);
-    },
-
-    closeSpeakersDrawer: () => {
-      $store.isSpeakersDrawerOpen.set(false);
-    },
-
     // Speaker CRUD actions (optimistic updates handled by mutations.ts)
     addSpeaker: (speaker: WorkspaceSpeaker) => {
       $store.speakers.push(speaker);
@@ -234,8 +223,6 @@ interface ClippingStoreState {
 
   audioDataBuffer: ArrayBuffer;
 
-  isSpeakersDrawerOpen: boolean;
-
   // Computed values
   segmentsBySpeaker: () => Record<string, FileSegment[]>;
   speakerColors: () => Record<string, string>;
@@ -250,10 +237,6 @@ interface ClippingStoreState {
   // Combined selection + scroll actions
   selectSegment: (segmentId: string) => void;
   navigateSegment: (direction: "next" | "prev") => void;
-
-  // Speakers drawer
-  openSpeakersDrawer: () => void;
-  closeSpeakersDrawer: () => void;
 
   // Speaker CRUD
   addSpeaker: (speaker: WorkspaceSpeaker) => void;
