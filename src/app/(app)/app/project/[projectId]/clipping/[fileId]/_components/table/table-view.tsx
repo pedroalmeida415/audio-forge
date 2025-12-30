@@ -18,7 +18,6 @@ import {
 } from "~/components/ui/tooltip";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
-import { SpeakerHeader } from "../content";
 import { SegmentsTable } from "./segments-table";
 
 /**
@@ -267,10 +266,6 @@ export function TableView() {
 
       {/* Main content */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* Speaker header with name and edit */}
-        <SpeakerHeader />
-
-        {/* Segments table */}
         <SegmentsTable />
       </div>
     </div>
