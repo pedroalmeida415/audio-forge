@@ -27,6 +27,94 @@ const runEffect = <A, E>(
 ) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 export const diarizationRouter = createTRPCRouter({
+  // Start diarization for an existing file
+  startForFile: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string().uuid(),
+        numSpeakers: z.number().int().min(1).max(20).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // 1. Get the file
+      const file = await ctx.db.query.files.findFirst({
+        where: and(
+          eq(files.id, input.fileId),
+          eq(files.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found",
+        });
+      }
+
+      if (!file.storageKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "File has no audio data",
+        });
+      }
+
+      if (!file.projectId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "File must belong to a project",
+        });
+      }
+
+      // 2. Generate presigned download URL for Pyannote
+      const audioUrl = await runEffect(
+        Effect.flatMap(StorageService, (storage) =>
+          storage.generatePresignedDownloadUrl({
+            key: file.storageKey!,
+            expiresIn: 7200, // 2 hours for processing
+          }),
+        ),
+      );
+
+      // 3. Submit diarization job
+      const webhookUrl = `${env.PYANNOTE_WEBHOOK_URL}/api/webhooks/diarization`;
+      const jobResult = await runEffect(
+        Effect.flatMap(DiarizationService, (diarization) =>
+          diarization.submitJob({
+            audioUrl,
+            webhookUrl,
+            numSpeakers: input.numSpeakers,
+            confidence: true,
+          }),
+        ),
+      );
+
+      // 4. Create diarization record
+      const [diarization] = await ctx.db
+        .insert(diarizations)
+        .values({
+          userId: ctx.session.user.id,
+          projectId: file.projectId,
+          fileId: file.id,
+          diarizationJobId: jobResult.jobId,
+          startedAt: new Date(),
+        })
+        .returning();
+
+      if (!diarization) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create diarization record",
+        });
+      }
+
+      return {
+        id: diarization.id,
+        jobId: jobResult.jobId,
+        status: jobResult.status,
+        warning: jobResult.warning,
+      };
+    }),
+
   // Get presigned URL for uploading audio to R2
   getUploadUrl: protectedProcedure
     .input(

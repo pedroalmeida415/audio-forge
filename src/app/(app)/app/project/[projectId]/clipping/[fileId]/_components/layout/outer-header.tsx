@@ -39,8 +39,8 @@ export function OuterHeader({ fileName, projectId }: OuterHeaderProps) {
     onSuccess: () => setIsEditing(false),
   });
 
-  // TODO: Add diarization.start mutation when implemented
-  const isDiarizing = false;
+  const diarizeMutation = api.diarization.startForFile.useMutation();
+  const isDiarizing = diarizeMutation.isPending;
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -154,6 +154,7 @@ export function OuterHeader({ fileName, projectId }: OuterHeaderProps) {
           variant="outline"
           className="h-8 gap-1.5"
           disabled={isDiarizing}
+          onClick={() => diarizeMutation.mutate({ fileId })}
         >
           {isDiarizing ? (
             <>
