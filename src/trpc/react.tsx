@@ -4,6 +4,7 @@ import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   httpBatchStreamLink,
   httpLink,
+  httpSubscriptionLink,
   isNonJsonSerializable,
   loggerLink,
   splitLink,
@@ -56,22 +57,32 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
             (op.direction === "down" && op.result instanceof Error),
         }),
         splitLink({
-          condition: (op) => isNonJsonSerializable(op.input),
-          true: httpLink({
+          // Route subscriptions through SSE link
+          condition: (op) => op.type === "subscription",
+          true: httpSubscriptionLink({
             url: `${getBaseUrl()}/api/trpc`,
-            transformer: {
-              serialize: (d) => d,
-              deserialize: SuperJSON.deserialize,
-            },
-          }),
-          false: httpBatchStreamLink({
             transformer: SuperJSON,
-            url: `${getBaseUrl()}/api/trpc`,
-            headers: () => {
-              const headers = new Headers();
-              headers.set("x-trpc-source", "nextjs-react");
-              return headers;
-            },
+          }),
+          false: splitLink({
+            // Handle non-JSON serializable input with regular httpLink
+            condition: (op) => isNonJsonSerializable(op.input),
+            true: httpLink({
+              url: `${getBaseUrl()}/api/trpc`,
+              transformer: {
+                serialize: (d) => d,
+                deserialize: SuperJSON.deserialize,
+              },
+            }),
+            // Regular queries/mutations use batched streaming
+            false: httpBatchStreamLink({
+              transformer: SuperJSON,
+              url: `${getBaseUrl()}/api/trpc`,
+              headers: () => {
+                const headers = new Headers();
+                headers.set("x-trpc-source", "nextjs-react");
+                return headers;
+              },
+            }),
           }),
         }),
       ],

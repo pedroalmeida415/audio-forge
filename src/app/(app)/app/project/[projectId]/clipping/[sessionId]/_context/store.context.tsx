@@ -1,6 +1,8 @@
 "use client";
 
+import { useValue } from "@legendapp/state/react";
 import { createContext, type ReactNode, use } from "react";
+import { api } from "~/trpc/react";
 import { usePlayback } from "../_hooks/use-playback";
 import {
   type $ClippingStore,
@@ -35,6 +37,7 @@ export function ClippingStoreProvider({
   return (
     <ClippingStoreContext.Provider value={$store}>
       <PlaybackInitializer />
+      <DiarizationSubscriber />
       {children}
     </ClippingStoreContext.Provider>
   );
@@ -91,6 +94,45 @@ function PlaybackInitializer() {
   const $store = useClippingStore();
 
   usePlayback($store);
+
+  return null;
+}
+
+// ============================================================================
+// Diarization Subscriber - subscribes to SSE events for diarization completion
+// ============================================================================
+
+function DiarizationSubscriber() {
+  const $store = useClippingStore();
+  const sessionId = useValue($store.sessionId);
+  const trpcUtils = api.useUtils();
+
+  api.clippingSession.onDiarizationComplete.useSubscription(
+    { sessionId },
+    {
+      onData: async (event) => {
+        if (event.status === "completed") {
+          // Refetch session data from server
+          const session = await trpcUtils.clippingSession.getById.fetch({
+            id: sessionId,
+          });
+
+          // Replace store state with server data
+          $store.replaceSessionData(
+            session.segments ?? [],
+            session.speakers ?? [],
+          );
+        }
+        // For failed status, we could show a toast, but for now just log
+        if (event.status === "failed") {
+          console.error("Diarization failed for session:", sessionId);
+        }
+      },
+      onError: (error) => {
+        console.error("Diarization subscription error:", error);
+      },
+    },
+  );
 
   return null;
 }

@@ -168,6 +168,21 @@ export function createClippingStore({
       }
     },
 
+    // Replace session data with server state (used when diarization completes)
+    replaceSessionData: (
+      newSegments: FileSegment[],
+      newSpeakers: WorkspaceSpeaker[],
+    ) => {
+      batch(() => {
+        $store.segments.set(newSegments);
+        $store.speakers.set(newSpeakers);
+        // Reset selection state since segments changed
+        $store.selectedSpeakerId.set(null);
+        $store.selectedSegmentIds.clear();
+        $store.activeSegmentId.set(null);
+      });
+    },
+
     // Speaker CRUD actions (optimistic updates handled by mutations.ts)
     addSpeaker: (speaker: WorkspaceSpeaker) => {
       $store.speakers.push(speaker);
@@ -240,9 +255,18 @@ interface ClippingStoreState {
   selectSegment: (segmentId: string) => void;
   navigateSegment: (direction: "next" | "prev") => void;
 
+  // Replace session data with server state (for diarization completion)
+  replaceSessionData: (
+    segments: FileSegment[],
+    speakers: WorkspaceSpeaker[],
+  ) => void;
+
   // Speaker CRUD
   addSpeaker: (speaker: WorkspaceSpeaker) => void;
-  updateSpeaker: (speakerId: string, updates: Partial<WorkspaceSpeaker>) => void;
+  updateSpeaker: (
+    speakerId: string,
+    updates: Partial<WorkspaceSpeaker>,
+  ) => void;
   removeSpeaker: (speakerId: string) => void;
 
   // State slices

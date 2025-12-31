@@ -9,6 +9,7 @@ import {
   type FileSegment,
   type WorkspaceSpeaker,
 } from "~/server/db/schema";
+import { diarizationEvents } from "~/server/events/diarization-events";
 
 // Pyannote webhook payload schema
 const webhookPayloadSchema = z.object({
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       ];
       const speakerMap = new Map<string, string>();
 
-      const speakers: WorkspaceSpeaker[] = speakerLabels.map((label) => {
+      const newSpeakers: WorkspaceSpeaker[] = speakerLabels.map((label) => {
         const id = randomUUID();
         speakerMap.set(label, id);
         return {
@@ -74,10 +75,10 @@ export async function POST(request: NextRequest) {
       });
 
       // Convert Pyannote segments to FileSegments
-      const segments: FileSegment[] = payload.output.diarization.map(
+      const newSegments: FileSegment[] = payload.output.diarization.map(
         (segment) => ({
           id: randomUUID(),
-          speakerId: speakerMap.get(segment.speaker)!,
+          speakerId: speakerMap.get(segment.speaker) ?? "",
           start: segment.start,
           end: segment.end,
           confidence: segment.confidence,
@@ -89,9 +90,18 @@ export async function POST(request: NextRequest) {
         }),
       );
 
+      // Merge with existing segments and speakers
+      const mergedSegments = [...(session.segments ?? []), ...newSegments];
+      const mergedSpeakers = [...(session.speakers ?? []), ...newSpeakers];
+
       // Update diarization info
       const diarizationInfo: DiarizationInfo = {
-        ...session.diarization!,
+        ...(session.diarization ?? {
+          jobId: payload.jobId,
+          startedAt: now,
+          completedAt: null,
+          error: null,
+        }),
         status: "completed",
         completedAt: now,
         error: null,
@@ -100,15 +110,23 @@ export async function POST(request: NextRequest) {
       await db
         .update(clippingSessions)
         .set({
-          segments,
-          speakers,
+          segments: mergedSegments,
+          speakers: mergedSpeakers,
           diarization: diarizationInfo,
         })
         .where(eq(clippingSessions.id, session.id));
+
+      // Emit completion event for SSE subscribers
+      diarizationEvents.emitCompletion(session.id, "completed");
     } else if (payload.status === "failed" || payload.status === "canceled") {
       // Update diarization info with failed status
       const diarizationInfo: DiarizationInfo = {
-        ...session.diarization!,
+        ...(session.diarization ?? {
+          jobId: payload.jobId,
+          startedAt: now,
+          completedAt: null,
+          error: null,
+        }),
         status: "failed",
         completedAt: now,
         error:
@@ -123,10 +141,18 @@ export async function POST(request: NextRequest) {
           diarization: diarizationInfo,
         })
         .where(eq(clippingSessions.id, session.id));
+
+      // Emit failure event for SSE subscribers
+      diarizationEvents.emitCompletion(session.id, "failed");
     } else if (payload.status === "running") {
       // Update status to running
       const diarizationInfo: DiarizationInfo = {
-        ...session.diarization!,
+        ...(session.diarization ?? {
+          jobId: payload.jobId,
+          startedAt: now,
+          completedAt: null,
+          error: null,
+        }),
         status: "running",
       };
 

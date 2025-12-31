@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { on } from "node:events";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
@@ -13,6 +14,10 @@ import {
   files,
   type WorkspaceSpeaker,
 } from "~/server/db/schema";
+import {
+  diarizationEvents,
+  type DiarizationEvent,
+} from "~/server/events/diarization-events";
 import {
   DiarizationService,
   QueueService,
@@ -727,5 +732,42 @@ export const clippingSessionRouter = createTRPCRouter({
         totalClips: clipRecords.length,
         queuePosition: enqueueResults[0]?.position ?? 0,
       };
+    }),
+
+  // ============================================================================
+  // Subscriptions
+  // ============================================================================
+
+  /**
+   * Subscribe to diarization completion events for a session.
+   *
+   * The client establishes an SSE connection and receives events when
+   * diarization completes or fails. On receiving a "completed" event,
+   * the client should refetch session data to get the new segments/speakers.
+   */
+  onDiarizationComplete: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .subscription(async function* (opts) {
+      const { sessionId } = opts.input;
+
+      // Create an async iterable from the EventEmitter
+      const eventName = `diarization:${sessionId}`;
+
+      // Listen for events using Node.js on() which returns an async iterable
+      for await (const [event] of on(diarizationEvents, eventName, {
+        signal: opts.signal,
+      })) {
+        const diarizationEvent = event as DiarizationEvent;
+        yield diarizationEvent;
+
+        // After yielding completion, we can stop listening
+        // The client will close the connection and refetch data
+        if (
+          diarizationEvent.status === "completed" ||
+          diarizationEvent.status === "failed"
+        ) {
+          return;
+        }
+      }
     }),
 });
