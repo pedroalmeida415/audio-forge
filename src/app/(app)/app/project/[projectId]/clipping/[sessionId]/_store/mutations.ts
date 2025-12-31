@@ -110,7 +110,7 @@ export function setupMutationDefaults(
         confidence: originalSegment.confidence,
         source: originalSegment.source,
         isDeleted: originalSegment.isDeleted,
-        isReviewed: false,
+        status: "new",
         createdAt: now,
         updatedAt: now,
       };
@@ -154,7 +154,7 @@ export function setupMutationDefaults(
         end: variables.segment.end,
         source: "manual",
         isDeleted: false,
-        isReviewed: true,
+        status: "reviewed",
         createdAt: now,
         updatedAt: now,
       };

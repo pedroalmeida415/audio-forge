@@ -36,7 +36,7 @@ export function SegmentActions() {
     updateSegmentsMutation.mutate({
       sessionId,
       segmentIds: targetIds,
-      updates: { isReviewed: true },
+      updates: { status: "reviewed" },
     });
   };
 

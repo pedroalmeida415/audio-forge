@@ -212,6 +212,14 @@ export interface WorkspaceSpeaker {
 }
 
 /**
+ * Segment status - tracks workflow state
+ * - new: Unreviewed segment (default)
+ * - reviewed: User has reviewed/approved the segment
+ * - done: Segment has been exported
+ */
+export type SegmentStatus = "new" | "reviewed" | "done";
+
+/**
  * Segment - represents a time range with speaker assignment
  * Can come from diarization or be manually created
  */
@@ -223,7 +231,8 @@ export interface FileSegment {
   confidence?: number;
   source: "diarization" | "manual";
   isDeleted?: boolean;
-  isReviewed?: boolean;
+  status?: SegmentStatus;
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 }

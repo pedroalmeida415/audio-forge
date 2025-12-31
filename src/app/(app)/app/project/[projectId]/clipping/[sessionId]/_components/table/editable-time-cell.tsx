@@ -2,7 +2,7 @@
 
 import { useSelector } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
-import { formatTimestamp, parseTimestamp } from "~/lib/time-utils";
+import { formatTimestampWithMs, parseTimestamp } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
@@ -34,7 +34,7 @@ export function EditableTimeCell({
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setInputValue(formatTimestamp(value));
+    setInputValue(formatTimestampWithMs(value));
     setHasError(false);
     setIsEditing(true);
   };
@@ -112,7 +112,7 @@ export function EditableTimeCell({
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "w-16 rounded border bg-background px-1.5 py-0.5 font-mono text-xs focus:outline-none focus:ring-1",
+          "w-24 rounded border bg-background px-1.5 py-0.5 font-mono text-xs focus:outline-none focus:ring-1",
           hasError
             ? "border-red-500 focus:ring-red-500"
             : "border-border focus:ring-primary",
@@ -127,7 +127,7 @@ export function EditableTimeCell({
       onClick={handleStartEdit}
       className="cursor-text rounded px-1 py-0.5 font-mono text-xs transition-colors hover:bg-muted/50"
     >
-      {formatTimestamp(value)}
+      {formatTimestampWithMs(value)}
     </button>
   );
 }

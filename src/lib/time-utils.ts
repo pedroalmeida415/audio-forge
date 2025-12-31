@@ -18,6 +18,28 @@ export function formatTimestamp(seconds: number): string {
 }
 
 /**
+ * Formats seconds to a timestamp string with milliseconds (MM:SS.mmm or H:MM:SS.mmm)
+ * @param seconds - Time in seconds
+ * @returns Formatted timestamp string with milliseconds
+ */
+export function formatTimestampWithMs(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return "00:00.000";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 1000);
+
+  const mmss = `${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
+
+  if (hours > 0) {
+    return `${hours}:${mmss}`;
+  }
+
+  return mmss;
+}
+
+/**
  * Formats seconds to a duration string (e.g., "5.2s", "2m 30s")
  * @param seconds - Duration in seconds
  * @returns Formatted duration string

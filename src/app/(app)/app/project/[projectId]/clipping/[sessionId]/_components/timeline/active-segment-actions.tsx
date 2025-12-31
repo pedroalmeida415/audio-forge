@@ -108,10 +108,13 @@ export function ActiveSegmentActions() {
   };
 
   const handleToggleReviewed = () => {
+    const currentStatus = activeSegment.status ?? "new";
+    // Toggle between "new" and "reviewed" (don't touch "done" status)
+    const newStatus = currentStatus === "reviewed" ? "new" : "reviewed";
     updateSegmentsMutation.mutate({
       sessionId,
       segmentIds: [activeSegmentId],
-      updates: { isReviewed: !activeSegment.isReviewed },
+      updates: { status: newStatus },
     });
   };
 
@@ -201,18 +204,20 @@ export function ActiveSegmentActions() {
         <TooltipTrigger asChild>
           <Button
             size="icon"
-            variant={activeSegment.isReviewed ? "secondary" : "ghost"}
+            variant={activeSegment.status === "reviewed" ? "secondary" : "ghost"}
             className="h-8 w-8"
             onClick={handleToggleReviewed}
             disabled={updateSegmentsMutation.isPending}
           >
             <CheckCircle
-              className={`h-4 w-4 ${activeSegment.isReviewed ? "text-green-500" : ""}`}
+              className={`h-4 w-4 ${activeSegment.status === "reviewed" ? "text-amber-500" : ""}`}
             />
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {activeSegment.isReviewed ? "Mark as unreviewed" : "Mark as reviewed"}
+          {activeSegment.status === "reviewed"
+            ? "Mark as new"
+            : "Mark as reviewed"}
         </TooltipContent>
       </Tooltip>
 

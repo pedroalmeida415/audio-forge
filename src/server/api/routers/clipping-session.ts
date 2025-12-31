@@ -12,6 +12,7 @@ import {
   type DiarizationInfo,
   type FileSegment,
   files,
+  type SegmentStatus,
   type WorkspaceSpeaker,
 } from "~/server/db/schema";
 import {
@@ -31,7 +32,7 @@ const segmentUpdateSchema = z.object({
   end: z.number().min(0).optional(),
   speakerId: z.string().uuid().optional(),
   isDeleted: z.boolean().optional(),
-  isReviewed: z.boolean().optional(),
+  status: z.enum(["new", "reviewed", "done"]).optional(),
 });
 
 // Helper to run Effect with services
@@ -318,7 +319,7 @@ export const clippingSessionRouter = createTRPCRouter({
         end: input.segment.end,
         source: "manual",
         isDeleted: false,
-        isReviewed: true,
+        status: "reviewed",
         createdAt: now,
         updatedAt: now,
       };
@@ -406,7 +407,8 @@ export const clippingSessionRouter = createTRPCRouter({
         confidence: originalSegment.confidence,
         source: originalSegment.source,
         isDeleted: originalSegment.isDeleted,
-        isReviewed: originalSegment.isReviewed,
+        status: originalSegment.status,
+        tags: originalSegment.tags,
         createdAt: originalSegment.createdAt,
         updatedAt: now,
       };
@@ -420,7 +422,7 @@ export const clippingSessionRouter = createTRPCRouter({
         confidence: originalSegment.confidence,
         source: originalSegment.source,
         isDeleted: originalSegment.isDeleted,
-        isReviewed: false,
+        status: "new",
         createdAt: now,
         updatedAt: now,
       };

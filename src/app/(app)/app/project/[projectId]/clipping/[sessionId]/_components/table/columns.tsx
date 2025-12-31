@@ -131,19 +131,44 @@ function DurationCell({ duration }: { duration: number }) {
   );
 }
 
-// Reviewed status cell
-function ReviewedCell({ isReviewed }: { isReviewed: boolean }) {
+// Status cell with colored indicator
+function StatusCell({
+  status,
+}: {
+  status: "new" | "reviewed" | "done";
+}) {
+  const statusConfig = {
+    new: { color: "bg-muted-foreground/30", label: "New" },
+    reviewed: { color: "bg-amber-500", label: "Reviewed" },
+    done: { color: "bg-green-500", label: "Done" },
+  };
+
+  const config = statusConfig[status];
+
   return (
     <div className="flex items-center gap-1.5">
-      <div
-        className={cn(
-          "h-2 w-2 rounded-full",
-          isReviewed ? "bg-green-500" : "bg-muted-foreground/30",
-        )}
-      />
-      <span className="text-muted-foreground text-xs">
-        {isReviewed ? "Yes" : "No"}
-      </span>
+      <div className={cn("h-2 w-2 rounded-full", config.color)} />
+      <span className="text-muted-foreground text-xs">{config.label}</span>
+    </div>
+  );
+}
+
+// Tags cell
+function TagsCell({ tags }: { tags: string[] }) {
+  if (tags.length === 0) {
+    return <span className="text-muted-foreground/50 text-xs">—</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="inline-flex rounded bg-muted px-1.5 py-0.5 text-muted-foreground text-xs"
+        >
+          {tag}
+        </span>
+      ))}
     </div>
   );
 }
@@ -199,7 +224,7 @@ export function createColumns(): ColumnDef<FileSegment>[] {
           maxValue={row.original.end - 0.1}
         />
       ),
-      size: 70,
+      size: 95,
     },
 
     // End time column (editable)
@@ -215,7 +240,7 @@ export function createColumns(): ColumnDef<FileSegment>[] {
           minValue={row.original.start + 0.1}
         />
       ),
-      size: 70,
+      size: 95,
     },
 
     // Duration column (sortable, color-coded)
@@ -239,10 +264,10 @@ export function createColumns(): ColumnDef<FileSegment>[] {
       size: 90,
     },
 
-    // Reviewed column (sortable)
+    // Status column (sortable)
     {
-      id: "reviewed",
-      accessorFn: (row) => row.isReviewed ?? false,
+      id: "status",
+      accessorFn: (row) => row.status ?? "new",
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -250,14 +275,21 @@ export function createColumns(): ColumnDef<FileSegment>[] {
           className="-ml-3 h-8"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Reviewed
+          Status
           <SortIcon isSorted={column.getIsSorted()} />
         </Button>
       ),
-      cell: ({ row }) => (
-        <ReviewedCell isReviewed={row.original.isReviewed ?? false} />
-      ),
+      cell: ({ row }) => <StatusCell status={row.original.status ?? "new"} />,
       size: 90,
+    },
+
+    // Tags column
+    {
+      id: "tags",
+      accessorFn: (row) => row.tags ?? [],
+      header: "Tags",
+      cell: ({ row }) => <TagsCell tags={row.original.tags ?? []} />,
+      size: 120,
     },
 
     // Index column - uses row index from table

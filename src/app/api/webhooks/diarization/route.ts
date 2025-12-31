@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
           confidence: segment.confidence,
           source: "diarization" as const,
           isDeleted: false,
-          isReviewed: false,
+          status: "new" as const,
           createdAt: now,
           updatedAt: now,
         }),
