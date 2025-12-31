@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "~/server/db";
-import { type DiarizationSegment, diarizations } from "~/server/db/schema";
+import {
+  clippingSessions,
+  type DiarizationInfo,
+  type FileSegment,
+  type WorkspaceSpeaker,
+} from "~/server/db/schema";
 
 // Pyannote webhook payload schema
 const webhookPayloadSchema = z.object({
@@ -35,46 +40,102 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const payload = webhookPayloadSchema.parse(body);
 
-    // Find the diarization record by job ID
-    const diarization = await db.query.diarizations.findFirst({
-      where: eq(diarizations.diarizationJobId, payload.jobId),
+    // Find the clipping session by diarization job ID
+    const session = await db.query.clippingSessions.findFirst({
+      where: sql`${clippingSessions.diarization}->>'jobId' = ${payload.jobId}`,
     });
 
-    if (!diarization) {
-      console.error(`Diarization not found for job: ${payload.jobId}`);
+    if (!session) {
+      console.error(`Clipping session not found for job: ${payload.jobId}`);
       return NextResponse.json(
-        { error: "Diarization not found" },
+        { error: "Clipping session not found" },
         { status: 404 },
       );
     }
 
+    const now = new Date().toISOString();
+
     // Update based on status
     if (payload.status === "succeeded" && payload.output) {
-      // Add UUIDs and default values to each segment
-      const segments: DiarizationSegment[] = payload.output.diarization.map(
+      // Extract unique speakers and create WorkspaceSpeaker records
+      const speakerLabels = [
+        ...new Set(payload.output.diarization.map((s) => s.speaker)),
+      ];
+      const speakerMap = new Map<string, string>();
+
+      const speakers: WorkspaceSpeaker[] = speakerLabels.map((label) => {
+        const id = randomUUID();
+        speakerMap.set(label, id);
+        return {
+          id,
+          label,
+          createdAt: now,
+        };
+      });
+
+      // Convert Pyannote segments to FileSegments
+      const segments: FileSegment[] = payload.output.diarization.map(
         (segment) => ({
-          ...segment,
           id: randomUUID(),
+          speakerId: speakerMap.get(segment.speaker)!,
+          start: segment.start,
+          end: segment.end,
+          confidence: segment.confidence,
+          source: "diarization" as const,
           isDeleted: false,
           isReviewed: false,
+          createdAt: now,
+          updatedAt: now,
         }),
       );
 
+      // Update diarization info
+      const diarizationInfo: DiarizationInfo = {
+        ...session.diarization!,
+        status: "completed",
+        completedAt: now,
+        error: null,
+      };
+
       await db
-        .update(diarizations)
+        .update(clippingSessions)
         .set({
-          output: { segments },
-          completedAt: new Date(),
+          segments,
+          speakers,
+          diarization: diarizationInfo,
         })
-        .where(eq(diarizations.id, diarization.id));
+        .where(eq(clippingSessions.id, session.id));
     } else if (payload.status === "failed" || payload.status === "canceled") {
+      // Update diarization info with failed status
+      const diarizationInfo: DiarizationInfo = {
+        ...session.diarization!,
+        status: "failed",
+        completedAt: now,
+        error:
+          payload.status === "canceled"
+            ? "Diarization was canceled"
+            : "Diarization failed",
+      };
+
       await db
-        .update(diarizations)
+        .update(clippingSessions)
         .set({
-          completedAt: new Date(),
-          output: { segments: [] },
+          diarization: diarizationInfo,
         })
-        .where(eq(diarizations.id, diarization.id));
+        .where(eq(clippingSessions.id, session.id));
+    } else if (payload.status === "running") {
+      // Update status to running
+      const diarizationInfo: DiarizationInfo = {
+        ...session.diarization!,
+        status: "running",
+      };
+
+      await db
+        .update(clippingSessions)
+        .set({
+          diarization: diarizationInfo,
+        })
+        .where(eq(clippingSessions.id, session.id));
     }
 
     return NextResponse.json({ received: true });

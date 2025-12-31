@@ -49,7 +49,7 @@ function formatTimeWithMs(seconds: number): string {
 export function InlineSelectionControls() {
   const $store = useClippingStore();
 
-  const fileId = useSelector(() => $store.fileId.get());
+  const sessionId = useSelector(() => $store.sessionId.get());
   const mode = useSelector(() => $store.selection.mode.get());
   const range = useSelector(() => $store.selection.getSelectionRange.get());
   const speakers = useSelector(() => $store.speakers.get());
@@ -64,8 +64,8 @@ export function InlineSelectionControls() {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
-  const createSegmentMutation = api.file.createSegment.useMutation();
-  const createSpeakerMutation = api.file.createSpeaker.useMutation();
+  const createSegmentMutation = api.clippingSession.createSegment.useMutation();
+  const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation();
 
   // Don't render if not in active selection mode
   if (mode !== "active" || !range) return null;
@@ -87,7 +87,7 @@ export function InlineSelectionControls() {
     if (!trimmed) return;
 
     createSpeakerMutation.mutate(
-      { fileId, label: trimmed },
+      { sessionId, label: trimmed },
       {
         onSuccess: (result) => {
           if (result.speaker) {
@@ -104,7 +104,7 @@ export function InlineSelectionControls() {
     if (!range || !selectedSpeakerId) return;
 
     createSegmentMutation.mutate({
-      fileId,
+      sessionId,
       segment: {
         speakerId: selectedSpeakerId,
         start: range.start,

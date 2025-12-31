@@ -67,7 +67,9 @@ export function getDurationDistribution(segments: FileSegment[]): number[] {
     if (bucketIndex === -1) {
       bucketIndex = buckets.length - 1;
     }
-    buckets[bucketIndex]++;
+    // bucketIndex is guaranteed to be in range [0, buckets.length - 1]
+    // biome-ignore lint/style/noNonNullAssertion: bucketIndex is always valid
+    buckets[bucketIndex]!++;
   }
 
   return buckets;

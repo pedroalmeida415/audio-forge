@@ -34,7 +34,7 @@ interface ExportDialogProps {
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const $store = useClippingStore();
 
-  const fileId = useValue($store.fileId);
+  const sessionId = useValue($store.sessionId);
   const projectId = useValue($store.projectId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
@@ -47,13 +47,13 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
   // Fetch existing collections
   const { data: collections, isLoading: collectionsLoading } =
-    api.collection.list.useQuery(
+    api.collections.list.useQuery(
       { projectId },
       { enabled: open && !!projectId },
     );
 
-  const createCollectionMutation = api.collection.create.useMutation();
-  const exportMutation = api.file.exportToCollection.useMutation();
+  const createCollectionMutation = api.collections.create.useMutation();
+  const exportMutation = api.clippingSession.exportToCollection.useMutation();
 
   const trpcUtils = api.useUtils();
 
@@ -79,13 +79,13 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
     // Export segments
     await exportMutation.mutateAsync({
-      fileId,
+      sessionId,
       collectionId,
       segmentIds: segmentIdsToExport,
     });
 
     // Invalidate collections query
-    await trpcUtils.collection.list.invalidate({ projectId });
+    await trpcUtils.collections.list.invalidate({ projectId });
 
     // Clear selection and close dialog
     $store.clearAllSelected();

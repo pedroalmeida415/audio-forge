@@ -153,15 +153,16 @@ export const clips = pgTable(
       .notNull()
       .references(() => collections.id, { onDelete: "cascade" }),
 
-    // Source audio file (nullable for migration, will be backfilled)
+    // Source audio file
     sourceFileId: uuid("source_file_id").references(() => files.id, {
       onDelete: "cascade",
     }),
 
-    // Diarization reference (nullable - manual segments don't need diarization)
-    diarizationId: uuid("diarization_id").references(() => diarizations.id, {
-      onDelete: "set null",
-    }),
+    // Clipping session reference (for tracking source)
+    clippingSessionId: uuid("clipping_session_id").references(
+      () => clippingSessions.id,
+      { onDelete: "set null" },
+    ),
 
     // Output file (nullable until processing completes)
     fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
@@ -200,21 +201,8 @@ export const clips = pgTable(
 );
 
 /**
- * Segment type for diarization output
- */
-export interface DiarizationSegment {
-  id: string;
-  speaker: string;
-  start: number;
-  end: number;
-  confidence?: number;
-  isDeleted?: boolean;
-  isReviewed?: boolean;
-}
-
-/**
  * Workspace-local speaker definition
- * Speakers are scoped to the audio file, not to collections
+ * Speakers are scoped to the clipping session
  */
 export interface WorkspaceSpeaker {
   id: string;
@@ -224,7 +212,7 @@ export interface WorkspaceSpeaker {
 }
 
 /**
- * File segment - represents a time range with speaker assignment
+ * Segment - represents a time range with speaker assignment
  * Can come from diarization or be manually created
  */
 export interface FileSegment {
@@ -241,54 +229,19 @@ export interface FileSegment {
 }
 
 /**
- * Diarizations - One diarization per audio file
- * Segments are stored as JSONB array (pure timestamp data)
+ * Diarization job info - embedded in clipping session
  */
-export const diarizations = pgTable(
-  "diarization",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+export interface DiarizationInfo {
+  jobId: string;
+  status: "pending" | "running" | "completed" | "failed";
+  startedAt: string;
+  completedAt: string | null;
+  error: string | null;
+}
 
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-
-    fileId: uuid("file_id")
-      .notNull()
-      .references(() => files.id, { onDelete: "cascade" }),
-
-    // Pyannote processing info
-    diarizationJobId: varchar("diarization_job_id", { length: 255 }),
-
-    // Diarization segments stored as JSONB
-    output: jsonb("output").$type<{
-      segments: DiarizationSegment[];
-    }>(),
-
-    // Speaker-to-collection mappings stored as JSONB
-    speakerCollections: jsonb("speaker_collections").$type<
-      Record<string, { collectionId: string; collectionName: string }>
-    >(),
-
-    // Timestamps
-    startedAt: timestamp("started_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [index("diarization_id_idx").on(table.id)],
-);
-
+/**
+ * Files - Pure storage reference for audio files
+ */
 export const files = pgTable(
   "file",
   {
@@ -297,7 +250,7 @@ export const files = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
 
-    // Project association (nullable for migration, will be backfilled)
+    // Project association
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "cascade",
     }),
@@ -306,12 +259,6 @@ export const files = pgTable(
 
     // Display name (editable by user)
     name: varchar("name", { length: 255 }),
-
-    // Workspace-local speakers (not tied to collections)
-    speakers: jsonb("speakers").$type<WorkspaceSpeaker[]>(),
-
-    // Workspace segments (user-created or from diarization)
-    segments: jsonb("segments").$type<FileSegment[]>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -324,6 +271,46 @@ export const files = pgTable(
   (table) => [
     index("file_project_id_idx").on(table.projectId),
     index("file_user_id_idx").on(table.userId),
+  ],
+);
+
+/**
+ * Clipping Sessions - Workspace state for editing audio
+ * One session per file (1:1 relationship)
+ */
+export const clippingSessions = pgTable(
+  "clipping_session",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" })
+      .unique(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    // Workspace data
+    segments: jsonb("segments").$type<FileSegment[]>(),
+    speakers: jsonb("speakers").$type<WorkspaceSpeaker[]>(),
+
+    // Embedded diarization job info
+    diarization: jsonb("diarization").$type<DiarizationInfo>(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("clipping_session_file_id_idx").on(table.fileId),
+    index("clipping_session_project_id_idx").on(table.projectId),
   ],
 );
 
@@ -346,7 +333,7 @@ export const sessionRelations = relations(session, ({ one }) => ({
 
 export const projectRelations = relations(projects, ({ many }) => ({
   collections: many(collections),
-  diarizations: many(diarizations),
+  clippingSessions: many(clippingSessions),
   files: many(files),
 }));
 
@@ -368,9 +355,9 @@ export const clipRelations = relations(clips, ({ one }) => ({
     references: [files.id],
     relationName: "sourceFile",
   }),
-  diarization: one(diarizations, {
-    fields: [clips.diarizationId],
-    references: [diarizations.id],
+  clippingSession: one(clippingSessions, {
+    fields: [clips.clippingSessionId],
+    references: [clippingSessions.id],
   }),
   file: one(files, {
     fields: [clips.fileId],
@@ -379,13 +366,24 @@ export const clipRelations = relations(clips, ({ one }) => ({
   }),
 }));
 
-export const diarizationRelations = relations(diarizations, ({ one }) => ({
-  file: one(files, { fields: [diarizations.fileId], references: [files.id] }),
-  project: one(projects, {
-    fields: [diarizations.projectId],
-    references: [projects.id],
+export const clippingSessionRelations = relations(
+  clippingSessions,
+  ({ one, many }) => ({
+    file: one(files, {
+      fields: [clippingSessions.fileId],
+      references: [files.id],
+    }),
+    project: one(projects, {
+      fields: [clippingSessions.projectId],
+      references: [projects.id],
+    }),
+    user: one(user, {
+      fields: [clippingSessions.userId],
+      references: [user.id],
+    }),
+    clips: many(clips),
   }),
-}));
+);
 
 export const fileRelations = relations(files, ({ one, many }) => ({
   user: one(user, { fields: [files.userId], references: [user.id] }),
@@ -393,7 +391,7 @@ export const fileRelations = relations(files, ({ one, many }) => ({
     fields: [files.projectId],
     references: [projects.id],
   }),
-  diarizations: many(diarizations),
+  clippingSession: one(clippingSessions),
   sourceClips: many(clips, { relationName: "sourceFile" }),
   outputClips: many(clips, { relationName: "outputFile" }),
 }));
@@ -402,7 +400,7 @@ export const fileRelations = relations(files, ({ one, many }) => ({
 // TYPE EXPORTS
 // ============================================================================
 
-export type Diarization = typeof diarizations.$inferSelect;
+export type ClippingSession = typeof clippingSessions.$inferSelect;
 export type Clip = typeof clips.$inferSelect;
 export type File = typeof files.$inferSelect;
 export type Project = typeof projects.$inferSelect;

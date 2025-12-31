@@ -2,7 +2,7 @@
 
 import { useValue } from "@legendapp/state/react";
 import { formatDuration } from "~/lib/time-utils";
-import type { DiarizationSegment } from "~/server/db/schema";
+import type { FileSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
 import { getSelectedSegmentsData } from "../../_utils/segment-utils";
 
@@ -19,7 +19,7 @@ export function SelectionSummary() {
         acc[segment.id] = segment;
         return acc;
       },
-      {} as Record<string, DiarizationSegment>,
+      {} as Record<string, FileSegment>,
     );
   });
 

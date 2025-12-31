@@ -1,6 +1,6 @@
 "use client";
 
-import { useSelector, useValue } from "@legendapp/state/react";
+import { useSelector } from "@legendapp/state/react";
 import { ArrowLeft, ChevronDown, Loader2, Pencil, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +23,7 @@ interface OuterHeaderProps {
 
 export function OuterHeader({ fileName, projectId }: OuterHeaderProps) {
   const $store = useClippingStore();
+  const sessionId = useSelector(() => $store.sessionId.get());
   const fileId = useSelector(() => $store.fileId.get());
 
   const [isEditing, setIsEditing] = useState(false);
@@ -39,7 +40,7 @@ export function OuterHeader({ fileName, projectId }: OuterHeaderProps) {
     onSuccess: () => setIsEditing(false),
   });
 
-  const diarizeMutation = api.diarization.startForFile.useMutation();
+  const diarizeMutation = api.clippingSession.startDiarization.useMutation();
   const isDiarizing = diarizeMutation.isPending;
 
   useEffect(() => {
@@ -121,7 +122,7 @@ export function OuterHeader({ fileName, projectId }: OuterHeaderProps) {
                   {otherFiles.map((file) => (
                     <DropdownMenuItem key={file.id} asChild>
                       <Link
-                        href={`/app/project/${projectId}/clipping/${file.id}`}
+                        href={`/app/project/${projectId}/clipping/${file.clippingSession?.id}`}
                         className="cursor-pointer"
                       >
                         <span className="truncate">
@@ -154,7 +155,7 @@ export function OuterHeader({ fileName, projectId }: OuterHeaderProps) {
           variant="outline"
           className="h-8 gap-1.5"
           disabled={isDiarizing}
-          onClick={() => diarizeMutation.mutate({ fileId })}
+          onClick={() => diarizeMutation.mutate({ sessionId })}
         >
           {isDiarizing ? (
             <>

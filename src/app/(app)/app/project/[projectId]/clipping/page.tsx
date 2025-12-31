@@ -39,8 +39,8 @@ export default function ClippingEmptyStatePage({
 
   const getUploadUrl = api.file.getUploadUrl.useMutation();
   const createFile = api.file.create.useMutation({
-    onSuccess: (file) => {
-      router.push(`/app/project/${projectId}/clipping/${file.id}`);
+    onSuccess: ({ session }) => {
+      router.push(`/app/project/${projectId}/clipping/${session.id}`);
     },
   });
 
@@ -204,7 +204,7 @@ export default function ClippingEmptyStatePage({
                       key={existingFile.id}
                       onClick={() =>
                         router.push(
-                          `/app/project/${projectId}/clipping/${existingFile.id}`,
+                          `/app/project/${projectId}/clipping/${existingFile.clippingSession?.id}`,
                         )
                       }
                       className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"

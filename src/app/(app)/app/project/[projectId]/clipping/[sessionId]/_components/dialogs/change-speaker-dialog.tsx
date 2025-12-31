@@ -26,14 +26,14 @@ export function ChangeSpeakerDialog({
   const $store = useClippingStore();
 
   const speakers = useValue($store.speakers);
-  const fileId = useValue($store.fileId);
+  const sessionId = useValue($store.sessionId);
   const speakerColors = useValue($store.speakerColors);
 
-  const updateSegmentsMutation = api.file.updateSegments.useMutation();
+  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
 
   const handleSelectSpeaker = (speakerId: string) => {
     updateSegmentsMutation.mutate({
-      fileId,
+      sessionId,
       segmentIds: targetSegmentIds,
       updates: { speakerId },
     });

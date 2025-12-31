@@ -2,7 +2,7 @@ import { batch, type Observable, ObservableHint } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
 import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type {
-  File,
+  ClippingSession,
   FileSegment,
   WorkspaceSpeaker,
 } from "~/server/db/schema";
@@ -21,7 +21,7 @@ import type { TimelineState } from "./slices/timeline";
 export { TIMELINE_CONSTANTS } from "./constants";
 
 export interface ClippingStoreInitialData {
-  file: File;
+  session: ClippingSession;
   audioDataBuffer: ArrayBuffer;
 }
 
@@ -36,18 +36,19 @@ export interface ClippingStoreInitialData {
  */
 export function createClippingStore({
   audioDataBuffer,
-  file,
+  session,
 }: ClippingStoreInitialData) {
-  const segments = file.segments ?? [];
-  const speakers = file.speakers ?? [];
+  const segments = session.segments ?? [];
+  const speakers = session.speakers ?? [];
 
   // Create the observable - closures capture $store by reference
   // This works because closures capture variables by reference, not value.
   // When the functions are later called, $store will be assigned.
   const $store = useObservable<ClippingStoreState>({
     // Core data
-    fileId: file.id,
-    projectId: file.projectId ?? "",
+    sessionId: session.id,
+    fileId: session.fileId,
+    projectId: session.projectId,
 
     segments,
     speakers,
@@ -211,6 +212,7 @@ export function createClippingStore({
 
 interface ClippingStoreState {
   // Core data
+  sessionId: string;
   fileId: string;
   projectId: string;
 

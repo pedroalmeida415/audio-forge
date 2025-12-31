@@ -28,9 +28,9 @@ export function EditableTimeCell({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const $store = useClippingStore();
-  const fileId = useSelector(() => $store.fileId.get());
+  const sessionId = useSelector(() => $store.sessionId.get());
 
-  const updateSegmentsMutation = api.file.updateSegments.useMutation();
+  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -65,7 +65,7 @@ export function EditableTimeCell({
       const updates = field === "start" ? { start: parsed } : { end: parsed };
 
       updateSegmentsMutation.mutate({
-        fileId,
+        sessionId,
         segmentIds: segmentId,
         updates,
       });

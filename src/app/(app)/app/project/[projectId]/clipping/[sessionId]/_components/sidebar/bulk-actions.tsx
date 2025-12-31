@@ -20,10 +20,10 @@ import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 export function SegmentActions() {
   const $store = useClippingStore();
 
-  const fileId = useValue($store.fileId);
+  const sessionId = useValue($store.sessionId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
-  const updateSegmentsMutation = api.file.updateSegments.useMutation();
+  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
 
   const [changeSpeakerOpen, setChangeSpeakerOpen] = useState(false);
 
@@ -34,7 +34,7 @@ export function SegmentActions() {
   const handleMarkAsReviewed = () => {
     if (!hasSelection) return;
     updateSegmentsMutation.mutate({
-      fileId,
+      sessionId,
       segmentIds: targetIds,
       updates: { isReviewed: true },
     });
@@ -43,7 +43,7 @@ export function SegmentActions() {
   const handleDelete = () => {
     if (!hasSelection) return;
     updateSegmentsMutation.mutate({
-      fileId,
+      sessionId,
       segmentIds: targetIds,
       updates: { isDeleted: true },
     });

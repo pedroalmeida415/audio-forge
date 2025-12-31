@@ -12,27 +12,28 @@ import { fetchAudioData } from "./_utils/audio-fetch";
 export default function ClippingWorkspacePage({
   params,
 }: {
-  params: Promise<{ projectId: string; fileId: string }>;
+  params: Promise<{ projectId: string; sessionId: string }>;
 }) {
-  const { projectId, fileId } = use(params);
+  const { projectId, sessionId } = use(params);
 
-  // Fetch file data with speakers and segments
-  const [file] = api.file.getById.useSuspenseQuery(
-    { id: fileId },
+  // Fetch session data with file, speakers and segments
+  const [session] = api.clippingSession.getById.useSuspenseQuery(
+    { id: sessionId },
     { refetchOnWindowFocus: false },
   );
+
   const [audioUrl] = api.file.getAudioUrl.useSuspenseQuery(
-    { fileId },
+    { fileId: session.fileId },
     { refetchOnWindowFocus: false, staleTime: Infinity },
   );
 
   const audioDataBuffer = use(fetchAudioData(audioUrl));
 
   const fileName =
-    file.name ?? file.storageKey?.split("/").pop() ?? "Audio File";
+    session.file.name ?? session.file.storageKey?.split("/").pop() ?? "Audio File";
 
   return (
-    <ClippingStoreProvider initialData={{ file, audioDataBuffer }}>
+    <ClippingStoreProvider initialData={{ session, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
         {/* Outer Header: Back button, file name dropdown, diarize button */}
         <OuterHeader fileName={fileName} projectId={projectId} />

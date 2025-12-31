@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clips, diarizations } from "~/server/db/schema";
+import { clips, clippingSessions } from "~/server/db/schema";
 import { QueueService, ServicesLive, StorageService } from "~/services";
 
 // Helper to run Effect with services
@@ -26,105 +26,17 @@ export const clipsRouter = createTRPCRouter({
       });
     }),
 
-  // List clips by diarization (to show pending/processing/failed clips)
-  listByDiarization: protectedProcedure
-    .input(z.object({ diarizationId: z.string().uuid() }))
+  // List clips by clipping session
+  listBySession: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.query.clips.findMany({
         where: and(
-          eq(clips.diarizationId, input.diarizationId),
+          eq(clips.clippingSessionId, input.sessionId),
           eq(clips.userId, ctx.session.user.id),
         ),
         orderBy: (clips, { desc }) => [desc(clips.createdAt)],
       });
-    }),
-
-  // Enqueue clip generation for selected segments
-  enqueueGeneration: protectedProcedure
-    .input(
-      z.object({
-        diarizationId: z.string().uuid(),
-        collectionId: z.string().uuid(),
-        segmentIds: z.array(z.string()).min(1),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // 1. Fetch diarization with file info
-      const diarization = await ctx.db.query.diarizations.findFirst({
-        where: and(
-          eq(diarizations.id, input.diarizationId),
-          eq(diarizations.userId, ctx.session.user.id),
-        ),
-        with: { file: true },
-      });
-
-      if (!diarization) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Diarization not found",
-        });
-      }
-
-      const sourceStorageKey = diarization.file?.storageKey;
-      if (!sourceStorageKey) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Source audio file not found",
-        });
-      }
-
-      // 2. Filter segments from the diarization output
-      const allSegments = diarization.output?.segments ?? [];
-      const segmentIdSet = new Set(input.segmentIds);
-      const selectedSegments = allSegments.filter(
-        (s) => segmentIdSet.has(s.id) && !s.isDeleted,
-      );
-
-      if (selectedSegments.length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No valid segments selected",
-        });
-      }
-
-      // 3. Create clip records for each segment (status: pending)
-      const clipRecords = await ctx.db
-        .insert(clips)
-        .values(
-          selectedSegments.map((segment) => ({
-            userId: ctx.session.user.id,
-            collectionId: input.collectionId,
-            diarizationId: input.diarizationId,
-            sourceSegmentId: segment.id,
-            startTime: segment.start,
-            endTime: segment.end,
-            duration: segment.end - segment.start,
-            status: "pending" as const,
-          })),
-        )
-        .returning();
-
-      // 4. Enqueue each clip to BullMQ
-      const enqueueResults = await Promise.all(
-        clipRecords.map((clip) =>
-          runEffect(
-            Effect.flatMap(QueueService, (queue) =>
-              queue.enqueueClipGeneration({
-                clipId: clip.id,
-                sourceStorageKey,
-                startTime: clip.startTime,
-                endTime: clip.endTime,
-              }),
-            ),
-          ),
-        ),
-      );
-
-      return {
-        clipIds: clipRecords.map((c) => c.id),
-        totalClips: clipRecords.length,
-        queuePosition: enqueueResults[0]?.position ?? 0,
-      };
     }),
 
   // Get clip status
@@ -204,13 +116,13 @@ export const clipsRouter = createTRPCRouter({
   retryClip: protectedProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // 1. Get the failed clip
+      // 1. Get the failed clip with session and file info
       const clip = await ctx.db.query.clips.findFirst({
         where: and(
           eq(clips.id, input.clipId),
           eq(clips.userId, ctx.session.user.id),
         ),
-        with: { diarization: { with: { file: true } } },
+        with: { clippingSession: { with: { file: true } } },
       });
 
       if (!clip) {
@@ -227,7 +139,7 @@ export const clipsRouter = createTRPCRouter({
         });
       }
 
-      const sourceStorageKey = clip.diarization?.file?.storageKey;
+      const sourceStorageKey = clip.clippingSession?.file?.storageKey;
       if (!sourceStorageKey) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -262,14 +174,14 @@ export const clipsRouter = createTRPCRouter({
       };
     }),
 
-  // Retry all failed clips for a diarization
+  // Retry all failed clips for a session
   retryAllFailed: protectedProcedure
-    .input(z.object({ diarizationId: z.string().uuid() }))
+    .input(z.object({ sessionId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // 1. Get all failed clips for this diarization
+      // 1. Get all failed clips for this session
       const failedClips = await ctx.db.query.clips.findMany({
         where: and(
-          eq(clips.diarizationId, input.diarizationId),
+          eq(clips.clippingSessionId, input.sessionId),
           eq(clips.userId, ctx.session.user.id),
           eq(clips.status, "failed"),
         ),
@@ -279,13 +191,13 @@ export const clipsRouter = createTRPCRouter({
         return { retriedCount: 0 };
       }
 
-      // 2. Get source storage key
-      const diarization = await ctx.db.query.diarizations.findFirst({
-        where: eq(diarizations.id, input.diarizationId),
+      // 2. Get source storage key from session
+      const session = await ctx.db.query.clippingSessions.findFirst({
+        where: eq(clippingSessions.id, input.sessionId),
         with: { file: true },
       });
 
-      const sourceStorageKey = diarization?.file?.storageKey;
+      const sourceStorageKey = session?.file?.storageKey;
       if (!sourceStorageKey) {
         throw new TRPCError({
           code: "BAD_REQUEST",

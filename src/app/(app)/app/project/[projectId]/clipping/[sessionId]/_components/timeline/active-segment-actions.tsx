@@ -33,12 +33,12 @@ export function ActiveSegmentActions() {
   const $store = useClippingStore();
 
   const activeSegmentId = useValue($store.activeSegmentId);
-  const fileId = useValue($store.fileId);
+  const sessionId = useValue($store.sessionId);
   const speakers = useValue($store.speakers);
   const speakerColors = useValue($store.speakerColors);
 
-  const splitSegmentMutation = api.file.splitSegment.useMutation();
-  const updateSegmentsMutation = api.file.updateSegments.useMutation();
+  const splitSegmentMutation = api.clippingSession.splitSegment.useMutation();
+  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
@@ -84,7 +84,7 @@ export function ActiveSegmentActions() {
     if (!canSplit) return;
     const splitTime = $store.playback.currentTime.peek();
     splitSegmentMutation.mutate({
-      fileId,
+      sessionId,
       segmentId: activeSegmentId,
       splitTime,
     });
@@ -92,7 +92,7 @@ export function ActiveSegmentActions() {
 
   const handleChangeSpeaker = (speakerId: string) => {
     updateSegmentsMutation.mutate({
-      fileId,
+      sessionId,
       segmentIds: [activeSegmentId],
       updates: { speakerId },
     });
@@ -100,7 +100,7 @@ export function ActiveSegmentActions() {
 
   const handleDelete = () => {
     updateSegmentsMutation.mutate({
-      fileId,
+      sessionId,
       segmentIds: [activeSegmentId],
       updates: { isDeleted: true },
     });
@@ -109,7 +109,7 @@ export function ActiveSegmentActions() {
 
   const handleToggleReviewed = () => {
     updateSegmentsMutation.mutate({
-      fileId,
+      sessionId,
       segmentIds: [activeSegmentId],
       updates: { isReviewed: !activeSegment.isReviewed },
     });

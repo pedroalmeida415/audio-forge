@@ -27,7 +27,7 @@ export function setupMutationDefaults(
   // ============================================================================
 
   // updateSegments: handles speaker changes, delete, mark as reviewed, time edits
-  trpcUtils.file.updateSegments.setMutationDefaults({
+  trpcUtils.clippingSession.updateSegments.setMutationDefaults({
     onMutate: async (variables) => {
       const segmentIds = Array.isArray(variables.segmentIds)
         ? variables.segmentIds
@@ -83,7 +83,7 @@ export function setupMutationDefaults(
   });
 
   // splitSegment: handles splitting a segment at a specific time
-  trpcUtils.file.splitSegment.setMutationDefaults({
+  trpcUtils.clippingSession.splitSegment.setMutationDefaults({
     onMutate: async (variables) => {
       const segments = $store.segments.peek();
       const segmentIndex = segments.findIndex(
@@ -142,7 +142,7 @@ export function setupMutationDefaults(
   });
 
   // createSegment: handles creating new segments from click-and-drag
-  trpcUtils.file.createSegment.setMutationDefaults({
+  trpcUtils.clippingSession.createSegment.setMutationDefaults({
     onMutate: async (variables) => {
       // Create optimistic segment with temporary ID
       const tempId = crypto.randomUUID();
@@ -214,7 +214,7 @@ export function setupMutationDefaults(
   // ============================================================================
 
   // createSpeaker: handles adding a new speaker to the workspace
-  trpcUtils.file.createSpeaker.setMutationDefaults({
+  trpcUtils.clippingSession.createSpeaker.setMutationDefaults({
     onMutate: async (variables) => {
       const tempId = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -246,8 +246,8 @@ export function setupMutationDefaults(
   });
 
   // updateSpeaker: handles renaming a speaker or changing color
-  // API expects flat params: { fileId, speakerId, label?, color? }
-  trpcUtils.file.updateSpeaker.setMutationDefaults({
+  // API expects flat params: { sessionId, speakerId, label?, color? }
+  trpcUtils.clippingSession.updateSpeaker.setMutationDefaults({
     onMutate: async (variables) => {
       const speakers = $store.speakers.peek();
       const speaker = speakers.find((s) => s.id === variables.speakerId);
@@ -270,7 +270,7 @@ export function setupMutationDefaults(
   });
 
   // deleteSpeaker: handles removing a speaker and optionally reassigning segments
-  trpcUtils.file.deleteSpeaker.setMutationDefaults({
+  trpcUtils.clippingSession.deleteSpeaker.setMutationDefaults({
     onMutate: async (variables) => {
       const speakers = $store.speakers.peek();
       const speakerIndex = speakers.findIndex(
@@ -283,7 +283,7 @@ export function setupMutationDefaults(
       const affectedSegments: Array<{ index: number; speakerId: string }> = [];
 
       // If reassigning segments to another speaker
-      if (variables.reassignToSpeakerId) {
+      if (variables.reassignTo) {
         for (let i = 0; i < $store.segments.length; i++) {
           const $segment = $store.segments[i];
           if (!$segment) continue;
@@ -293,7 +293,7 @@ export function setupMutationDefaults(
               index: i,
               speakerId: variables.speakerId,
             });
-            $segment.speakerId.set(variables.reassignToSpeakerId);
+            $segment.speakerId.set(variables.reassignTo);
           }
         }
       }

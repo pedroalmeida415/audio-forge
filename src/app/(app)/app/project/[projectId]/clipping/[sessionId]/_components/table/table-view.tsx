@@ -31,16 +31,16 @@ export function TableView() {
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const speakers = useValue($store.speakers);
   const speakerColors = useValue($store.speakerColors);
-  const fileId = useValue($store.fileId);
+  const sessionId = useValue($store.sessionId);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null);
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  const createSpeakerMutation = api.file.createSpeaker.useMutation();
-  const updateSpeakerMutation = api.file.updateSpeaker.useMutation();
-  const deleteSpeakerMutation = api.file.deleteSpeaker.useMutation();
+  const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation();
+  const updateSpeakerMutation = api.clippingSession.updateSpeaker.useMutation();
+  const deleteSpeakerMutation = api.clippingSession.deleteSpeaker.useMutation();
 
   // Auto-select first speaker on mount if none selected
   useEffect(() => {
@@ -54,7 +54,7 @@ export function TableView() {
 
   const handleAddSpeaker = () => {
     createSpeakerMutation.mutate({
-      fileId,
+      sessionId,
       label: `Speaker ${speakers.length + 1}`,
     });
   };
@@ -67,7 +67,7 @@ export function TableView() {
   const handleConfirmEdit = () => {
     if (editingSpeakerId && editValue.trim()) {
       updateSpeakerMutation.mutate({
-        fileId,
+        sessionId,
         speakerId: editingSpeakerId,
         label: editValue.trim(),
       });
@@ -76,7 +76,7 @@ export function TableView() {
   };
 
   const handleDeleteSpeaker = (speakerId: string) => {
-    deleteSpeakerMutation.mutate({ fileId, speakerId });
+    deleteSpeakerMutation.mutate({ sessionId, speakerId });
   };
 
   // Empty state when no speakers exist at all

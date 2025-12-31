@@ -1,6 +1,6 @@
+import { clippingSessionRouter } from "~/server/api/routers/clipping-session";
 import { clipsRouter } from "~/server/api/routers/clips";
 import { collectionRouter } from "~/server/api/routers/collection";
-import { diarizationRouter } from "~/server/api/routers/diarization";
 import { fileRouter } from "~/server/api/routers/file";
 import { projectRouter } from "~/server/api/routers/project";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
@@ -14,7 +14,7 @@ export const appRouter = createTRPCRouter({
   projects: projectRouter,
   collections: collectionRouter,
   clips: clipsRouter,
-  diarization: diarizationRouter,
+  clippingSession: clippingSessionRouter,
   file: fileRouter,
 });
 
