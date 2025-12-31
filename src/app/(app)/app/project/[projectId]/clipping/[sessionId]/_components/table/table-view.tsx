@@ -34,7 +34,6 @@ export function TableView() {
   const sessionId = useValue($store.sessionId);
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null);
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
@@ -107,7 +106,6 @@ export function TableView() {
           {speakers.map((speaker) => {
             const initial = speaker.label.charAt(0).toUpperCase();
             const isSelected = selectedSpeakerId === speaker.id;
-            const isHovered = hoveredSpeakerId === speaker.id;
             const isEditing = editingSpeakerId === speaker.id;
 
             return (
@@ -120,8 +118,6 @@ export function TableView() {
                     ? "bg-primary/10 ring-2 ring-primary ring-inset"
                     : "hover:bg-muted"
                 }`}
-                onMouseEnter={() => setHoveredSpeakerId(speaker.id)}
-                onMouseLeave={() => setHoveredSpeakerId(null)}
               >
                 {/* Speaker button - wrapped in tooltip when collapsed */}
                 {isExpanded ? (
@@ -181,9 +177,9 @@ export function TableView() {
                   </Tooltip>
                 )}
 
-                {/* Actions (when expanded and hovered) */}
-                {isExpanded && isHovered && !isEditing && (
-                  <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
+                {/* Actions (when expanded, visible on hover via CSS) */}
+                {isExpanded && !isEditing && (
+                  <div className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-0 transition-opacity group-hover:opacity-100">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -208,7 +204,6 @@ export function TableView() {
                     </Button>
                   </div>
                 )}
-
               </div>
             );
           })}
