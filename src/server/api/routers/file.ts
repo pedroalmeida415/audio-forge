@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
@@ -65,13 +65,14 @@ export const fileRouter = createTRPCRouter({
         });
       }
 
-      // Create clipping session for this file
+      // Create clipping session for this file (name defaults to file name)
       const [session] = await ctx.db
         .insert(clippingSessions)
         .values({
           fileId: file.id,
           projectId: input.projectId,
           userId: ctx.session.user.id,
+          name: fileName,
           speakers: [],
           segments: [],
         })
@@ -126,63 +127,6 @@ export const fileRouter = createTRPCRouter({
       );
 
       return audioUrl;
-    }),
-
-  // List files for a project (with their session IDs)
-  listByProject: protectedProcedure
-    .input(z.object({ projectId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.db.query.files.findMany({
-        where: and(
-          eq(files.projectId, input.projectId),
-          eq(files.userId, ctx.session.user.id),
-        ),
-        orderBy: [desc(files.createdAt)],
-        columns: {
-          id: true,
-          name: true,
-          storageKey: true,
-          createdAt: true,
-        },
-        with: {
-          clippingSession: {
-            columns: {
-              id: true,
-            },
-          },
-        },
-      });
-    }),
-
-  // Rename file
-  rename: protectedProcedure
-    .input(
-      z.object({
-        id: z.string().uuid(),
-        name: z.string().min(1).max(255),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const file = await ctx.db.query.files.findFirst({
-        where: and(
-          eq(files.id, input.id),
-          eq(files.userId, ctx.session.user.id),
-        ),
-      });
-
-      if (!file) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "File not found",
-        });
-      }
-
-      await ctx.db
-        .update(files)
-        .set({ name: input.name })
-        .where(eq(files.id, input.id));
-
-      return { success: true };
     }),
 
   // Delete a file (cascade will handle session and clips)

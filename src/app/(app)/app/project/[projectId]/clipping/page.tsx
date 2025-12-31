@@ -32,7 +32,7 @@ export default function ClippingEmptyStatePage({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
-  const [existingFiles] = api.file.listByProject.useSuspenseQuery(
+  const [existingSessions] = api.clippingSession.listByProject.useSuspenseQuery(
     { projectId },
     { refetchOnWindowFocus: false },
   );
@@ -183,8 +183,8 @@ export default function ClippingEmptyStatePage({
             )}
           </div>
 
-          {/* Existing files section */}
-          {existingFiles.length > 0 && (
+          {/* Existing sessions section */}
+          {existingSessions.length > 0 && (
             <>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -192,19 +192,19 @@ export default function ClippingEmptyStatePage({
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
                   <span className="bg-background px-2 text-muted-foreground">
-                    Or select existing file
+                    Or select existing session
                   </span>
                 </div>
               </div>
 
               <ScrollArea className="h-48">
                 <div className="space-y-2">
-                  {existingFiles.map((existingFile) => (
+                  {existingSessions.map((session) => (
                     <button
-                      key={existingFile.id}
+                      key={session.id}
                       onClick={() =>
                         router.push(
-                          `/app/project/${projectId}/clipping/${existingFile.clippingSession?.id}`,
+                          `/app/project/${projectId}/clipping/${session.id}`,
                         )
                       }
                       className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
@@ -212,12 +212,13 @@ export default function ClippingEmptyStatePage({
                       <Music className="h-5 w-5 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium text-sm">
-                          {existingFile.name ??
-                            existingFile.storageKey?.split("/").pop() ??
+                          {session.name ??
+                            session.file?.name ??
+                            session.file?.storageKey?.split("/").pop() ??
                             "Untitled"}
                         </p>
                         <p className="text-muted-foreground text-xs">
-                          {new Date(existingFile.createdAt).toLocaleDateString()}
+                          {new Date(session.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                     </button>

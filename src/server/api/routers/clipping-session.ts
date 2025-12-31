@@ -70,6 +70,64 @@ export const clippingSessionRouter = createTRPCRouter({
       return session;
     }),
 
+  // List sessions for a project
+  listByProject: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.query.clippingSessions.findMany({
+        where: and(
+          eq(clippingSessions.projectId, input.projectId),
+          eq(clippingSessions.userId, ctx.session.user.id),
+        ),
+        orderBy: (sessions, { desc }) => [desc(sessions.createdAt)],
+        columns: {
+          id: true,
+          name: true,
+          createdAt: true,
+        },
+        with: {
+          file: {
+            columns: {
+              id: true,
+              name: true,
+              storageKey: true,
+            },
+          },
+        },
+      });
+    }),
+
+  // Rename session
+  rename: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(255),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const session = await ctx.db.query.clippingSessions.findFirst({
+        where: and(
+          eq(clippingSessions.id, input.id),
+          eq(clippingSessions.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Clipping session not found",
+        });
+      }
+
+      await ctx.db
+        .update(clippingSessions)
+        .set({ name: input.name })
+        .where(eq(clippingSessions.id, input.id));
+
+      return { success: true };
+    }),
+
   // Start diarization for this session
   startDiarization: protectedProcedure
     .input(

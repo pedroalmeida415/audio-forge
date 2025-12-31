@@ -302,6 +302,9 @@ export const clippingSessions = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
 
+    // Session name (defaults to file name, editable by user)
+    name: varchar("name", { length: 255 }),
+
     // Workspace data
     segments: jsonb("segments").$type<FileSegment[]>(),
     speakers: jsonb("speakers").$type<WorkspaceSpeaker[]>(),

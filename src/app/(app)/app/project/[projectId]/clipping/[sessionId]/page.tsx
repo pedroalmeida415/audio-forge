@@ -29,14 +29,17 @@ export default function ClippingWorkspacePage({
 
   const audioDataBuffer = use(fetchAudioData(audioUrl));
 
-  const fileName =
-    session.file.name ?? session.file.storageKey?.split("/").pop() ?? "Audio File";
+  const sessionName =
+    session.name ??
+    session.file.name ??
+    session.file.storageKey?.split("/").pop() ??
+    "Untitled Session";
 
   return (
     <ClippingStoreProvider initialData={{ session, audioDataBuffer }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
-        {/* Outer Header: Back button, file name dropdown, diarize button */}
-        <OuterHeader fileName={fileName} projectId={projectId} />
+        {/* Outer Header: Back button, session name dropdown, diarize button */}
+        <OuterHeader sessionName={sessionName} projectId={projectId} />
 
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
