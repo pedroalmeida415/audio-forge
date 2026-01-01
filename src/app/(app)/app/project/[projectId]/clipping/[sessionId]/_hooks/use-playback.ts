@@ -1,30 +1,89 @@
 import { observe } from "@legendapp/state";
-import { useObserve } from "@legendapp/state/react";
-import { useEffect } from "react";
+import { useObserve, useSelector } from "@legendapp/state/react";
+import { useEffect, useRef } from "react";
+import { useMSEAudio } from "~/hooks/use-mse-audio";
 import type { $ClippingStore } from "../_store/clipping-store";
 import type { PlaybackRefs } from "../_store/slices/playback";
 import { calculatePixelsPerSecond } from "../_utils/zoom-utils";
 
 /**
- * Hook that connects the audio element and RAF loop to the store.
+ * Hook that connects the audio element (via MSE) and RAF loop to the store.
  * This is a minimal connector - all state and actions live in the store.
  */
 export function usePlayback($store: $ClippingStore) {
+  // Get audio config from store (stable values)
+  const storageKey = useSelector(() => $store.storageKey.get());
+  const audioDuration = useSelector(() => $store.audioDuration.get());
+
+  // MSE audio provider - creates and manages its own audio element
+  const mseEnabled = !!storageKey && audioDuration > 0;
+  const { audioElement, ensureLoaded, preloadAhead, error: mseError } = useMSEAudio({
+    storageKey,
+    duration: audioDuration,
+    sliceSize: 15,
+    enabled: mseEnabled,
+  });
+
+  // Keep a ref to the latest ensureLoaded/preloadAhead functions
+  const ensureLoadedRef = useRef(ensureLoaded);
+  const preloadAheadRef = useRef(preloadAhead);
+  useEffect(() => {
+    ensureLoadedRef.current = ensureLoaded;
+    preloadAheadRef.current = preloadAhead;
+  }, [ensureLoaded, preloadAhead]);
+
+  // Propagate MSE errors to store
+  useEffect(() => {
+    if (mseError) {
+      $store.playback.error.set(mseError);
+      $store.playback.isLoading.set(false);
+    }
+  }, [mseError]);
+
+  // Track if we've already handled the missing duration case
+  const hasSetMissingDurationError = useRef(false);
+
   // ============================================================================
-  // Audio initialization
+  // Audio initialization with MSE
   // ============================================================================
 
   useEffect(() => {
-    const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
-    const audio = new Audio();
-    audio.preload = "metadata";
+    // If duration is missing, show error and stop loading (only once)
+    if (audioDuration <= 0) {
+      if (!hasSetMissingDurationError.current) {
+        hasSetMissingDurationError.current = true;
+        if (storageKey) {
+          $store.playback.error.set("Audio duration not available. File may need reprocessing.");
+        }
+        $store.playback.isLoading.set(false);
+      }
+      return;
+    }
 
-    // Store the audio element in refs
-    audioRef.current = audio;
+    // Reset the flag if duration becomes valid
+    hasSetMissingDurationError.current = false;
+
+    // Wait for audio element to be created
+    if (!audioElement) {
+      return;
+    }
+
+    const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
+    audioRef.current = audioElement;
+
+    // Set duration from our known value (MSE sets MediaSource.duration)
+    // We don't need to wait for loadedmetadata since we know the duration
+    $store.playback.duration.set(audioDuration);
+    $store.playback.isLoading.set(false);
+
+    // Preload the first slice so playback can start immediately
+    ensureLoadedRef.current(0);
 
     const handleLoadedMetadata = () => {
-      $store.playback.duration.set(audio.duration);
-      $store.playback.isLoading.set(false);
+      // Update duration from audio element if it differs
+      if (audioElement.duration && audioElement.duration !== audioDuration) {
+        $store.playback.duration.set(audioElement.duration);
+      }
     };
 
     const handleEnded = () => {
@@ -46,35 +105,30 @@ export function usePlayback($store: $ClippingStore) {
       $store.playback.isPlaying.set(false);
     };
 
-    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
-    audio.addEventListener("ended", handleEnded);
-    audio.addEventListener("error", handleError);
-    audio.addEventListener("play", handlePlay);
-    audio.addEventListener("pause", handlePause);
+    audioElement.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audioElement.addEventListener("ended", handleEnded);
+    audioElement.addEventListener("error", handleError);
+    audioElement.addEventListener("play", handlePlay);
+    audioElement.addEventListener("pause", handlePause);
 
-    const blob = new Blob([$store.audioDataBuffer.peek()], {
-      type: "audio/wav",
-    });
-    const url = URL.createObjectURL(blob);
-    audio.src = url;
+    // If metadata already loaded, trigger handler
+    if (audioElement.readyState >= 1) {
+      handleLoadedMetadata();
+    }
 
     return () => {
       const animationFrameId = $store.playback.animationFrameId.peek();
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
-      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      audio.removeEventListener("ended", handleEnded);
-      audio.removeEventListener("error", handleError);
-      audio.removeEventListener("play", handlePlay);
-      audio.removeEventListener("pause", handlePause);
-      audio.pause();
-      URL.revokeObjectURL(url);
-      audio.src = "";
-      audio.remove();
+      audioElement.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audioElement.removeEventListener("ended", handleEnded);
+      audioElement.removeEventListener("error", handleError);
+      audioElement.removeEventListener("play", handlePlay);
+      audioElement.removeEventListener("pause", handlePause);
       audioRef.current = null;
     };
-  }, []);
+  }, [audioElement, audioDuration, storageKey]);
 
   // ============================================================================
   // RAF loop for smooth playhead updates + auto-scroll
@@ -118,6 +172,10 @@ export function usePlayback($store: $ClippingStore) {
         }
 
         const currentTime = audio.currentTime;
+
+        // MSE: Ensure current time is loaded and preload ahead
+        ensureLoadedRef.current(currentTime);
+        preloadAheadRef.current(currentTime, 2);
 
         // Update time in store
         $store.playback.currentTime.set(currentTime);

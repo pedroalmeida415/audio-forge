@@ -7,7 +7,6 @@ import { RightSidebar } from "./_components/sidebar";
 import { TableView } from "./_components/table";
 import { TimelineContainer } from "./_components/timeline/timeline-container";
 import { ClippingStoreProvider } from "./_context/store.context";
-import { fetchAudioData } from "./_utils/audio-fetch";
 
 export default function ClippingWorkspacePage({
   params,
@@ -22,21 +21,20 @@ export default function ClippingWorkspacePage({
     { refetchOnWindowFocus: false },
   );
 
-  const [audioUrl] = api.file.getAudioUrl.useSuspenseQuery(
-    { fileId: session.fileId },
-    { refetchOnWindowFocus: false, staleTime: Infinity },
-  );
-
-  const audioDataBuffer = use(fetchAudioData(audioUrl));
-
   const sessionName =
     session.name ??
     session.file.name ??
     session.file.storageKey?.split("/").pop() ??
     "Untitled Session";
 
+  // Audio config for MSE streaming (no upfront download needed)
+  const audio = {
+    storageKey: session.file.storageKey!,
+    duration: session.file.duration ?? 0,
+  };
+
   return (
-    <ClippingStoreProvider initialData={{ session, audioDataBuffer }}>
+    <ClippingStoreProvider initialData={{ session, audio }}>
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
         {/* Outer Header: Back button, session name dropdown, diarize button */}
         <OuterHeader sessionName={sessionName} projectId={projectId} />

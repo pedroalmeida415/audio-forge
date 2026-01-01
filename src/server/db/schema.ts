@@ -251,6 +251,9 @@ export const files = pgTable(
 
     storageKey: varchar("storage_key", { length: 1024 }),
 
+    // Audio duration in seconds (set on upload)
+    duration: doublePrecision("duration"),
+
     // Display name (editable by user)
     name: varchar("name", { length: 255 }),
 

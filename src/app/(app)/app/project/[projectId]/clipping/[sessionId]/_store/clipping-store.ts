@@ -1,4 +1,4 @@
-import { batch, type Observable, ObservableHint } from "@legendapp/state";
+import { batch, type Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
 import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type { Segment, Speaker } from "~/server/db/schema";
@@ -29,7 +29,10 @@ export interface ClippingStoreInitialData {
     segments: SegmentWithSpeaker[];
     speakers: Speaker[];
   };
-  audioDataBuffer: ArrayBuffer;
+  audio: {
+    storageKey: string;
+    duration: number;
+  };
 }
 
 // ============================================================================
@@ -42,7 +45,7 @@ export interface ClippingStoreInitialData {
  * Uses useObservable which returns a stable observable across renders.
  */
 export function createClippingStore({
-  audioDataBuffer,
+  audio,
   session,
 }: ClippingStoreInitialData) {
   const segments = session.segments;
@@ -64,7 +67,9 @@ export function createClippingStore({
     selectedSegmentIds: new Set<string>(),
     activeSegmentId: null,
 
-    audioDataBuffer: ObservableHint.opaque(audioDataBuffer),
+    // Audio source info for MSE streaming
+    storageKey: audio.storageKey,
+    audioDuration: audio.duration,
 
     // Computed Values
     segmentsBySpeaker: () =>
@@ -243,7 +248,9 @@ interface ClippingStoreState {
   selectedSegmentIds: Set<string>;
   activeSegmentId: string | null;
 
-  audioDataBuffer: ArrayBuffer;
+  // Audio source info for MSE streaming
+  storageKey: string;
+  audioDuration: number;
 
   // Computed values
   segmentsBySpeaker: () => Record<string, SegmentWithSpeaker[]>;
