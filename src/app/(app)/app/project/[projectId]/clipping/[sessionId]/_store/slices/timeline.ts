@@ -71,9 +71,7 @@ export function createTimelineState(
 
     setScrollOffset: (value: number) => {
       const maxOffset = $store.timeline.getMaxScrollOffset.peek();
-      $store.timeline.scrollOffset.set(
-        Math.max(0, Math.min(maxOffset, value)),
-      );
+      $store.timeline.scrollOffset.set(Math.max(0, Math.min(maxOffset, value)));
     },
 
     scrollBy: (delta: number) => {

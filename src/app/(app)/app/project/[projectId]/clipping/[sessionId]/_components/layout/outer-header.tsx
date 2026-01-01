@@ -1,7 +1,13 @@
 "use client";
 
 import { useSelector } from "@legendapp/state/react";
-import { ArrowLeft, ChevronDown, Loader2, Pencil, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Loader2,
+  Pencil,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";

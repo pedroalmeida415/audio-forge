@@ -2,7 +2,14 @@
 
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
-import { ChevronLeft, ChevronRight, Minus, Pause, Play, Plus } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Pause,
+  Play,
+  Plus,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import {

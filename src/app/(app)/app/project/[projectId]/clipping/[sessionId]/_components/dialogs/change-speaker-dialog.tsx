@@ -29,7 +29,8 @@ export function ChangeSpeakerDialog({
   const sessionId = useValue($store.sessionId);
   const speakerColors = useValue($store.speakerColors);
 
-  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation =
+    api.clippingSession.updateSegments.useMutation();
 
   const handleSelectSpeaker = (speakerId: string) => {
     updateSegmentsMutation.mutate({
@@ -67,7 +68,7 @@ export function ChangeSpeakerDialog({
                   className="h-4 w-4 shrink-0 rounded-full"
                   style={{ backgroundColor: speakerColors[speaker.id] }}
                 />
-                <span className="font-medium">{speaker.label}</span>
+                <span className="font-medium">{speaker.name}</span>
               </button>
             ))}
           </div>

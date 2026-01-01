@@ -49,7 +49,10 @@ export function useWheelZoom($store: $ClippingStore) {
         } else {
           $store.playback.zoomAtPlayhead(pending.zoom);
         }
-      } else if (pending.type === "scroll" && pending.scrollDelta !== undefined) {
+      } else if (
+        pending.type === "scroll" &&
+        pending.scrollDelta !== undefined
+      ) {
         $store.timeline.scrollBy(pending.scrollDelta);
       }
     };
@@ -102,7 +105,8 @@ export function useWheelZoom($store: $ClippingStore) {
 
         // Accumulate scroll delta
         const currentDelta =
-          pendingRef.current?.type === "scroll" && pendingRef.current.scrollDelta
+          pendingRef.current?.type === "scroll" &&
+          pendingRef.current.scrollDelta
             ? pendingRef.current.scrollDelta
             : 0;
 

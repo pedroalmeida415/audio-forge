@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { collections, projects } from "~/server/db/schema";
+import { projects, speakers } from "~/server/db/schema";
 
 export const projectRouter = createTRPCRouter({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -11,9 +11,10 @@ export const projectRouter = createTRPCRouter({
       where: eq(projects.userId, ctx.session.user.id),
       orderBy: (projects, { desc }) => [desc(projects.createdAt)],
       extras: {
-        collectionsCount:
-          sql<number>`(select count(*) from ${collections} where ${collections.projectId} = ${projects.id})`.as(
-            "collections_count",
+        // Count only non-diarization speakers (real speaker identities)
+        speakersCount:
+          sql<number>`(select count(*) from ${speakers} where ${speakers.projectId} = ${projects.id} and ${speakers.name} not like 'SPEAKER_%')`.as(
+            "speakers_count",
           ),
       },
     });
@@ -30,11 +31,22 @@ export const projectRouter = createTRPCRouter({
           eq(projects.userId, ctx.session.user.id),
         ),
         with: {
-          collections: {
-            orderBy: (collections, { desc }) => [desc(collections.createdAt)],
+          // Only include non-diarization speakers in project view
+          speakers: {
+            orderBy: (speakers, { desc }) => [desc(speakers.createdAt)],
           },
         },
       });
+
+      // Filter out SPEAKER_* speakers from the result
+      if (project) {
+        return {
+          ...project,
+          speakers: project.speakers.filter(
+            (s) => !s.name.startsWith("SPEAKER_"),
+          ),
+        };
+      }
 
       return project ?? null;
     }),

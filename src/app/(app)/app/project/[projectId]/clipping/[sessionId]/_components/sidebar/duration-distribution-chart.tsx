@@ -19,8 +19,8 @@ export function DurationDistributionChart({
   const chartData = useValue(() => {
     const segments = $store.segments.get();
     const speakerSegments = segments
-      .filter((s) => s.speakerId === speakerId && !s.isDeleted)
-      .map((s) => s.end - s.start);
+      .filter((s) => s.speakerId === speakerId)
+      .map((s) => s.endTime - s.startTime);
 
     if (speakerSegments.length === 0) {
       return null;

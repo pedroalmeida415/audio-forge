@@ -31,7 +31,7 @@ const ibmPlexSans = IBM_Plex_Sans({
 
 export default async function RootLayout({
   children,
-}: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
+}: Readonly<{ children: React.ReactNode }>) {
   const session = await getSession();
 
   if (!session?.user) {

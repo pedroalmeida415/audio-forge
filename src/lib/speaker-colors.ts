@@ -1,4 +1,4 @@
-import type { WorkspaceSpeaker } from "~/server/db/schema";
+import type { Speaker } from "~/server/db/schema";
 
 /**
  * Dynamic speaker color generation for consistent visual representation.
@@ -18,12 +18,12 @@ export function generateSpeakerColor(
 }
 
 /**
- * Create a color map for WorkspaceSpeaker array.
+ * Create a color map for Speaker array.
  * Uses speaker's custom color if set, otherwise generates one.
  * Returns a Record from speaker ID to their color string.
  */
 export function createSpeakerColorMap(
-  speakers: WorkspaceSpeaker[],
+  speakers: Speaker[],
 ): Record<string, string> {
   const total = speakers.length;
   return Object.fromEntries(

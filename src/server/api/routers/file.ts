@@ -73,8 +73,6 @@ export const fileRouter = createTRPCRouter({
           projectId: input.projectId,
           userId: ctx.session.user.id,
           name: fileName,
-          speakers: [],
-          segments: [],
         })
         .returning();
 

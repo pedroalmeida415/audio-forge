@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clips, clippingSessions } from "~/server/db/schema";
+import { clips } from "~/server/db/schema";
 import { QueueService, ServicesLive, StorageService } from "~/services";
 
 // Helper to run Effect with services
@@ -13,30 +13,40 @@ const runEffect = <A, E>(
 ) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 export const clipsRouter = createTRPCRouter({
-  // List clips by collection
-  listByCollection: protectedProcedure
-    .input(z.object({ collectionId: z.string().uuid() }))
+  // List clips by speaker (via segment → speaker join)
+  listBySpeaker: protectedProcedure
+    .input(z.object({ speakerId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.query.clips.findMany({
-        where: and(
-          eq(clips.collectionId, input.collectionId),
-          eq(clips.userId, ctx.session.user.id),
-        ),
-        orderBy: (clips, { desc }) => [desc(clips.createdAt)],
-      });
+      return ctx.db.query.clips
+        .findMany({
+          where: eq(clips.userId, ctx.session.user.id),
+          with: {
+            segment: {
+              with: { speaker: true },
+            },
+          },
+          orderBy: (clips, { desc }) => [desc(clips.createdAt)],
+        })
+        .then((results) =>
+          results.filter((clip) => clip.segment.speakerId === input.speakerId),
+        );
     }),
 
-  // List clips by clipping session
+  // List clips by clipping session (via segment → session join)
   listBySession: protectedProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.query.clips.findMany({
-        where: and(
-          eq(clips.clippingSessionId, input.sessionId),
-          eq(clips.userId, ctx.session.user.id),
-        ),
-        orderBy: (clips, { desc }) => [desc(clips.createdAt)],
-      });
+      return ctx.db.query.clips
+        .findMany({
+          where: eq(clips.userId, ctx.session.user.id),
+          with: {
+            segment: true,
+          },
+          orderBy: (clips, { desc }) => [desc(clips.createdAt)],
+        })
+        .then((results) =>
+          results.filter((clip) => clip.segment.sessionId === input.sessionId),
+        );
     }),
 
   // Get clip status
@@ -116,13 +126,21 @@ export const clipsRouter = createTRPCRouter({
   retryClip: protectedProcedure
     .input(z.object({ clipId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // 1. Get the failed clip with session and file info
+      // 1. Get the failed clip with segment → session → file chain
       const clip = await ctx.db.query.clips.findFirst({
         where: and(
           eq(clips.id, input.clipId),
           eq(clips.userId, ctx.session.user.id),
         ),
-        with: { clippingSession: { with: { file: true } } },
+        with: {
+          segment: {
+            with: {
+              session: {
+                with: { file: true },
+              },
+            },
+          },
+        },
       });
 
       if (!clip) {
@@ -139,7 +157,7 @@ export const clipsRouter = createTRPCRouter({
         });
       }
 
-      const sourceStorageKey = clip.clippingSession?.file?.storageKey;
+      const sourceStorageKey = clip.segment.session?.file?.storageKey;
       if (!sourceStorageKey) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -156,14 +174,14 @@ export const clipsRouter = createTRPCRouter({
         })
         .where(eq(clips.id, input.clipId));
 
-      // 3. Re-enqueue to BullMQ
+      // 3. Re-enqueue to BullMQ (times come from segment)
       const result = await runEffect(
         Effect.flatMap(QueueService, (queue) =>
           queue.enqueueClipGeneration({
             clipId: clip.id,
             sourceStorageKey,
-            startTime: clip.startTime,
-            endTime: clip.endTime,
+            startTime: clip.segment.startTime,
+            endTime: clip.segment.endTime,
           }),
         ),
       );
@@ -178,26 +196,35 @@ export const clipsRouter = createTRPCRouter({
   retryAllFailed: protectedProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // 1. Get all failed clips for this session
-      const failedClips = await ctx.db.query.clips.findMany({
+      // 1. Get all failed clips for this session (via segment → session join)
+      const allFailedClips = await ctx.db.query.clips.findMany({
         where: and(
-          eq(clips.clippingSessionId, input.sessionId),
           eq(clips.userId, ctx.session.user.id),
           eq(clips.status, "failed"),
         ),
+        with: {
+          segment: {
+            with: {
+              session: {
+                with: { file: true },
+              },
+            },
+          },
+        },
       });
+
+      // Filter to only clips from the requested session
+      const failedClips = allFailedClips.filter(
+        (clip) => clip.segment.sessionId === input.sessionId,
+      );
 
       if (failedClips.length === 0) {
         return { retriedCount: 0 };
       }
 
-      // 2. Get source storage key from session
-      const session = await ctx.db.query.clippingSessions.findFirst({
-        where: eq(clippingSessions.id, input.sessionId),
-        with: { file: true },
-      });
-
-      const sourceStorageKey = session?.file?.storageKey;
+      // Get source storage key from the first clip's segment chain
+      const sourceStorageKey =
+        failedClips[0]?.segment.session?.file?.storageKey;
       if (!sourceStorageKey) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -205,7 +232,7 @@ export const clipsRouter = createTRPCRouter({
         });
       }
 
-      // 3. Reset all failed clips
+      // 2. Reset all failed clips
       await ctx.db
         .update(clips)
         .set({
@@ -219,7 +246,7 @@ export const clipsRouter = createTRPCRouter({
           ),
         );
 
-      // 4. Re-enqueue all
+      // 3. Re-enqueue all (times come from segment)
       await Promise.all(
         failedClips.map((clip) =>
           runEffect(
@@ -227,8 +254,8 @@ export const clipsRouter = createTRPCRouter({
               queue.enqueueClipGeneration({
                 clipId: clip.id,
                 sourceStorageKey,
-                startTime: clip.startTime,
-                endTime: clip.endTime,
+                startTime: clip.segment.startTime,
+                endTime: clip.segment.endTime,
               }),
             ),
           ),

@@ -26,8 +26,8 @@ export function ProjectCard({ project }: ProjectCardProps) {
               <FolderOpen className="size-5" />
             </div>
             <Badge className="shrink-0" variant="secondary">
-              {project.collectionsCount} collection
-              {project.collectionsCount !== 1 ? "s" : ""}
+              {project.speakersCount} speaker
+              {project.speakersCount !== 1 ? "s" : ""}
             </Badge>
           </div>
           <div className="mt-3 space-y-1">

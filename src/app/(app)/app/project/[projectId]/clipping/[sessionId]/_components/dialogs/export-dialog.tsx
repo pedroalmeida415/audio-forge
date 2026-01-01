@@ -1,8 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { FolderPlus, Loader2, Upload } from "lucide-react";
-import { useState } from "react";
+import { Loader2, Upload } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -12,9 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
-import { ScrollArea } from "~/components/ui/scroll-area";
 import { api } from "~/trpc/react";
 import { useClippingStore } from "../../_context/store.context";
 
@@ -24,38 +20,18 @@ interface ExportDialogProps {
 }
 
 /**
- * Export dialog for exporting selected segments to a collection.
+ * Export dialog for creating clips from selected segments.
  *
  * Shows:
  * - Number of segments to export
- * - Collection selector (existing or create new)
- * - Export button
+ * - Confirmation to create clips
  */
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const $store = useClippingStore();
 
-  const sessionId = useValue($store.sessionId);
-  const projectId = useValue($store.projectId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
-  // Mode: "select" for choosing existing collection, "create" for new collection
-  const [mode, setMode] = useState<"select" | "create">("select");
-  const [selectedCollectionId, setSelectedCollectionId] = useState<
-    string | null
-  >(null);
-  const [newCollectionName, setNewCollectionName] = useState("");
-
-  // Fetch existing collections
-  const { data: collections, isLoading: collectionsLoading } =
-    api.collections.list.useQuery(
-      { projectId },
-      { enabled: open && !!projectId },
-    );
-
-  const createCollectionMutation = api.collections.create.useMutation();
-  const exportMutation = api.clippingSession.exportToCollection.useMutation();
-
-  const trpcUtils = api.useUtils();
+  const createClipsMutation = api.clippingSession.createClips.useMutation();
 
   // Only export checkbox-selected segments
   const segmentIdsToExport = Array.from(selectedSegmentIds);
@@ -64,44 +40,17 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const handleExport = async () => {
     if (segmentCount === 0) return;
 
-    let collectionId = selectedCollectionId;
-
-    // Create new collection if needed
-    if (mode === "create" && newCollectionName.trim()) {
-      const newCollection = await createCollectionMutation.mutateAsync({
-        projectId,
-        name: newCollectionName.trim(),
-      });
-      collectionId = newCollection.id;
-    }
-
-    if (!collectionId) return;
-
-    // Export segments
-    await exportMutation.mutateAsync({
-      sessionId,
-      collectionId,
+    await createClipsMutation.mutateAsync({
       segmentIds: segmentIdsToExport,
     });
-
-    // Invalidate collections query
-    await trpcUtils.collections.list.invalidate({ projectId });
 
     // Clear selection and close dialog
     $store.clearAllSelected();
     onOpenChange(false);
-
-    // Reset state
-    setMode("select");
-    setSelectedCollectionId(null);
-    setNewCollectionName("");
   };
 
-  const isExporting =
-    createCollectionMutation.isPending || exportMutation.isPending;
-  const canExport =
-    segmentCount > 0 &&
-    (mode === "select" ? !!selectedCollectionId : !!newCollectionName.trim());
+  const isExporting = createClipsMutation.isPending;
+  const canExport = segmentCount > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,94 +58,19 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
-            Export to Collection
+            Create Clips
           </DialogTitle>
           <DialogDescription>
-            Export {segmentCount} segment{segmentCount !== 1 ? "s" : ""} to a
-            collection for clip generation.
+            Create {segmentCount} clip{segmentCount !== 1 ? "s" : ""} from the
+            selected segments. Clips will be queued for processing.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Mode toggle */}
-          <div className="flex gap-2">
-            <Button
-              variant={mode === "select" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMode("select")}
-              className="flex-1"
-            >
-              Existing Collection
-            </Button>
-            <Button
-              variant={mode === "create" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMode("create")}
-              className="flex-1"
-            >
-              <FolderPlus className="mr-1 h-4 w-4" />
-              New Collection
-            </Button>
-          </div>
-
-          {/* Collection selection */}
-          {mode === "select" && (
-            <div className="space-y-2">
-              <Label>Select Collection</Label>
-              {collectionsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : collections && collections.length > 0 ? (
-                <ScrollArea className="h-[200px] rounded-md border">
-                  <div className="p-2">
-                    {collections.map((collection) => (
-                      <button
-                        key={collection.id}
-                        type="button"
-                        onClick={() => setSelectedCollectionId(collection.id)}
-                        className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                          selectedCollectionId === collection.id
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted"
-                        }`}
-                      >
-                        {collection.name}
-                      </button>
-                    ))}
-                  </div>
-                </ScrollArea>
-              ) : (
-                <div className="rounded-md border border-dashed p-6 text-center">
-                  <p className="text-muted-foreground text-sm">
-                    No collections yet
-                  </p>
-                  <Button
-                    variant="link"
-                    size="sm"
-                    onClick={() => setMode("create")}
-                    className="mt-2"
-                  >
-                    Create your first collection
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* New collection form */}
-          {mode === "create" && (
-            <div className="space-y-2">
-              <Label htmlFor="collection-name">Collection Name</Label>
-              <Input
-                id="collection-name"
-                value={newCollectionName}
-                onChange={(e) => setNewCollectionName(e.target.value)}
-                placeholder="e.g., Interview Clips"
-                autoFocus
-              />
-            </div>
-          )}
+        <div className="py-4">
+          <p className="text-muted-foreground text-sm">
+            Each segment will be processed into an audio clip with
+            transcription. You can view clip progress in the project dashboard.
+          </p>
         </div>
 
         <DialogFooter>
@@ -205,7 +79,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           </Button>
           <Button onClick={handleExport} disabled={!canExport || isExporting}>
             {isExporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Export {segmentCount} Segment{segmentCount !== 1 ? "s" : ""}
+            Create {segmentCount} Clip{segmentCount !== 1 ? "s" : ""}
           </Button>
         </DialogFooter>
       </DialogContent>

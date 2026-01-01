@@ -50,6 +50,7 @@ export function InlineSelectionControls() {
   const $store = useClippingStore();
 
   const sessionId = useSelector(() => $store.sessionId.get());
+  const projectId = useSelector(() => $store.projectId.get());
   const mode = useSelector(() => $store.selection.mode.get());
   const range = useSelector(() => $store.selection.getSelectionRange.get());
   const speakers = useSelector(() => $store.speakers.get());
@@ -82,12 +83,12 @@ export function InlineSelectionControls() {
     setSearchValue("");
   };
 
-  const handleCreateSpeaker = (label: string) => {
-    const trimmed = label.trim();
+  const handleCreateSpeaker = (name: string) => {
+    const trimmed = name.trim();
     if (!trimmed) return;
 
     createSpeakerMutation.mutate(
-      { sessionId, label: trimmed },
+      { projectId, name: trimmed },
       {
         onSuccess: (result) => {
           if (result.speaker) {
@@ -107,8 +108,8 @@ export function InlineSelectionControls() {
       sessionId,
       segment: {
         speakerId: selectedSpeakerId,
-        start: range.start,
-        end: range.end,
+        startTime: range.start,
+        endTime: range.end,
       },
     });
   };
@@ -121,7 +122,7 @@ export function InlineSelectionControls() {
 
   // Check if search matches any existing speaker
   const searchMatchesExisting = speakers.some(
-    (s) => s.label.toLowerCase() === searchValue.toLowerCase().trim(),
+    (s) => s.name.toLowerCase() === searchValue.toLowerCase().trim(),
   );
 
   return (
@@ -149,7 +150,7 @@ export function InlineSelectionControls() {
                   className="h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: speakerColors[selectedSpeakerId] }}
                 />
-                <span className="truncate">{selectedSpeaker.label}</span>
+                <span className="truncate">{selectedSpeaker.name}</span>
               </div>
             ) : (
               <span className="text-muted-foreground">Select speaker...</span>
@@ -184,14 +185,14 @@ export function InlineSelectionControls() {
                 {speakers.map((speaker) => (
                   <CommandItem
                     key={speaker.id}
-                    value={speaker.label}
+                    value={speaker.name}
                     onSelect={() => handleSpeakerSelect(speaker.id)}
                   >
                     <div
                       className="mr-2 h-3 w-3 shrink-0 rounded-full"
                       style={{ backgroundColor: speakerColors[speaker.id] }}
                     />
-                    <span>{speaker.label}</span>
+                    <span>{speaker.name}</span>
                     <Check
                       className={cn(
                         "ml-auto h-4 w-4",
@@ -246,12 +247,7 @@ export function InlineSelectionControls() {
       </Button>
 
       {/* Cancel button */}
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-8"
-        onClick={handleCancel}
-      >
+      <Button size="sm" variant="ghost" className="h-8" onClick={handleCancel}>
         Cancel
       </Button>
     </div>

@@ -1,11 +1,7 @@
 import { batch, type Observable, ObservableHint } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
 import { createSpeakerColorMap } from "~/lib/speaker-colors";
-import type {
-  ClippingSession,
-  FileSegment,
-  WorkspaceSpeaker,
-} from "~/server/db/schema";
+import type { Segment, Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
 import { setupMutationDefaults } from "./mutations";
@@ -20,8 +16,19 @@ import type { TimelineState } from "./slices/timeline";
 
 export { TIMELINE_CONSTANTS } from "./constants";
 
+// Extended segment type with speaker info (returned by getById)
+export interface SegmentWithSpeaker extends Segment {
+  speaker: Speaker;
+}
+
 export interface ClippingStoreInitialData {
-  session: ClippingSession;
+  session: {
+    id: string;
+    fileId: string;
+    projectId: string;
+    segments: SegmentWithSpeaker[];
+    speakers: Speaker[];
+  };
   audioDataBuffer: ArrayBuffer;
 }
 
@@ -38,8 +45,8 @@ export function createClippingStore({
   audioDataBuffer,
   session,
 }: ClippingStoreInitialData) {
-  const segments = session.segments ?? [];
-  const speakers = session.speakers ?? [];
+  const segments = session.segments;
+  const speakers = session.speakers;
 
   // Create the observable - closures capture $store by reference
   // This works because closures capture variables by reference, not value.
@@ -69,7 +76,7 @@ export function createClippingStore({
           acc[speakerId].push(segment);
           return acc;
         },
-        {} as Record<string, FileSegment[]>,
+        {} as Record<string, SegmentWithSpeaker[]>,
       ),
 
     // Actions
@@ -97,7 +104,7 @@ export function createClippingStore({
         $store.segmentsBySpeaker.get()[selectedSpeakerId] ?? [];
 
       const visibleSegmentIds = speakerSegments
-        .filter((s) => !s.isDeleted && s.speakerId === selectedSpeakerId)
+        .filter((s) => s.speakerId === selectedSpeakerId)
         .map((s) => s.id);
 
       $store.selectedSegmentIds.set(new Set(visibleSegmentIds));
@@ -126,7 +133,7 @@ export function createClippingStore({
       $store.setActiveSegment(segmentId);
       const segment = $store.segments.peek().find((s) => s.id === segmentId);
       if (segment) {
-        $store.playback.scrollToTime(segment.start);
+        $store.playback.scrollToTime(segment.startTime);
       }
     },
 
@@ -135,15 +142,13 @@ export function createClippingStore({
       const selectedSpeakerId = $store.selectedSpeakerId.peek();
       const segments = $store.segments.peek();
 
-      // Filter segments by speaker and non-deleted
+      // Filter segments by speaker
       const filteredSegments = selectedSpeakerId
-        ? segments.filter(
-            (s) => s.speakerId === selectedSpeakerId && !s.isDeleted,
-          )
-        : segments.filter((s) => !s.isDeleted);
+        ? segments.filter((s) => s.speakerId === selectedSpeakerId)
+        : [...segments];
 
       // Sort by start time
-      filteredSegments.sort((a, b) => a.start - b.start);
+      filteredSegments.sort((a, b) => a.startTime - b.startTime);
 
       if (!activeSegmentId) {
         const nextSegment =
@@ -170,8 +175,8 @@ export function createClippingStore({
 
     // Replace session data with server state (used when diarization completes)
     replaceSessionData: (
-      newSegments: FileSegment[],
-      newSpeakers: WorkspaceSpeaker[],
+      newSegments: SegmentWithSpeaker[],
+      newSpeakers: Speaker[],
     ) => {
       batch(() => {
         $store.segments.set(newSegments);
@@ -184,11 +189,11 @@ export function createClippingStore({
     },
 
     // Speaker CRUD actions (optimistic updates handled by mutations.ts)
-    addSpeaker: (speaker: WorkspaceSpeaker) => {
+    addSpeaker: (speaker: Speaker) => {
       $store.speakers.push(speaker);
     },
 
-    updateSpeaker: (speakerId: string, updates: Partial<WorkspaceSpeaker>) => {
+    updateSpeaker: (speakerId: string, updates: Partial<Speaker>) => {
       const index = $store.speakers.peek().findIndex((s) => s.id === speakerId);
       if (index !== -1) {
         $store.speakers[index]?.assign(updates);
@@ -231,8 +236,8 @@ interface ClippingStoreState {
   fileId: string;
   projectId: string;
 
-  segments: FileSegment[];
-  speakers: WorkspaceSpeaker[];
+  segments: SegmentWithSpeaker[];
+  speakers: Speaker[];
 
   selectedSpeakerId: string | null;
   selectedSegmentIds: Set<string>;
@@ -241,7 +246,7 @@ interface ClippingStoreState {
   audioDataBuffer: ArrayBuffer;
 
   // Computed values
-  segmentsBySpeaker: () => Record<string, FileSegment[]>;
+  segmentsBySpeaker: () => Record<string, SegmentWithSpeaker[]>;
   speakerColors: () => Record<string, string>;
 
   // Speaker selection
@@ -257,16 +262,13 @@ interface ClippingStoreState {
 
   // Replace session data with server state (for diarization completion)
   replaceSessionData: (
-    segments: FileSegment[],
-    speakers: WorkspaceSpeaker[],
+    segments: SegmentWithSpeaker[],
+    speakers: Speaker[],
   ) => void;
 
   // Speaker CRUD
-  addSpeaker: (speaker: WorkspaceSpeaker) => void;
-  updateSpeaker: (
-    speakerId: string,
-    updates: Partial<WorkspaceSpeaker>,
-  ) => void;
+  addSpeaker: (speaker: Speaker) => void;
+  updateSpeaker: (speakerId: string, updates: Partial<Speaker>) => void;
   removeSpeaker: (speakerId: string) => void;
 
   // State slices

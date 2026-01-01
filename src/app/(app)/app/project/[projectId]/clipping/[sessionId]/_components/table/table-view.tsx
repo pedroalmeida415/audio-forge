@@ -32,6 +32,7 @@ export function TableView() {
   const speakers = useValue($store.speakers);
   const speakerColors = useValue($store.speakerColors);
   const sessionId = useValue($store.sessionId);
+  const projectId = useValue($store.projectId);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
@@ -53,22 +54,21 @@ export function TableView() {
 
   const handleAddSpeaker = () => {
     createSpeakerMutation.mutate({
-      sessionId,
-      label: `Speaker ${speakers.length + 1}`,
+      projectId,
+      name: `Speaker ${speakers.length + 1}`,
     });
   };
 
-  const handleStartEdit = (speaker: { id: string; label: string }) => {
+  const handleStartEdit = (speaker: { id: string; name: string }) => {
     setEditingSpeakerId(speaker.id);
-    setEditValue(speaker.label);
+    setEditValue(speaker.name);
   };
 
   const handleConfirmEdit = () => {
     if (editingSpeakerId && editValue.trim()) {
       updateSpeakerMutation.mutate({
-        sessionId,
         speakerId: editingSpeakerId,
-        label: editValue.trim(),
+        name: editValue.trim(),
       });
     }
     setEditingSpeakerId(null);
@@ -104,7 +104,7 @@ export function TableView() {
         {/* Speaker list */}
         <div className="flex flex-1 flex-col gap-1 overflow-y-auto py-2">
           {speakers.map((speaker) => {
-            const initial = speaker.label.charAt(0).toUpperCase();
+            const initial = speaker.name.charAt(0).toUpperCase();
             const isSelected = selectedSpeakerId === speaker.id;
             const isEditing = editingSpeakerId === speaker.id;
 
@@ -151,7 +151,7 @@ export function TableView() {
                       />
                     ) : (
                       <span className="min-w-0 flex-1 truncate text-left text-sm">
-                        {speaker.label}
+                        {speaker.name}
                       </span>
                     )}
                   </button>
@@ -172,7 +172,7 @@ export function TableView() {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                      <p>{speaker.label}</p>
+                      <p>{speaker.name}</p>
                     </TooltipContent>
                   </Tooltip>
                 )}

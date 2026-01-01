@@ -1,16 +1,16 @@
 "use client";
 
-import { use, useState } from "react";
-import { useDropzone } from "react-dropzone";
 import { ArrowLeft, Loader2, Music, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api } from "~/trpc/react";
+import { use, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import { Button } from "~/components/ui/button";
 import { Progress } from "~/components/ui/progress";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
 import { cn } from "~/lib/utils";
+import { api } from "~/trpc/react";
 
 const ACCEPTED_AUDIO_TYPES = {
   "audio/mpeg": [".mp3"],
@@ -86,7 +86,8 @@ export default function ClippingEmptyStatePage({
     }
   };
 
-  const isLoading = isUploading || getUploadUrl.isPending || createFile.isPending;
+  const isLoading =
+    isUploading || getUploadUrl.isPending || createFile.isPending;
 
   return (
     <div className="flex h-screen flex-col">
@@ -108,7 +109,7 @@ export default function ClippingEmptyStatePage({
           {/* Upload section */}
           <div className="space-y-4">
             <div className="text-center">
-              <h2 className="text-xl font-semibold">Upload Audio</h2>
+              <h2 className="font-semibold text-xl">Upload Audio</h2>
               <p className="text-muted-foreground text-sm">
                 Upload an audio file to start creating clips
               </p>

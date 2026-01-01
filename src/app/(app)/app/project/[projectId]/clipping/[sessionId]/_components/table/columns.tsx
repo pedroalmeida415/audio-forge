@@ -7,8 +7,8 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
-import type { FileSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
+import type { SegmentWithSpeaker } from "../../_store/clipping-store";
 import {
   DURATION_THRESHOLDS,
   getSegmentDuration,
@@ -31,11 +31,7 @@ function SelectAllCheckbox() {
   const $store = useClippingStore();
 
   const speakerSegments = useValue(
-    () =>
-      $store.segmentsBySpeaker
-        .get()
-        [$store.selectedSpeakerId.get()!]?.filter((seg) => !seg.isDeleted) ??
-      [],
+    () => $store.segmentsBySpeaker.get()[$store.selectedSpeakerId.get()!] ?? [],
   );
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
@@ -131,53 +127,11 @@ function DurationCell({ duration }: { duration: number }) {
   );
 }
 
-// Status cell with colored indicator
-function StatusCell({
-  status,
-}: {
-  status: "new" | "reviewed" | "done";
-}) {
-  const statusConfig = {
-    new: { color: "bg-muted-foreground/30", label: "New" },
-    reviewed: { color: "bg-amber-500", label: "Reviewed" },
-    done: { color: "bg-green-500", label: "Done" },
-  };
-
-  const config = statusConfig[status];
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className={cn("h-2 w-2 rounded-full", config.color)} />
-      <span className="text-muted-foreground text-xs">{config.label}</span>
-    </div>
-  );
-}
-
-// Tags cell
-function TagsCell({ tags }: { tags: string[] }) {
-  if (tags.length === 0) {
-    return <span className="text-muted-foreground/50 text-xs">—</span>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1">
-      {tags.map((tag) => (
-        <span
-          key={tag}
-          className="inline-flex rounded bg-muted px-1.5 py-0.5 text-muted-foreground text-xs"
-        >
-          {tag}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 // ============================================================================
 // Column Definitions
 // ============================================================================
 
-export function createColumns(): ColumnDef<FileSegment>[] {
+export function createColumns(): ColumnDef<SegmentWithSpeaker>[] {
   return [
     // Checkbox column - subscribes directly to store
     {
@@ -212,16 +166,16 @@ export function createColumns(): ColumnDef<FileSegment>[] {
 
     // Start time column (editable)
     {
-      id: "start",
-      accessorFn: (row) => row.start,
+      id: "startTime",
+      accessorFn: (row) => row.startTime,
       header: "Start",
       cell: ({ row }) => (
         <EditableTimeCell
-          value={row.original.start}
+          value={row.original.startTime}
           segmentId={row.original.id}
-          field="start"
+          field="startTime"
           minValue={0}
-          maxValue={row.original.end - 0.1}
+          maxValue={row.original.endTime - 0.1}
         />
       ),
       size: 95,
@@ -229,15 +183,15 @@ export function createColumns(): ColumnDef<FileSegment>[] {
 
     // End time column (editable)
     {
-      id: "end",
-      accessorFn: (row) => row.end,
+      id: "endTime",
+      accessorFn: (row) => row.endTime,
       header: "End",
       cell: ({ row }) => (
         <EditableTimeCell
-          value={row.original.end}
+          value={row.original.endTime}
           segmentId={row.original.id}
-          field="end"
-          minValue={row.original.start + 0.1}
+          field="endTime"
+          minValue={row.original.startTime + 0.1}
         />
       ),
       size: 95,
@@ -262,34 +216,6 @@ export function createColumns(): ColumnDef<FileSegment>[] {
         <DurationCell duration={getSegmentDuration(row.original)} />
       ),
       size: 90,
-    },
-
-    // Status column (sortable)
-    {
-      id: "status",
-      accessorFn: (row) => row.status ?? "new",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-3 h-8"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Status
-          <SortIcon isSorted={column.getIsSorted()} />
-        </Button>
-      ),
-      cell: ({ row }) => <StatusCell status={row.original.status ?? "new"} />,
-      size: 90,
-    },
-
-    // Tags column
-    {
-      id: "tags",
-      accessorFn: (row) => row.tags ?? [],
-      header: "Tags",
-      cell: ({ row }) => <TagsCell tags={row.original.tags ?? []} />,
-      size: 120,
     },
 
     // Index column - uses row index from table

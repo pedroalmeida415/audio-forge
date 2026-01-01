@@ -10,7 +10,7 @@ import { useClippingStore } from "../../_context/store.context";
 interface EditableTimeCellProps {
   value: number;
   segmentId: string;
-  field: "start" | "end";
+  field: "startTime" | "endTime";
   minValue?: number;
   maxValue?: number;
 }
@@ -30,7 +30,8 @@ export function EditableTimeCell({
   const $store = useClippingStore();
   const sessionId = useSelector(() => $store.sessionId.get());
 
-  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation =
+    api.clippingSession.updateSegments.useMutation();
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -62,7 +63,8 @@ export function EditableTimeCell({
 
     // Only update if value changed
     if (parsed !== value) {
-      const updates = field === "start" ? { start: parsed } : { end: parsed };
+      const updates =
+        field === "startTime" ? { startTime: parsed } : { endTime: parsed };
 
       updateSegmentsMutation.mutate({
         sessionId,

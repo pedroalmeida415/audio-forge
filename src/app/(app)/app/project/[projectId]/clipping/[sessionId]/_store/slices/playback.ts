@@ -129,7 +129,9 @@ export function createPlaybackState(
 
     // Clamp and round zoom level (avoids floating-point precision issues)
     const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
-    const clampedZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoomLevel)));
+    const clampedZoom = Math.round(
+      Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoomLevel)),
+    );
 
     // Calculate new position of focal point at the NEW zoom level
     const newFocalPixelPos = zoomTimeToPixels(
@@ -143,10 +145,17 @@ export function createPlaybackState(
     const newScrollOffset = newFocalPixelPos - viewportOffset;
 
     // Calculate max scroll offset at the NEW zoom level
-    const newPps = calculatePixelsPerSecond(clampedZoom, duration, containerWidth);
+    const newPps = calculatePixelsPerSecond(
+      clampedZoom,
+      duration,
+      containerWidth,
+    );
     const newTotalWidth = Math.max(duration * newPps, containerWidth);
     const newMaxOffset = Math.max(0, newTotalWidth - containerWidth);
-    const clampedScrollOffset = Math.max(0, Math.min(newMaxOffset, newScrollOffset));
+    const clampedScrollOffset = Math.max(
+      0,
+      Math.min(newMaxOffset, newScrollOffset),
+    );
 
     // Batch the state updates (calculations already done with new values)
     batch(() => {
@@ -202,8 +211,8 @@ export function createPlaybackState(
   const handleSegmentPlay = (segmentId: string) => {
     const segment = $store.segments.peek().find((s) => s.id === segmentId);
     if (segment) {
-      playSegment(segment.start, segment.end);
-      scrollToTime(segment.start);
+      playSegment(segment.startTime, segment.endTime);
+      scrollToTime(segment.startTime);
     }
   };
 

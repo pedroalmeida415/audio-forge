@@ -27,7 +27,9 @@ export function TimelineScrollbar() {
 
   // Subscribe to values needed for visibility calculation
   const totalWidth = useSelector(() => $store.timeline.getTotalWidth.get());
-  const containerWidth = useSelector(() => $store.timeline.containerWidth.get());
+  const containerWidth = useSelector(() =>
+    $store.timeline.containerWidth.get(),
+  );
 
   // Don't show scrollbar if content fits in container
   const needsScrollbar = totalWidth > containerWidth;
@@ -142,7 +144,7 @@ export function TimelineScrollbar() {
     <div
       ref={trackRef}
       className={cn(
-        "absolute bottom-1 left-2 right-2 rounded-full bg-muted/30 transition-opacity duration-300",
+        "absolute right-2 bottom-1 left-2 rounded-full bg-muted/30 transition-opacity duration-300",
         isVisible || isDragging ? "opacity-100" : "opacity-0",
       )}
       style={{ height: SCROLLBAR_HEIGHT }}
@@ -171,7 +173,9 @@ export function TimelineScrollbar() {
 
           // Thumb position
           const thumbPositionPercent =
-            maxOffset > 0 ? (offset / maxOffset) * (100 - thumbWidthPercent) : 0;
+            maxOffset > 0
+              ? (offset / maxOffset) * (100 - thumbWidthPercent)
+              : 0;
 
           return {
             width: `${thumbWidthPercent}%`,

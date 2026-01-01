@@ -24,7 +24,8 @@ interface HandlePosition {
 export function SegmentResizeHandles() {
   const $store = useClippingStore();
   const sessionId = useSelector(() => $store.sessionId.get());
-  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation =
+    api.clippingSession.updateSegments.useMutation();
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -56,8 +57,8 @@ export function SegmentResizeHandles() {
       }
 
       // Subscribe to segment's start/end so handles update during drag
-      const start = $store.segments[segmentIndex]?.start.get() ?? 0;
-      const end = $store.segments[segmentIndex]?.end.get() ?? 0;
+      const start = $store.segments[segmentIndex]?.startTime.get() ?? 0;
+      const end = $store.segments[segmentIndex]?.endTime.get() ?? 0;
 
       // Find the segments bar container for viewport offset
       const container = document.querySelector(
@@ -96,8 +97,8 @@ export function SegmentResizeHandles() {
     if (!segment) return;
 
     const startX = e.clientX;
-    const originalStart = segment.start;
-    const originalEnd = segment.end;
+    const originalStart = segment.startTime;
+    const originalEnd = segment.endTime;
     const pps = $store.timeline.getPixelsPerSecond.peek();
     const duration = $store.playback.duration.peek();
 
@@ -119,14 +120,14 @@ export function SegmentResizeHandles() {
           0,
           Math.min(pendingTime, originalEnd - 0.001),
         );
-        $store.segments[segmentIndex]?.start.set(newStart);
+        $store.segments[segmentIndex]?.startTime.set(newStart);
       } else {
         // Clamp: end must be > start and <= duration
         const newEnd = Math.min(
           duration,
           Math.max(pendingTime, originalStart + 0.001),
         );
-        $store.segments[segmentIndex]?.end.set(newEnd);
+        $store.segments[segmentIndex]?.endTime.set(newEnd);
       }
       pendingTime = null;
     };
@@ -157,17 +158,17 @@ export function SegmentResizeHandles() {
       if (!updatedSegment) return;
 
       // Only call mutation if value actually changed
-      if (edge === "start" && updatedSegment.start !== originalStart) {
+      if (edge === "start" && updatedSegment.startTime !== originalStart) {
         updateSegmentsMutation.mutate({
           sessionId,
           segmentIds: activeId,
-          updates: { start: updatedSegment.start },
+          updates: { startTime: updatedSegment.startTime },
         });
-      } else if (edge === "end" && updatedSegment.end !== originalEnd) {
+      } else if (edge === "end" && updatedSegment.endTime !== originalEnd) {
         updateSegmentsMutation.mutate({
           sessionId,
           segmentIds: activeId,
-          updates: { end: updatedSegment.end },
+          updates: { endTime: updatedSegment.endTime },
         });
       }
     };

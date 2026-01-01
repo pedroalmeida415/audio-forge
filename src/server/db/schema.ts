@@ -1,6 +1,5 @@
 import { relations } from "drizzle-orm";
 import {
-  boolean,
   doublePrecision,
   index,
   jsonb,
@@ -10,6 +9,7 @@ import {
   timestamp,
   uuid,
   varchar,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 // ============================================================================
@@ -109,8 +109,17 @@ export const projects = pgTable(
   (table) => [index("project_id_idx").on(table.id)],
 );
 
-export const collections = pgTable(
-  "collection",
+/**
+ * Speakers - Project-level speaker identities
+ *
+ * Speakers with names starting with "SPEAKER_" are diarization-generated
+ * and are hidden from project-level views. They are immutable (no rename allowed).
+ *
+ * Regular speakers (e.g., "John", "Sarah") represent real speaker identities
+ * and serve as the "collections" for organizing clips.
+ */
+export const speakers = pgTable(
+  "speaker",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     projectId: uuid("project_id")
@@ -121,70 +130,8 @@ export const collections = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
 
     name: varchar("name", { length: 255 }).notNull(),
-    description: text("description"),
+    color: varchar("color", { length: 50 }),
 
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [index("collection_id_idx").on(table.id)],
-);
-
-export const clipStatus = pgEnum("clip_status", [
-  "pending",
-  "processing",
-  "completed",
-  "failed",
-]);
-
-export const clips = pgTable(
-  "clip",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-
-    collectionId: uuid("collection_id")
-      .notNull()
-      .references(() => collections.id, { onDelete: "cascade" }),
-
-    // Source audio file
-    sourceFileId: uuid("source_file_id").references(() => files.id, {
-      onDelete: "cascade",
-    }),
-
-    // Clipping session reference (for tracking source)
-    clippingSessionId: uuid("clipping_session_id").references(
-      () => clippingSessions.id,
-      { onDelete: "set null" },
-    ),
-
-    // Output file (nullable until processing completes)
-    fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
-
-    // Source segment info (known at creation time)
-    sourceSegmentId: varchar("source_segment_id", { length: 255 }).notNull(),
-    startTime: doublePrecision("start_time").notNull(),
-    endTime: doublePrecision("end_time").notNull(),
-    duration: doublePrecision("duration").notNull(),
-
-    // Speaker label at time of export (denormalized for history)
-    speakerLabel: varchar("speaker_label", { length: 255 }),
-
-    // Job status (clip record doubles as job record)
-    status: clipStatus("status").default("pending").notNull(),
-    errorMessage: text("error_message"),
-
-    // Optional metadata
-    mosScore: doublePrecision("mos_score"),
-    transcript: text("transcript"),
-
-    // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -194,59 +141,97 @@ export const clips = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index("clip_collection_id_idx").on(table.collectionId),
-    index("clip_source_file_id_idx").on(table.sourceFileId),
-    index("clip_status_idx").on(table.status),
+    index("speaker_project_id_idx").on(table.projectId),
+    index("speaker_user_id_idx").on(table.userId),
+    index("speaker_name_idx").on(table.name),
   ],
 );
 
 /**
- * Workspace-local speaker definition
- * Speakers are scoped to the clipping session
+ * Segments - Normalized time ranges with speaker assignment
+ *
+ * Segments belong to a clipping session and are always assigned to a speaker.
+ * The speaker reference determines which "collection" the segment belongs to.
  */
-export interface WorkspaceSpeaker {
-  id: string;
-  label: string;
-  color?: string;
-  createdAt: string;
-}
+export const segments = pgTable(
+  "segment",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => clippingSessions.id, { onDelete: "cascade" }),
+    speakerId: uuid("speaker_id")
+      .notNull()
+      .references(() => speakers.id, { onDelete: "cascade" }),
+
+    startTime: doublePrecision("start_time").notNull(),
+    endTime: doublePrecision("end_time").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("segment_session_id_idx").on(table.sessionId),
+    index("segment_speaker_id_idx").on(table.speakerId),
+    index("segment_start_time_idx").on(table.startTime),
+  ],
+);
+
+export const clipStatus = pgEnum("clip_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
 
 /**
- * Segment status - tracks workflow state
- * - new: Unreviewed segment (default)
- * - reviewed: User has reviewed/approved the segment
- * - done: Segment has been exported
+ * Clips - Processed audio outputs with transcription
+ *
+ * Clips reference their source segment. The speaker is derived via:
+ * clip → segment → speaker
  */
-export type SegmentStatus = "new" | "reviewed" | "done";
+export const clips = pgTable(
+  "clip",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
 
-/**
- * Segment - represents a time range with speaker assignment
- * Can come from diarization or be manually created
- */
-export interface FileSegment {
-  id: string;
-  speakerId: string;
-  start: number;
-  end: number;
-  confidence?: number;
-  source: "diarization" | "manual";
-  isDeleted?: boolean;
-  status?: SegmentStatus;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+    // Source segment (derives session, speaker, times)
+    segmentId: uuid("segment_id")
+      .notNull()
+      .references(() => segments.id, { onDelete: "cascade" }),
 
-/**
- * Diarization job info - embedded in clipping session
- */
-export interface DiarizationInfo {
-  jobId: string;
-  status: "pending" | "running" | "completed" | "failed";
-  startedAt: string;
-  completedAt: string | null;
-  error: string | null;
-}
+    // Output file (nullable until processing completes)
+    fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
+
+    // Job status
+    status: clipStatus("status").default("pending").notNull(),
+    errorMessage: text("error_message"),
+
+    // Transcription and quality
+    transcription: text("transcription"),
+    mosScore: doublePrecision("mos_score"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("clip_segment_id_idx").on(table.segmentId),
+    index("clip_status_idx").on(table.status),
+  ],
+);
 
 /**
  * Files - Pure storage reference for audio files
@@ -284,6 +269,17 @@ export const files = pgTable(
 );
 
 /**
+ * Diarization job info - embedded in clipping session
+ */
+export interface DiarizationInfo {
+  jobId: string;
+  status: "pending" | "running" | "completed" | "failed";
+  startedAt: string;
+  completedAt: string | null;
+  error: string | null;
+}
+
+/**
  * Clipping Sessions - Workspace state for editing audio
  * One session per file (1:1 relationship)
  */
@@ -305,11 +301,7 @@ export const clippingSessions = pgTable(
     // Session name (defaults to file name, editable by user)
     name: varchar("name", { length: 255 }),
 
-    // Workspace data
-    segments: jsonb("segments").$type<FileSegment[]>(),
-    speakers: jsonb("speakers").$type<WorkspaceSpeaker[]>(),
-
-    // Embedded diarization job info
+    // Embedded diarization job info (metadata only)
     diarization: jsonb("diarization").$type<DiarizationInfo>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -344,37 +336,47 @@ export const sessionRelations = relations(session, ({ one }) => ({
 }));
 
 export const projectRelations = relations(projects, ({ many }) => ({
-  collections: many(collections),
+  speakers: many(speakers),
   clippingSessions: many(clippingSessions),
   files: many(files),
 }));
 
-export const collectionRelations = relations(collections, ({ many, one }) => ({
-  clips: many(clips),
+export const speakerRelations = relations(speakers, ({ one, many }) => ({
   project: one(projects, {
-    fields: [collections.projectId],
+    fields: [speakers.projectId],
     references: [projects.id],
   }),
+  user: one(user, {
+    fields: [speakers.userId],
+    references: [user.id],
+  }),
+  segments: many(segments),
+}));
+
+export const segmentRelations = relations(segments, ({ one, many }) => ({
+  session: one(clippingSessions, {
+    fields: [segments.sessionId],
+    references: [clippingSessions.id],
+  }),
+  speaker: one(speakers, {
+    fields: [segments.speakerId],
+    references: [speakers.id],
+  }),
+  clips: many(clips),
 }));
 
 export const clipRelations = relations(clips, ({ one }) => ({
-  collection: one(collections, {
-    fields: [clips.collectionId],
-    references: [collections.id],
-  }),
-  sourceFile: one(files, {
-    fields: [clips.sourceFileId],
-    references: [files.id],
-    relationName: "sourceFile",
-  }),
-  clippingSession: one(clippingSessions, {
-    fields: [clips.clippingSessionId],
-    references: [clippingSessions.id],
+  segment: one(segments, {
+    fields: [clips.segmentId],
+    references: [segments.id],
   }),
   file: one(files, {
     fields: [clips.fileId],
     references: [files.id],
-    relationName: "outputFile",
+  }),
+  user: one(user, {
+    fields: [clips.userId],
+    references: [user.id],
   }),
 }));
 
@@ -393,7 +395,7 @@ export const clippingSessionRelations = relations(
       fields: [clippingSessions.userId],
       references: [user.id],
     }),
-    clips: many(clips),
+    segments: many(segments),
   }),
 );
 
@@ -404,8 +406,7 @@ export const fileRelations = relations(files, ({ one, many }) => ({
     references: [projects.id],
   }),
   clippingSession: one(clippingSessions),
-  sourceClips: many(clips, { relationName: "sourceFile" }),
-  outputClips: many(clips, { relationName: "outputFile" }),
+  clips: many(clips),
 }));
 
 // ============================================================================
@@ -416,4 +417,5 @@ export type ClippingSession = typeof clippingSessions.$inferSelect;
 export type Clip = typeof clips.$inferSelect;
 export type File = typeof files.$inferSelect;
 export type Project = typeof projects.$inferSelect;
-export type Collection = typeof collections.$inferSelect;
+export type Speaker = typeof speakers.$inferSelect;
+export type Segment = typeof segments.$inferSelect;

@@ -1,4 +1,4 @@
-import type { WorkspaceSpeaker } from "~/server/db/schema";
+import type { Speaker } from "~/server/db/schema";
 
 // ============================================================================
 // Duration Thresholds (used for visual styling)
@@ -14,16 +14,13 @@ export const DURATION_THRESHOLDS = {
 // ============================================================================
 
 export function getSegmentDuration(segment: {
-  start: number;
-  end: number;
+  startTime: number;
+  endTime: number;
 }): number {
-  return segment.end - segment.start;
+  return segment.endTime - segment.startTime;
 }
 
-export function getSpeakerLabel(
-  speakerId: string,
-  speakers: WorkspaceSpeaker[],
-): string {
+export function getSpeakerName(speakerId: string, speakers: Speaker[]): string {
   const speaker = speakers.find((s) => s.id === speakerId);
-  return speaker?.label ?? speakerId;
+  return speaker?.name ?? speakerId;
 }

@@ -1,7 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { on } from "node:events";
-import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { env } from "~/env";
@@ -10,10 +9,8 @@ import {
   clips,
   clippingSessions,
   type DiarizationInfo,
-  type FileSegment,
-  files,
-  type SegmentStatus,
-  type WorkspaceSpeaker,
+  segments,
+  speakers,
 } from "~/server/db/schema";
 import {
   diarizationEvents,
@@ -26,15 +23,6 @@ import {
   StorageService,
 } from "~/services";
 
-// Schema for segment updates
-const segmentUpdateSchema = z.object({
-  start: z.number().min(0).optional(),
-  end: z.number().min(0).optional(),
-  speakerId: z.string().uuid().optional(),
-  isDeleted: z.boolean().optional(),
-  status: z.enum(["new", "reviewed", "done"]).optional(),
-});
-
 // Helper to run Effect with services
 const runEffect = <A, E>(
   effect: Effect.Effect<
@@ -45,7 +33,7 @@ const runEffect = <A, E>(
 ) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 export const clippingSessionRouter = createTRPCRouter({
-  // Get session by ID with file data
+  // Get session by ID with file, segments, and speakers
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -57,6 +45,12 @@ export const clippingSessionRouter = createTRPCRouter({
         with: {
           file: true,
           project: true,
+          segments: {
+            with: {
+              speaker: true,
+            },
+            orderBy: (seg, { asc }) => [asc(seg.startTime)],
+          },
         },
       });
 
@@ -67,7 +61,19 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      return session;
+      // Get all speakers that have segments in this session
+      const speakerIds = [...new Set(session.segments.map((s) => s.speakerId))];
+      const sessionSpeakers =
+        speakerIds.length > 0
+          ? await ctx.db.query.speakers.findMany({
+              where: inArray(speakers.id, speakerIds),
+            })
+          : [];
+
+      return {
+        ...session,
+        speakers: sessionSpeakers,
+      };
     }),
 
   // List sessions for a project
@@ -255,10 +261,15 @@ export const clippingSessionRouter = createTRPCRouter({
       z.object({
         sessionId: z.string().uuid(),
         segmentIds: z.union([z.string().uuid(), z.array(z.string().uuid())]),
-        updates: segmentUpdateSchema,
+        updates: z.object({
+          startTime: z.number().min(0).optional(),
+          endTime: z.number().min(0).optional(),
+          speakerId: z.string().uuid().optional(),
+        }),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify session ownership
       const session = await ctx.db.query.clippingSessions.findFirst({
         where: and(
           eq(clippingSessions.id, input.sessionId),
@@ -273,54 +284,44 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      const currentSegments = session.segments ?? [];
-      if (currentSegments.length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No segments found",
-        });
-      }
-
       // Normalize to array
       const segmentIds = Array.isArray(input.segmentIds)
         ? input.segmentIds
         : [input.segmentIds];
 
-      const segmentIdSet = new Set(segmentIds);
-      const now = new Date().toISOString();
-
-      // Apply updates to matching segments
-      const updatedSegments = currentSegments.map((segment) => {
-        if (!segmentIdSet.has(segment.id)) {
-          return segment;
+      // Validate time constraints if times are being updated
+      if (
+        input.updates.startTime !== undefined &&
+        input.updates.endTime !== undefined
+      ) {
+        if (input.updates.endTime <= input.updates.startTime) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "End time must be greater than start time",
+          });
         }
+      }
 
-        const updated: FileSegment = {
-          ...segment,
-          ...input.updates,
-          updatedAt: now,
-        };
-
-        // Validate time constraints if times are being updated
-        if (
-          input.updates.start !== undefined ||
-          input.updates.end !== undefined
-        ) {
-          if (updated.end <= updated.start) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `End time must be greater than start time for segment ${segment.id}`,
-            });
-          }
-        }
-
-        return updated;
-      });
-
+      // Update segments in the table
       await ctx.db
-        .update(clippingSessions)
-        .set({ segments: updatedSegments })
-        .where(eq(clippingSessions.id, input.sessionId));
+        .update(segments)
+        .set({
+          ...(input.updates.startTime !== undefined && {
+            startTime: input.updates.startTime,
+          }),
+          ...(input.updates.endTime !== undefined && {
+            endTime: input.updates.endTime,
+          }),
+          ...(input.updates.speakerId !== undefined && {
+            speakerId: input.updates.speakerId,
+          }),
+        })
+        .where(
+          and(
+            inArray(segments.id, segmentIds),
+            eq(segments.sessionId, input.sessionId),
+          ),
+        );
 
       return { success: true, updatedCount: segmentIds.length };
     }),
@@ -332,8 +333,8 @@ export const clippingSessionRouter = createTRPCRouter({
         sessionId: z.string().uuid(),
         segment: z.object({
           speakerId: z.string().uuid(),
-          start: z.number().min(0),
-          end: z.number().min(0),
+          startTime: z.number().min(0),
+          endTime: z.number().min(0),
         }),
       }),
     )
@@ -353,7 +354,7 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       // Validate time constraints
-      if (input.segment.end <= input.segment.start) {
+      if (input.segment.endTime <= input.segment.startTime) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "End time must be greater than start time",
@@ -361,41 +362,31 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       // Validate speaker exists
-      const speakers = session.speakers ?? [];
-      if (!speakers.some((s) => s.id === input.segment.speakerId)) {
+      const speaker = await ctx.db.query.speakers.findFirst({
+        where: eq(speakers.id, input.segment.speakerId),
+      });
+
+      if (!speaker) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Speaker not found",
         });
       }
 
-      const now = new Date().toISOString();
-      const newSegment: FileSegment = {
-        id: randomUUID(),
-        speakerId: input.segment.speakerId,
-        start: input.segment.start,
-        end: input.segment.end,
-        source: "manual",
-        isDeleted: false,
-        status: "reviewed",
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const currentSegments = session.segments ?? [];
-      const updatedSegments = [...currentSegments, newSegment];
-
-      // Sort by start time for consistency
-      updatedSegments.sort((a, b) => a.start - b.start);
-
-      await ctx.db
-        .update(clippingSessions)
-        .set({ segments: updatedSegments })
-        .where(eq(clippingSessions.id, input.sessionId));
+      // Insert new segment
+      const [newSegment] = await ctx.db
+        .insert(segments)
+        .values({
+          sessionId: input.sessionId,
+          speakerId: input.segment.speakerId,
+          startTime: input.segment.startTime,
+          endTime: input.segment.endTime,
+        })
+        .returning();
 
       return {
         success: true,
-        segmentId: newSegment.id,
+        segment: newSegment,
       };
     }),
 
@@ -409,6 +400,7 @@ export const clippingSessionRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify session ownership
       const session = await ctx.db.query.clippingSessions.findFirst({
         where: and(
           eq(clippingSessions.id, input.sessionId),
@@ -423,20 +415,15 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      const currentSegments = session.segments ?? [];
-      const segmentIndex = currentSegments.findIndex(
-        (s) => s.id === input.segmentId,
-      );
+      // Get the segment to split
+      const segment = await ctx.db.query.segments.findFirst({
+        where: and(
+          eq(segments.id, input.segmentId),
+          eq(segments.sessionId, input.sessionId),
+        ),
+      });
 
-      if (segmentIndex === -1) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Segment not found",
-        });
-      }
-
-      const originalSegment = currentSegments[segmentIndex];
-      if (!originalSegment) {
+      if (!segment) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Segment not found",
@@ -444,77 +431,47 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       // Validate split time is within segment bounds
-      if (
-        input.splitTime <= originalSegment.start ||
-        input.splitTime >= originalSegment.end
-      ) {
+      if (input.splitTime <= segment.startTime || input.splitTime >= segment.endTime) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Split time must be within segment bounds",
         });
       }
 
-      const now = new Date().toISOString();
-
-      // Create first segment (original ID, updated end time)
-      const firstSegment: FileSegment = {
-        id: originalSegment.id,
-        speakerId: originalSegment.speakerId,
-        start: originalSegment.start,
-        end: input.splitTime,
-        confidence: originalSegment.confidence,
-        source: originalSegment.source,
-        isDeleted: originalSegment.isDeleted,
-        status: originalSegment.status,
-        tags: originalSegment.tags,
-        createdAt: originalSegment.createdAt,
-        updatedAt: now,
-      };
-
-      // Create second segment (new ID, from split time to original end)
-      const secondSegment: FileSegment = {
-        id: randomUUID(),
-        speakerId: originalSegment.speakerId,
-        start: input.splitTime,
-        end: originalSegment.end,
-        confidence: originalSegment.confidence,
-        source: originalSegment.source,
-        isDeleted: originalSegment.isDeleted,
-        status: "new",
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      // Replace original segment with the two new ones
-      const updatedSegments = [
-        ...currentSegments.slice(0, segmentIndex),
-        firstSegment,
-        secondSegment,
-        ...currentSegments.slice(segmentIndex + 1),
-      ];
-
+      // Update original segment (keep same ID, update end time)
       await ctx.db
-        .update(clippingSessions)
-        .set({ segments: updatedSegments })
-        .where(eq(clippingSessions.id, input.sessionId));
+        .update(segments)
+        .set({ endTime: input.splitTime })
+        .where(eq(segments.id, input.segmentId));
+
+      // Create second segment (from split time to original end)
+      const [secondSegment] = await ctx.db
+        .insert(segments)
+        .values({
+          sessionId: input.sessionId,
+          speakerId: segment.speakerId,
+          startTime: input.splitTime,
+          endTime: segment.endTime,
+        })
+        .returning();
 
       return {
         success: true,
-        firstSegmentId: firstSegment.id,
+        firstSegmentId: segment.id,
         secondSegmentId: secondSegment.id,
       };
     }),
 
-  // Create a new speaker
-  createSpeaker: protectedProcedure
+  // Delete segments
+  deleteSegments: protectedProcedure
     .input(
       z.object({
         sessionId: z.string().uuid(),
-        label: z.string().min(1).max(100),
-        color: z.string().optional(),
+        segmentIds: z.array(z.string().uuid()).min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify session ownership
       const session = await ctx.db.query.clippingSessions.findFirst({
         where: and(
           eq(clippingSessions.id, input.sessionId),
@@ -529,20 +486,39 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      const newSpeaker: WorkspaceSpeaker = {
-        id: randomUUID(),
-        label: input.label,
-        color: input.color,
-        createdAt: new Date().toISOString(),
-      };
-
-      const currentSpeakers = session.speakers ?? [];
-      const updatedSpeakers = [...currentSpeakers, newSpeaker];
-
+      // Delete segments
       await ctx.db
-        .update(clippingSessions)
-        .set({ speakers: updatedSpeakers })
-        .where(eq(clippingSessions.id, input.sessionId));
+        .delete(segments)
+        .where(
+          and(
+            inArray(segments.id, input.segmentIds),
+            eq(segments.sessionId, input.sessionId),
+          ),
+        );
+
+      return { success: true, deletedCount: input.segmentIds.length };
+    }),
+
+  // Create a new speaker (project-level)
+  createSpeaker: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        name: z.string().min(1).max(100),
+        color: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Insert speaker at project level
+      const [newSpeaker] = await ctx.db
+        .insert(speakers)
+        .values({
+          projectId: input.projectId,
+          userId: ctx.session.user.id,
+          name: input.name,
+          color: input.color,
+        })
+        .returning();
 
       return {
         success: true,
@@ -554,75 +530,56 @@ export const clippingSessionRouter = createTRPCRouter({
   updateSpeaker: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
         speakerId: z.string().uuid(),
-        label: z.string().min(1).max(100).optional(),
+        name: z.string().min(1).max(100).optional(),
         color: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const session = await ctx.db.query.clippingSessions.findFirst({
+      // Get speaker to verify ownership and check name
+      const speaker = await ctx.db.query.speakers.findFirst({
         where: and(
-          eq(clippingSessions.id, input.sessionId),
-          eq(clippingSessions.userId, ctx.session.user.id),
+          eq(speakers.id, input.speakerId),
+          eq(speakers.userId, ctx.session.user.id),
         ),
       });
 
-      if (!session) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Clipping session not found",
-        });
-      }
-
-      const currentSpeakers = session.speakers ?? [];
-      const speakerIndex = currentSpeakers.findIndex(
-        (s) => s.id === input.speakerId,
-      );
-
-      if (speakerIndex === -1) {
+      if (!speaker) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Speaker not found",
         });
       }
 
-      const existingSpeaker = currentSpeakers[speakerIndex];
-      if (!existingSpeaker) {
+      // Block renaming SPEAKER_* speakers
+      if (input.name !== undefined && speaker.name.startsWith("SPEAKER_")) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Speaker not found",
+          code: "BAD_REQUEST",
+          message: "Diarization speakers cannot be renamed",
         });
       }
-
-      const updatedSpeaker: WorkspaceSpeaker = {
-        id: existingSpeaker.id,
-        label: input.label ?? existingSpeaker.label,
-        color: input.color !== undefined ? input.color : existingSpeaker.color,
-        createdAt: existingSpeaker.createdAt,
-      };
-
-      const updatedSpeakers = [...currentSpeakers];
-      updatedSpeakers[speakerIndex] = updatedSpeaker;
 
       await ctx.db
-        .update(clippingSessions)
-        .set({ speakers: updatedSpeakers })
-        .where(eq(clippingSessions.id, input.sessionId));
+        .update(speakers)
+        .set({
+          ...(input.name !== undefined && { name: input.name }),
+          ...(input.color !== undefined && { color: input.color }),
+        })
+        .where(eq(speakers.id, input.speakerId));
 
       return { success: true };
     }),
 
-  // Delete a speaker (and optionally reassign or delete segments)
-  deleteSpeaker: protectedProcedure
+  // Delete a speaker's segments from a session (not the speaker itself)
+  deleteSpeakerFromSession: protectedProcedure
     .input(
       z.object({
         sessionId: z.string().uuid(),
         speakerId: z.string().uuid(),
-        reassignTo: z.string().uuid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify session ownership
       const session = await ctx.db.query.clippingSessions.findFirst({
         where: and(
           eq(clippingSessions.id, input.sessionId),
@@ -637,160 +594,122 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      const currentSpeakers = session.speakers ?? [];
-      const speakerIndex = currentSpeakers.findIndex(
-        (s) => s.id === input.speakerId,
-      );
-
-      if (speakerIndex === -1) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Speaker not found",
-        });
-      }
-
-      // Validate reassign target if provided
-      if (
-        input.reassignTo &&
-        !currentSpeakers.some((s) => s.id === input.reassignTo)
-      ) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Reassign target speaker not found",
-        });
-      }
-
-      // Update speakers list
-      const updatedSpeakers = currentSpeakers.filter(
-        (s) => s.id !== input.speakerId,
-      );
-
-      // Update segments
-      const currentSegments = session.segments ?? [];
-      const now = new Date().toISOString();
-      let updatedSegments: FileSegment[];
-
-      if (input.reassignTo) {
-        // Reassign segments to another speaker
-        updatedSegments = currentSegments.map((segment) =>
-          segment.speakerId === input.speakerId
-            ? { ...segment, speakerId: input.reassignTo!, updatedAt: now }
-            : segment,
-        );
-      } else {
-        // Mark segments as deleted
-        updatedSegments = currentSegments.map((segment) =>
-          segment.speakerId === input.speakerId
-            ? { ...segment, isDeleted: true, updatedAt: now }
-            : segment,
-        );
-      }
-
+      // Delete all segments for this speaker in this session
       await ctx.db
-        .update(clippingSessions)
-        .set({
-          speakers: updatedSpeakers,
-          segments: updatedSegments,
-        })
-        .where(eq(clippingSessions.id, input.sessionId));
+        .delete(segments)
+        .where(
+          and(
+            eq(segments.sessionId, input.sessionId),
+            eq(segments.speakerId, input.speakerId),
+          ),
+        );
 
       return { success: true };
     }),
 
-  // Export segments to a collection (creates clips and enqueues for processing)
-  exportToCollection: protectedProcedure
+  // Get all speakers for a project (for speaker picker)
+  getProjectSpeakers: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
-        collectionId: z.string().uuid(),
+        projectId: z.string().uuid(),
+        includeDiarization: z.boolean().default(true),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const allSpeakers = await ctx.db.query.speakers.findMany({
+        where: and(
+          eq(speakers.projectId, input.projectId),
+          eq(speakers.userId, ctx.session.user.id),
+        ),
+        orderBy: (sp, { asc }) => [asc(sp.name)],
+      });
+
+      // Filter out SPEAKER_* if not including diarization speakers
+      if (!input.includeDiarization) {
+        return allSpeakers.filter((s) => !s.name.startsWith("SPEAKER_"));
+      }
+
+      return allSpeakers;
+    }),
+
+  // Create clips from segments
+  createClips: protectedProcedure
+    .input(
+      z.object({
         segmentIds: z.array(z.string().uuid()).min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // 1. Fetch session with file info
-      const session = await ctx.db.query.clippingSessions.findFirst({
-        where: and(
-          eq(clippingSessions.id, input.sessionId),
-          eq(clippingSessions.userId, ctx.session.user.id),
-        ),
+      // Get segments with their session info
+      const segmentsToExport = await ctx.db.query.segments.findMany({
+        where: inArray(segments.id, input.segmentIds),
         with: {
-          file: true,
+          session: {
+            with: {
+              file: true,
+            },
+          },
         },
       });
 
-      if (!session) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Clipping session not found",
-        });
-      }
-
-      const sourceStorageKey = session.file?.storageKey;
-      if (!sourceStorageKey) {
+      if (segmentsToExport.length === 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Source audio file not found",
+          message: "No valid segments found",
         });
       }
 
-      // 2. Get the speakers map for denormalized labels
-      const speakersMap = new Map(
-        (session.speakers ?? []).map((s) => [s.id, s.label]),
+      // Verify user owns all segments
+      const allOwned = segmentsToExport.every(
+        (s) => s.session.userId === ctx.session.user.id,
       );
-
-      // 3. Filter segments from the session
-      const allSegments = session.segments ?? [];
-      const segmentIdSet = new Set(input.segmentIds);
-      const selectedSegments = allSegments.filter(
-        (s) => segmentIdSet.has(s.id) && !s.isDeleted,
-      );
-
-      if (selectedSegments.length === 0) {
+      if (!allOwned) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No valid segments selected",
+          code: "FORBIDDEN",
+          message: "You do not have access to all selected segments",
         });
       }
 
-      // 4. Create clip records for each segment (status: pending)
+      // Create clip records for each segment
       const clipRecords = await ctx.db
         .insert(clips)
         .values(
-          selectedSegments.map((segment) => ({
+          segmentsToExport.map((segment) => ({
             userId: ctx.session.user.id,
-            collectionId: input.collectionId,
-            sourceFileId: session.fileId,
-            clippingSessionId: session.id,
-            sourceSegmentId: segment.id,
-            startTime: segment.start,
-            endTime: segment.end,
-            duration: segment.end - segment.start,
-            speakerLabel: speakersMap.get(segment.speakerId) ?? null,
+            segmentId: segment.id,
             status: "pending" as const,
           })),
         )
         .returning();
 
-      // 5. Enqueue each clip to BullMQ
+      // Enqueue each clip to BullMQ
       const enqueueResults = await Promise.all(
-        clipRecords.map((clip) =>
-          runEffect(
+        clipRecords.map((clip) => {
+          const segment = segmentsToExport.find((s) => s.id === clip.segmentId);
+          const sourceStorageKey = segment?.session.file?.storageKey;
+
+          if (!sourceStorageKey) {
+            console.error(`No source storage key for clip ${clip.id}`);
+            return null;
+          }
+
+          return runEffect(
             Effect.flatMap(QueueService, (queue) =>
               queue.enqueueClipGeneration({
                 clipId: clip.id,
                 sourceStorageKey,
-                startTime: clip.startTime,
-                endTime: clip.endTime,
+                startTime: segment!.startTime,
+                endTime: segment!.endTime,
               }),
             ),
-          ),
-        ),
+          );
+        }),
       );
 
       return {
         clipIds: clipRecords.map((c) => c.id),
         totalClips: clipRecords.length,
-        queuePosition: enqueueResults[0]?.position ?? 0,
+        queuePosition: enqueueResults.find((r) => r !== null)?.position ?? 0,
       };
     }),
 

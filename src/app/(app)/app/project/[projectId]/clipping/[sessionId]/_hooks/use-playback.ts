@@ -176,7 +176,7 @@ export function usePlayback($store: $ClippingStore) {
     if (!segment) return;
 
     // Calculate segment center and scroll to it
-    const segmentCenter = (segment.start + segment.end) / 2;
+    const segmentCenter = (segment.startTime + segment.endTime) / 2;
     const zoomLevel = $store.timeline.zoomLevel.peek();
     const duration = $store.playback.duration.peek();
     const containerWidth = $store.timeline.containerWidth.peek();

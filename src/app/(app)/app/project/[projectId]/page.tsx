@@ -1,13 +1,12 @@
 "use client";
 
-import { ArrowLeft, FolderOpen, Plus, Scissors } from "lucide-react";
+import { ArrowLeft, Scissors, User } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { use } from "react";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { api } from "~/trpc/react";
-import { CreateCollectionDialog } from "./_component/create-collection-dialog";
 
 export default function ProjectPage({
   params,
@@ -41,32 +40,32 @@ export default function ProjectPage({
               </p>
             )}
           </div>
-          <CreateCollectionDialog projectId={projectId}>
+          <Link href={`/app/project/${projectId}/clipping`}>
             <Button variant="outline">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Collection
+              <Scissors className="mr-2 h-4 w-4" />
+              Go to Clipping
             </Button>
-          </CreateCollectionDialog>
+          </Link>
         </div>
       </div>
 
-      {/* Collections Section */}
+      {/* Speakers Section */}
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-semibold text-xl">
-            Collections ({project.collections.length})
+            Speakers ({project.speakers.length})
           </h2>
         </div>
 
-        {project.collections.length === 0 ? (
+        {project.speakers.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-            <FolderOpen className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="mb-2 text-muted-foreground">No collections yet</p>
+            <User className="mb-4 h-12 w-12 text-muted-foreground" />
+            <p className="mb-2 text-muted-foreground">No speakers yet</p>
             <p className="mb-4 max-w-sm text-center text-muted-foreground text-sm">
-              Collections are created when you assign speakers to segments in
-              the clipping workspace
+              Speakers are created when you run diarization or manually add them
+              in the clipping workspace
             </p>
-            <Link href="/clipping">
+            <Link href={`/app/project/${projectId}/clipping`}>
               <Button variant="outline">
                 <Scissors className="mr-2 h-4 w-4" />
                 Go to Clipping
@@ -75,29 +74,24 @@ export default function ProjectPage({
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {project.collections.map((collection) => (
-              <Link
-                href={`/app/project/${projectId}/collection/${collection.id}`}
-                key={collection.id}
+            {project.speakers.map((speaker) => (
+              <Card
+                key={speaker.id}
+                className="h-full transition-colors hover:bg-muted/50"
               >
-                <Card className="h-full transition-colors hover:bg-muted/50">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">
-                      {collection.name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {collection.description && (
-                      <p className="mb-2 line-clamp-2 text-muted-foreground text-sm">
-                        {collection.description}
-                      </p>
-                    )}
-                    <p className="text-muted-foreground text-xs">
-                      Created {collection.createdAt.toLocaleDateString()}
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{speaker.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className="mb-2 h-2 w-8 rounded"
+                    style={{ backgroundColor: speaker.color ?? "#888" }}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Created {speaker.createdAt.toLocaleDateString()}
+                  </p>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}

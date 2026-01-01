@@ -1,7 +1,7 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useObserve, useObserveEffect, useValue } from "@legendapp/state/react";
+import { useObserveEffect, useValue } from "@legendapp/state/react";
 import {
   flexRender,
   getCoreRowModel,
@@ -12,14 +12,14 @@ import {
 } from "@tanstack/react-table";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
-import type { FileSegment } from "~/server/db/schema";
 import { useClippingStore } from "../../_context/store.context";
+import type { SegmentWithSpeaker } from "../../_store/clipping-store";
 import { createColumns } from "./columns";
 
 const columns = createColumns();
 
 interface TableRowProps {
-  row: Row<FileSegment>;
+  row: Row<SegmentWithSpeaker>;
 }
 
 // Memoized with custom comparison to prevent re-renders when only sort order changes.
@@ -72,7 +72,7 @@ export function SegmentsTable() {
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<FileSegment[]>([]);
+  const [data, setData] = useState<SegmentWithSpeaker[]>([]);
 
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -80,11 +80,7 @@ export function SegmentsTable() {
   // Subscribe to segment changes outside of render cycle and after component mounts
   useObserveEffect(() => {
     const data = $store.segments
-      .filter(
-        ($seg) =>
-          !$seg.isDeleted.get() &&
-          $seg.speakerId.get() === $store.selectedSpeakerId.get(),
-      )
+      .filter(($seg) => $seg.speakerId.get() === $store.selectedSpeakerId.get())
       .map(($seg) => $seg.peek());
 
     setData(data);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { Check, Trash2, User } from "lucide-react";
+import { Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/trpc/react";
@@ -23,7 +23,8 @@ export function SegmentActions() {
   const sessionId = useValue($store.sessionId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
-  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
+  const deleteSegmentsMutation =
+    api.clippingSession.deleteSegments.useMutation();
 
   const [changeSpeakerOpen, setChangeSpeakerOpen] = useState(false);
 
@@ -31,21 +32,11 @@ export function SegmentActions() {
   const targetIds = Array.from(selectedSegmentIds);
   const hasSelection = targetIds.length > 0;
 
-  const handleMarkAsReviewed = () => {
-    if (!hasSelection) return;
-    updateSegmentsMutation.mutate({
-      sessionId,
-      segmentIds: targetIds,
-      updates: { status: "reviewed" },
-    });
-  };
-
   const handleDelete = () => {
     if (!hasSelection) return;
-    updateSegmentsMutation.mutate({
+    deleteSegmentsMutation.mutate({
       sessionId,
       segmentIds: targetIds,
-      updates: { isDeleted: true },
     });
   };
 
@@ -55,16 +46,6 @@ export function SegmentActions() {
         Actions
       </h3>
       <div className="flex flex-col gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 justify-start"
-          onClick={handleMarkAsReviewed}
-          disabled={!hasSelection}
-        >
-          <Check className="mr-2 h-4 w-4" />
-          Mark as Reviewed
-        </Button>
         <Button
           variant="outline"
           size="sm"

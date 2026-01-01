@@ -55,7 +55,7 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
           <DialogHeader>
             <DialogTitle>Create Project</DialogTitle>
             <DialogDescription>
-              Create a new project to organize your voice collections.
+              Create a new project to organize your speakers and clips.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

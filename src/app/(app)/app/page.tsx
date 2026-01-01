@@ -23,8 +23,8 @@ export default async function Home() {
               Projects
             </h1>
             <p className="max-w-lg text-muted-foreground">
-              Manage your TTS dataset projects. Each project contains
-              collections of audio segments organized for training.
+              Manage your TTS dataset projects. Each project contains speakers
+              and audio segments organized for training.
             </p>
           </div>
           <CreateProjectDialog>

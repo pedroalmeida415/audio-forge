@@ -2,7 +2,7 @@
 
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
-import { Check, CheckCircle, Scissors, Trash2, User } from "lucide-react";
+import { Check, Scissors, Trash2, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
@@ -27,7 +27,6 @@ import { useClippingStore } from "../../_context/store.context";
  * - Split at playhead
  * - Change speaker (inline dropdown)
  * - Delete segment
- * - Mark as reviewed toggle
  */
 export function ActiveSegmentActions() {
   const $store = useClippingStore();
@@ -38,7 +37,10 @@ export function ActiveSegmentActions() {
   const speakerColors = useValue($store.speakerColors);
 
   const splitSegmentMutation = api.clippingSession.splitSegment.useMutation();
-  const updateSegmentsMutation = api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation =
+    api.clippingSession.updateSegments.useMutation();
+  const deleteSegmentsMutation =
+    api.clippingSession.deleteSegments.useMutation();
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
@@ -70,7 +72,7 @@ export function ActiveSegmentActions() {
       }
 
       const isWithinSegment =
-        currentTime > segment.start && currentTime < segment.end;
+        currentTime > segment.startTime && currentTime < segment.endTime;
       setCanSplit(isWithinSegment);
     });
 
@@ -99,28 +101,14 @@ export function ActiveSegmentActions() {
   };
 
   const handleDelete = () => {
-    updateSegmentsMutation.mutate({
+    deleteSegmentsMutation.mutate({
       sessionId,
       segmentIds: [activeSegmentId],
-      updates: { isDeleted: true },
     });
     $store.setActiveSegment(null);
   };
 
-  const handleToggleReviewed = () => {
-    const currentStatus = activeSegment.status ?? "new";
-    // Toggle between "new" and "reviewed" (don't touch "done" status)
-    const newStatus = currentStatus === "reviewed" ? "new" : "reviewed";
-    updateSegmentsMutation.mutate({
-      sessionId,
-      segmentIds: [activeSegmentId],
-      updates: { status: newStatus },
-    });
-  };
-
-  const currentSpeaker = speakers.find(
-    (s) => s.id === activeSegment.speakerId,
-  );
+  const currentSpeaker = speakers.find((s) => s.id === activeSegment.speakerId);
 
   return (
     <div className="flex items-center gap-1 border-l pl-3">
@@ -174,7 +162,7 @@ export function ActiveSegmentActions() {
                 className="h-3 w-3 shrink-0 rounded-full"
                 style={{ backgroundColor: speakerColors[speaker.id] }}
               />
-              <span>{speaker.label}</span>
+              <span>{speaker.name}</span>
               {speaker.id === activeSegment.speakerId && (
                 <Check className="ml-auto h-4 w-4" />
               )}
@@ -191,34 +179,12 @@ export function ActiveSegmentActions() {
             variant="ghost"
             className="h-8 w-8 text-destructive hover:text-destructive"
             onClick={handleDelete}
-            disabled={updateSegmentsMutation.isPending}
+            disabled={deleteSegmentsMutation.isPending}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>Delete segment</TooltipContent>
-      </Tooltip>
-
-      {/* Mark as reviewed toggle */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon"
-            variant={activeSegment.status === "reviewed" ? "secondary" : "ghost"}
-            className="h-8 w-8"
-            onClick={handleToggleReviewed}
-            disabled={updateSegmentsMutation.isPending}
-          >
-            <CheckCircle
-              className={`h-4 w-4 ${activeSegment.status === "reviewed" ? "text-amber-500" : ""}`}
-            />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {activeSegment.status === "reviewed"
-            ? "Mark as new"
-            : "Mark as reviewed"}
-        </TooltipContent>
       </Tooltip>
 
       {/* Speaker indicator */}
@@ -229,7 +195,7 @@ export function ActiveSegmentActions() {
             style={{ backgroundColor: speakerColors[activeSegment.speakerId] }}
           />
           <span className="max-w-[100px] truncate text-muted-foreground text-xs">
-            {currentSpeaker.label}
+            {currentSpeaker.name}
           </span>
         </div>
       )}
