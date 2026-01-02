@@ -196,7 +196,7 @@ export default function ClippingEmptyStatePage({
             <div className="text-center">
               <h2 className="font-semibold text-xl">Upload Media</h2>
               <p className="text-muted-foreground text-sm">
-                Upload audio or video to start creating clips
+                Upload audio or video to start creating segments
               </p>
             </div>
 

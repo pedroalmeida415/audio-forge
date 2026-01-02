@@ -1,20 +1,8 @@
 import { Context, Data, type Effect } from "effect";
 
-export interface ClipJobPayload {
-  clipId: string;
-  sourceStorageKey: string;
-  startTime: number;
-  endTime: number;
-}
-
 export interface WaveformJobPayload {
   fileId: string;
   audioStorageKey: string;
-}
-
-export interface EnqueueResult {
-  clipId: string;
-  position: number;
 }
 
 export interface WaveformEnqueueResult {
@@ -25,14 +13,6 @@ export interface WaveformEnqueueResult {
 export class QueueService extends Context.Tag("QueueService")<
   QueueService,
   {
-    readonly enqueueClipGeneration: (
-      payload: ClipJobPayload,
-    ) => Effect.Effect<EnqueueResult, QueueEnqueueError>;
-
-    readonly getClipPosition: (
-      clipId: string,
-    ) => Effect.Effect<number | null, QueueStatusError>;
-
     readonly enqueueWaveformGeneration: (
       payload: WaveformJobPayload,
     ) => Effect.Effect<WaveformEnqueueResult, QueueEnqueueError>;
@@ -50,6 +30,6 @@ export class QueueEnqueueError extends Data.TaggedError("QueueEnqueueError")<{
 
 export class QueueStatusError extends Data.TaggedError("QueueStatusError")<{
   message: string;
-  clipId: string;
+  fileId: string;
   cause?: unknown;
 }> {}

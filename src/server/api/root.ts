@@ -1,5 +1,4 @@
 import { clippingSessionRouter } from "~/server/api/routers/clipping-session";
-import { clipsRouter } from "~/server/api/routers/clips";
 import { fileRouter } from "~/server/api/routers/file";
 import { projectRouter } from "~/server/api/routers/project";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
@@ -11,7 +10,6 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  */
 export const appRouter = createTRPCRouter({
   projects: projectRouter,
-  clips: clipsRouter,
   clippingSession: clippingSessionRouter,
   file: fileRouter,
 });

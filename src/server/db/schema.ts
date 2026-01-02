@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  boolean,
   doublePrecision,
   index,
   jsonb,
@@ -9,7 +10,6 @@ import {
   timestamp,
   uuid,
   varchar,
-  boolean,
 } from "drizzle-orm/pg-core";
 
 // ============================================================================
@@ -116,7 +116,7 @@ export const projects = pgTable(
  * and are hidden from project-level views. They are immutable (no rename allowed).
  *
  * Regular speakers (e.g., "John", "Sarah") represent real speaker identities
- * and serve as the "collections" for organizing clips.
+ * and serve as the target for organizing segments.
  */
 export const speakers = pgTable(
   "speaker",
@@ -182,63 +182,12 @@ export const segments = pgTable(
   ],
 );
 
-export const clipStatus = pgEnum("clip_status", [
-  "pending",
-  "processing",
-  "completed",
-  "failed",
-]);
-
 export const waveformStatus = pgEnum("waveform_status", [
   "pending",
   "processing",
   "completed",
   "failed",
 ]);
-
-/**
- * Clips - Processed audio outputs with transcription
- *
- * Clips reference their source segment. The speaker is derived via:
- * clip → segment → speaker
- */
-export const clips = pgTable(
-  "clip",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-
-    // Source segment (derives session, speaker, times)
-    segmentId: uuid("segment_id")
-      .notNull()
-      .references(() => segments.id, { onDelete: "cascade" }),
-
-    // Output file (nullable until processing completes)
-    fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
-
-    // Job status
-    status: clipStatus("status").default("pending").notNull(),
-    errorMessage: text("error_message"),
-
-    // Transcription and quality
-    transcription: text("transcription"),
-    mosScore: doublePrecision("mos_score"),
-
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [
-    index("clip_segment_id_idx").on(table.segmentId),
-    index("clip_status_idx").on(table.status),
-  ],
-);
 
 /**
  * Files - Pure storage reference for audio files
@@ -368,7 +317,7 @@ export const speakerRelations = relations(speakers, ({ one, many }) => ({
   segments: many(segments),
 }));
 
-export const segmentRelations = relations(segments, ({ one, many }) => ({
+export const segmentRelations = relations(segments, ({ one }) => ({
   session: one(clippingSessions, {
     fields: [segments.sessionId],
     references: [clippingSessions.id],
@@ -376,22 +325,6 @@ export const segmentRelations = relations(segments, ({ one, many }) => ({
   speaker: one(speakers, {
     fields: [segments.speakerId],
     references: [speakers.id],
-  }),
-  clips: many(clips),
-}));
-
-export const clipRelations = relations(clips, ({ one }) => ({
-  segment: one(segments, {
-    fields: [clips.segmentId],
-    references: [segments.id],
-  }),
-  file: one(files, {
-    fields: [clips.fileId],
-    references: [files.id],
-  }),
-  user: one(user, {
-    fields: [clips.userId],
-    references: [user.id],
   }),
 }));
 
@@ -414,14 +347,13 @@ export const clippingSessionRelations = relations(
   }),
 );
 
-export const fileRelations = relations(files, ({ one, many }) => ({
+export const fileRelations = relations(files, ({ one }) => ({
   user: one(user, { fields: [files.userId], references: [user.id] }),
   project: one(projects, {
     fields: [files.projectId],
     references: [projects.id],
   }),
   clippingSession: one(clippingSessions),
-  clips: many(clips),
 }));
 
 // ============================================================================
@@ -429,7 +361,6 @@ export const fileRelations = relations(files, ({ one, many }) => ({
 // ============================================================================
 
 export type ClippingSession = typeof clippingSessions.$inferSelect;
-export type Clip = typeof clips.$inferSelect;
 export type File = typeof files.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Speaker = typeof speakers.$inferSelect;

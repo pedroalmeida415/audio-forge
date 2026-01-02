@@ -208,7 +208,7 @@ export const fileRouter = createTRPCRouter({
       return audioUrl;
     }),
 
-  // Delete a file (cascade will handle session and clips)
+  // Delete a file (cascade will handle session and segments)
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {

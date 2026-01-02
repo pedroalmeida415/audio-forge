@@ -6,7 +6,6 @@ import { z } from "zod";
 import { env } from "~/env";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
-  clips,
   clippingSessions,
   type DiarizationInfo,
   segments,
@@ -18,18 +17,13 @@ import {
 } from "~/server/events/diarization-events";
 import {
   DiarizationService,
-  QueueService,
   ServicesLive,
   StorageService,
 } from "~/services";
 
 // Helper to run Effect with services
 const runEffect = <A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    StorageService | DiarizationService | QueueService
-  >,
+  effect: Effect.Effect<A, E, StorageService | DiarizationService>,
 ) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 export const clippingSessionRouter = createTRPCRouter({
@@ -630,87 +624,6 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       return allSpeakers;
-    }),
-
-  // Create clips from segments
-  createClips: protectedProcedure
-    .input(
-      z.object({
-        segmentIds: z.array(z.string().uuid()).min(1),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      // Get segments with their session info
-      const segmentsToExport = await ctx.db.query.segments.findMany({
-        where: inArray(segments.id, input.segmentIds),
-        with: {
-          session: {
-            with: {
-              file: true,
-            },
-          },
-        },
-      });
-
-      if (segmentsToExport.length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No valid segments found",
-        });
-      }
-
-      // Verify user owns all segments
-      const allOwned = segmentsToExport.every(
-        (s) => s.session.userId === ctx.session.user.id,
-      );
-      if (!allOwned) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You do not have access to all selected segments",
-        });
-      }
-
-      // Create clip records for each segment
-      const clipRecords = await ctx.db
-        .insert(clips)
-        .values(
-          segmentsToExport.map((segment) => ({
-            userId: ctx.session.user.id,
-            segmentId: segment.id,
-            status: "pending" as const,
-          })),
-        )
-        .returning();
-
-      // Enqueue each clip to BullMQ
-      const enqueueResults = await Promise.all(
-        clipRecords.map((clip) => {
-          const segment = segmentsToExport.find((s) => s.id === clip.segmentId);
-          const sourceStorageKey = segment?.session.file?.storageKey;
-
-          if (!sourceStorageKey) {
-            console.error(`No source storage key for clip ${clip.id}`);
-            return null;
-          }
-
-          return runEffect(
-            Effect.flatMap(QueueService, (queue) =>
-              queue.enqueueClipGeneration({
-                clipId: clip.id,
-                sourceStorageKey,
-                startTime: segment!.startTime,
-                endTime: segment!.endTime,
-              }),
-            ),
-          );
-        }),
-      );
-
-      return {
-        clipIds: clipRecords.map((c) => c.id),
-        totalClips: clipRecords.length,
-        queuePosition: enqueueResults.find((r) => r !== null)?.position ?? 0,
-      };
     }),
 
   // ============================================================================
