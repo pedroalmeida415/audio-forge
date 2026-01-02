@@ -12,6 +12,7 @@ import { isVideoMimeType } from "~/lib/video-types";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { clippingSessions, files } from "~/server/db/schema";
 import {
+  QueueService,
   ServicesLive,
   StorageService,
   VideoExtractionService,
@@ -19,7 +20,11 @@ import {
 
 // Helper to run Effect with services
 const runEffect = <A, E>(
-  effect: Effect.Effect<A, E, StorageService | VideoExtractionService>,
+  effect: Effect.Effect<
+    A,
+    E,
+    StorageService | VideoExtractionService | QueueService
+  >,
 ) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 // S3 client for direct uploads
@@ -146,6 +151,18 @@ export const fileRouter = createTRPCRouter({
           message: "Failed to create clipping session",
         });
       }
+
+      // Enqueue waveform generation (fire and forget)
+      runEffect(
+        Effect.flatMap(QueueService, (queue) =>
+          queue.enqueueWaveformGeneration({
+            fileId: file.id,
+            audioStorageKey: input.storageKey,
+          }),
+        ),
+      ).catch((error) => {
+        console.error("[file.create] Failed to enqueue waveform job:", error);
+      });
 
       return {
         file,
@@ -332,6 +349,21 @@ export const fileRouter = createTRPCRouter({
           });
         }
 
+        // 6. Enqueue waveform generation (fire and forget)
+        runEffect(
+          Effect.flatMap(QueueService, (queue) =>
+            queue.enqueueWaveformGeneration({
+              fileId: file.id,
+              audioStorageKey: storageKey,
+            }),
+          ),
+        ).catch((error) => {
+          console.error(
+            "[uploadVideo] Failed to enqueue waveform job:",
+            error,
+          );
+        });
+
         return {
           file,
           session,
@@ -347,5 +379,54 @@ export const fileRouter = createTRPCRouter({
           );
         }
       }
+    }),
+
+  // Get waveform status and URL
+  getWaveformUrl: protectedProcedure
+    .input(z.object({ fileId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const file = await ctx.db.query.files.findFirst({
+        where: and(
+          eq(files.id, input.fileId),
+          eq(files.userId, ctx.session.user.id),
+        ),
+        columns: {
+          waveformStatus: true,
+          waveformStorageKey: true,
+          waveformError: true,
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found",
+        });
+      }
+
+      // Return status info
+      if (file.waveformStatus !== "completed" || !file.waveformStorageKey) {
+        return {
+          status: file.waveformStatus ?? "pending",
+          url: null,
+          error: file.waveformError,
+        };
+      }
+
+      // Generate presigned URL for waveform
+      const url = await runEffect(
+        Effect.flatMap(StorageService, (storage) =>
+          storage.generatePresignedDownloadUrl({
+            key: file.waveformStorageKey!,
+            expiresIn: 3600, // 1 hour
+          }),
+        ),
+      );
+
+      return {
+        status: "completed" as const,
+        url,
+        error: null,
+      };
     }),
 });

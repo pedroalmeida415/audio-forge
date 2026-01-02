@@ -5,6 +5,7 @@ import { useSelector } from "@legendapp/state/react";
 import { scaleLinear } from "d3-scale";
 import { select } from "d3-selection";
 import { area, curveLinear } from "d3-shape";
+import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type WaveformData from "waveform-data";
 
@@ -52,9 +53,12 @@ export function TimelineWaveform() {
   const waveformRef = useRef<WaveformData | null>(null);
   const peakAmplitudeRef = useRef<number>(1);
 
-  // Load waveform data via waveform-data.js
-  const { waveform, isLoading, error } = useWaveformData({
-    datUrl: "/audiowaveform.dat",
+  // Get fileId from store
+  const fileId = useSelector(() => $store.fileId.get());
+
+  // Load waveform data from R2 via API
+  const { waveform, isLoading, status, error } = useWaveformData({
+    fileId,
   });
 
   // Store waveform and calculate actual peak amplitude for normalization
@@ -146,18 +150,27 @@ export function TimelineWaveform() {
     };
   }, [waveform, $store]);
 
-  if (isLoading) {
+  // Loading states: pending or processing waveform generation
+  if (isLoading || status === "pending" || status === "processing") {
     return (
-      <div className="flex flex-1 items-center justify-center bg-muted/20">
-        <Skeleton className="h-full w-full" />
+      <div className="flex flex-1 items-center justify-center gap-2 bg-muted/20">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <span className="text-muted-foreground text-sm">
+          {status === "processing"
+            ? "Generating waveform..."
+            : "Preparing waveform..."}
+        </span>
       </div>
     );
   }
 
-  if (error) {
+  // Error or failed state
+  if (error || status === "failed") {
     return (
       <div className="flex flex-1 items-center justify-center bg-muted/20">
-        <span className="text-muted-foreground text-sm">{error}</span>
+        <span className="text-muted-foreground text-sm">
+          {error ?? "Failed to generate waveform"}
+        </span>
       </div>
     );
   }

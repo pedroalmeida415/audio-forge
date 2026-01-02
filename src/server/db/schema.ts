@@ -189,6 +189,13 @@ export const clipStatus = pgEnum("clip_status", [
   "failed",
 ]);
 
+export const waveformStatus = pgEnum("waveform_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+
 /**
  * Clips - Processed audio outputs with transcription
  *
@@ -256,6 +263,11 @@ export const files = pgTable(
 
     // Display name (editable by user)
     name: varchar("name", { length: 255 }),
+
+    // Waveform generation
+    waveformStatus: waveformStatus("waveform_status").default("pending"),
+    waveformStorageKey: varchar("waveform_storage_key", { length: 1024 }),
+    waveformError: text("waveform_error"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

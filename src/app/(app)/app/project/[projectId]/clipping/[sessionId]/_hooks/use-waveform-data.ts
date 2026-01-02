@@ -2,54 +2,90 @@
 
 import { useEffect, useState } from "react";
 import WaveformData from "waveform-data";
+import { api } from "~/trpc/react";
+
+type WaveformStatus = "pending" | "processing" | "completed" | "failed";
 
 interface WaveformDataState {
   waveform: WaveformData | null;
   isLoading: boolean;
+  status: WaveformStatus;
   error: string | null;
 }
 
 interface UseWaveformDataOptions {
-  datUrl: string;
+  fileId: string;
 }
 
 /**
- * Hook to load waveform data from a .dat file using waveform-data.js.
+ * Hook to load waveform data from R2 storage.
  *
- * waveform-data.js handles:
- * - Binary .dat parsing (v1/v2 BBC audiowaveform format)
- * - Channel access via channel(index)
- * - Resampling via resample({ scale }) or resample({ width })
- * - Slicing via slice({ start_index, end_index })
+ * Polls for waveform generation status, then loads the .dat file when ready.
+ * Uses waveform-data.js to parse BBC audiowaveform binary format.
  */
 export function useWaveformData({
-  datUrl,
+  fileId,
 }: UseWaveformDataOptions): WaveformDataState {
   const [state, setState] = useState<WaveformDataState>({
     waveform: null,
     isLoading: true,
+    status: "pending",
     error: null,
   });
 
+  // Query waveform URL with polling for pending/processing states
+  const { data, error: queryError } = api.file.getWaveformUrl.useQuery(
+    { fileId },
+    {
+      // Poll every 2 seconds while pending or processing
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (status === "pending" || status === "processing") {
+          return 2000;
+        }
+        return false;
+      },
+      // Keep refetching in background for status updates
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: false,
+    },
+  );
+
+  // Load waveform data when URL is available
   useEffect(() => {
+    if (!data) return;
+
+    // Update status
+    if (data.status !== "completed") {
+      setState((prev) => ({
+        ...prev,
+        status: data.status as WaveformStatus,
+        isLoading: data.status === "pending" || data.status === "processing",
+        error: data.error ?? null,
+      }));
+      return;
+    }
+
+    // URL is available, fetch the waveform data
+    if (!data.url) return;
+
     let cancelled = false;
 
     async function loadWaveform() {
       try {
-        const response = await fetch(datUrl);
+        const response = await fetch(data.url!);
         if (!response.ok) {
-          throw new Error(`Failed to fetch .dat file: ${response.status}`);
+          throw new Error(`Failed to fetch waveform: ${response.status}`);
         }
 
         const arrayBuffer = await response.arrayBuffer();
-
-        // waveform-data.js handles the binary parsing automatically
         const waveform = WaveformData.create(arrayBuffer);
 
         if (!cancelled) {
           setState({
             waveform,
             isLoading: false,
+            status: "completed",
             error: null,
           });
         }
@@ -58,6 +94,7 @@ export function useWaveformData({
           setState({
             waveform: null,
             isLoading: false,
+            status: "failed",
             error:
               err instanceof Error ? err.message : "Failed to load waveform",
           });
@@ -70,7 +107,19 @@ export function useWaveformData({
     return () => {
       cancelled = true;
     };
-  }, [datUrl]);
+  }, [data]);
+
+  // Handle query errors
+  useEffect(() => {
+    if (queryError) {
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        status: "failed",
+        error: queryError.message,
+      }));
+    }
+  }, [queryError]);
 
   return state;
 }
