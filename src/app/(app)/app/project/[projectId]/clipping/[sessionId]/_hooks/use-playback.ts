@@ -182,7 +182,7 @@ export function usePlayback($store: $ClippingStore) {
 
         // MSE: Ensure current time is loaded and preload ahead
         ensureLoadedRef.current(currentTime);
-        preloadAheadRef.current(currentTime, 1);
+        preloadAheadRef.current(currentTime, 2);
 
         // Update time in store
         $store.playback.currentTime.set(currentTime);
