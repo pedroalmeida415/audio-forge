@@ -32,7 +32,9 @@ export function useMSEAudio(config: UseMSEAudioConfig): UseMSEAudioResult {
   const { storageKey, duration, sliceSize, enabled = true } = config;
 
   const providerRef = useRef<MSEAudioProvider | null>(null);
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
+    null,
+  );
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,16 +91,19 @@ export function useMSEAudio(config: UseMSEAudioConfig): UseMSEAudioResult {
   }, []);
 
   // Preload ahead callback - useCallback for stable reference
-  const preloadAhead = useCallback(async (time: number, count = 2): Promise<void> => {
-    const provider = providerRef.current;
-    if (!provider) return;
+  const preloadAhead = useCallback(
+    async (time: number, count = 1): Promise<void> => {
+      const provider = providerRef.current;
+      if (!provider) return;
 
-    try {
-      await provider.preloadAhead(time, count);
-    } catch {
-      // Preloading errors are non-critical, silently ignore
-    }
-  }, []);
+      try {
+        await provider.preloadAhead(time, count);
+      } catch {
+        // Preloading errors are non-critical, silently ignore
+      }
+    },
+    [],
+  );
 
   return {
     audioElement,

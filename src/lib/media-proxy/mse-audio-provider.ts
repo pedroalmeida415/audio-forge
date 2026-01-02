@@ -112,7 +112,7 @@ export class MSEAudioProvider {
    * Preload slices ahead of the current time
    * @param time Time in seconds (from audio.currentTime)
    */
-  async preloadAhead(time: number, count = 2): Promise<void> {
+  async preloadAhead(time: number, count = 1): Promise<void> {
     if (!this.sourceBuffer || !this.mediaSource) {
       return;
     }
@@ -150,7 +150,7 @@ export class MSEAudioProvider {
     if (!this.mediaSource) return;
 
     this.sourceBuffer = this.mediaSource.addSourceBuffer(
-      'audio/mp4; codecs="mp4a.40.2"'
+      'audio/mp4; codecs="mp4a.40.2"',
     );
 
     // MediaSource.duration expects seconds
@@ -169,7 +169,7 @@ export class MSEAudioProvider {
   private async fetchAndAppendSlice(
     sliceIndex: number,
     startMs: number,
-    endMs: number
+    endMs: number,
   ): Promise<void> {
     this.fetchedSlices.add(sliceIndex);
 
@@ -192,7 +192,10 @@ export class MSEAudioProvider {
     }
   }
 
-  private async fetchSlice(startMs: number, endMs: number): Promise<ArrayBuffer> {
+  private async fetchSlice(
+    startMs: number,
+    endMs: number,
+  ): Promise<ArrayBuffer> {
     const url = `/api/media-proxy?storageKey=${encodeURIComponent(this.storageKey)}&startMs=${startMs}&endMs=${endMs}`;
 
     const response = await fetch(url, {

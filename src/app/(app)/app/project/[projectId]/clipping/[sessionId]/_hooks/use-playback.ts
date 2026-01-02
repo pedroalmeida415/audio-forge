@@ -17,7 +17,12 @@ export function usePlayback($store: $ClippingStore) {
 
   // MSE audio provider - creates and manages its own audio element
   const mseEnabled = !!storageKey && audioDuration > 0;
-  const { audioElement, ensureLoaded, preloadAhead, error: mseError } = useMSEAudio({
+  const {
+    audioElement,
+    ensureLoaded,
+    preloadAhead,
+    error: mseError,
+  } = useMSEAudio({
     storageKey,
     duration: audioDuration,
     sliceSize: 15,
@@ -53,7 +58,9 @@ export function usePlayback($store: $ClippingStore) {
       if (!hasSetMissingDurationError.current) {
         hasSetMissingDurationError.current = true;
         if (storageKey) {
-          $store.playback.error.set("Audio duration not available. File may need reprocessing.");
+          $store.playback.error.set(
+            "Audio duration not available. File may need reprocessing.",
+          );
         }
         $store.playback.isLoading.set(false);
       }
@@ -175,7 +182,7 @@ export function usePlayback($store: $ClippingStore) {
 
         // MSE: Ensure current time is loaded and preload ahead
         ensureLoadedRef.current(currentTime);
-        preloadAheadRef.current(currentTime, 2);
+        preloadAheadRef.current(currentTime, 1);
 
         // Update time in store
         $store.playback.currentTime.set(currentTime);
