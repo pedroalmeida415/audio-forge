@@ -123,7 +123,7 @@ export function SegmentsTable() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div ref={tableContainerRef} className="flex-1 overflow-auto">
-        <table className="w-full border-collapse">
+        <table data-testid="segments-table" className="w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b">

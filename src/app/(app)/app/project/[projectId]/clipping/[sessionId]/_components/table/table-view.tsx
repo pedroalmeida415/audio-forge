@@ -97,6 +97,7 @@ export function TableView() {
     <div className="flex min-h-0 flex-1">
       {/* Left sidebar: Collapsible speaker list */}
       <aside
+        data-testid="speakers-sidebar"
         className={`flex shrink-0 flex-col border-r bg-muted/30 transition-all duration-200 ease-in-out ${
           isExpanded ? "w-52" : "w-14"
         }`}
@@ -111,6 +112,8 @@ export function TableView() {
             return (
               <div
                 key={speaker.id}
+                data-testid={`speaker-item-${speaker.id}`}
+                data-selected={isSelected}
                 className={`group flex items-center rounded-lg transition-colors ${
                   isExpanded ? "mx-2 gap-2" : "mx-auto"
                 } ${
@@ -123,6 +126,7 @@ export function TableView() {
                 {isExpanded ? (
                   <button
                     type="button"
+                    data-testid={`speaker-button-${speaker.id}`}
                     onClick={() => $store.selectSpeaker(speaker.id)}
                     className="flex flex-1 items-center gap-2 p-1.5"
                   >
@@ -160,6 +164,7 @@ export function TableView() {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
+                        data-testid={`speaker-button-${speaker.id}`}
                         onClick={() => $store.selectSpeaker(speaker.id)}
                         className="flex items-center gap-2 p-1.5"
                       >
