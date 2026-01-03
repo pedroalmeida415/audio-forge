@@ -46,7 +46,9 @@ export class VideoExtractionError extends Data.TaggedError(
 /**
  * Video extraction service interface
  */
-export class VideoExtractionService extends Context.Tag("VideoExtractionService")<
+export class VideoExtractionService extends Context.Tag(
+  "VideoExtractionService",
+)<
   VideoExtractionService,
   {
     /**

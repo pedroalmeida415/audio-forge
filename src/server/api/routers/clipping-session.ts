@@ -1,5 +1,5 @@
-import { TRPCError } from "@trpc/server";
 import { on } from "node:events";
+import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
@@ -12,19 +12,10 @@ import {
   speakers,
 } from "~/server/db/schema";
 import {
-  diarizationEvents,
   type DiarizationEvent,
+  diarizationEvents,
 } from "~/server/events/diarization-events";
-import {
-  DiarizationService,
-  ServicesLive,
-  StorageService,
-} from "~/services";
-
-// Helper to run Effect with services
-const runEffect = <A, E>(
-  effect: Effect.Effect<A, E, StorageService | DiarizationService>,
-) => Effect.runPromise(Effect.provide(effect, ServicesLive));
+import { DiarizationService, StorageService } from "~/services";
 
 export const clippingSessionRouter = createTRPCRouter({
   // Get session by ID with file, segments, and speakers
@@ -163,18 +154,18 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       // 2. Generate presigned download URL for Pyannote
-      const audioUrl = await runEffect(
+      const audioUrl = await Effect.runPromise(
         Effect.flatMap(StorageService, (storage) =>
           storage.generatePresignedDownloadUrl({
             key: session.file.storageKey!,
             expiresIn: 7200, // 2 hours for processing
           }),
-        ),
+        ).pipe(Effect.provide(ctx.servicesLayer)),
       );
 
       // 3. Submit diarization job
       const webhookUrl = `${env.PYANNOTE_WEBHOOK_URL}/api/webhooks/diarization`;
-      const jobResult = await runEffect(
+      const jobResult = await Effect.runPromise(
         Effect.flatMap(DiarizationService, (diarization) =>
           diarization.submitJob({
             audioUrl,
@@ -182,7 +173,7 @@ export const clippingSessionRouter = createTRPCRouter({
             numSpeakers: input.numSpeakers,
             confidence: true,
           }),
-        ),
+        ).pipe(Effect.provide(ctx.servicesLayer)),
       );
 
       // 4. Update session with diarization info
@@ -234,10 +225,10 @@ export const clippingSessionRouter = createTRPCRouter({
         session.diarization.status === "pending" ||
         session.diarization.status === "running"
       ) {
-        const statusResult = await runEffect(
+        const statusResult = await Effect.runPromise(
           Effect.flatMap(DiarizationService, (service) =>
             service.getJobStatus(session.diarization!.jobId),
-          ),
+          ).pipe(Effect.provide(ctx.servicesLayer)),
         );
 
         return {
@@ -425,7 +416,10 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       // Validate split time is within segment bounds
-      if (input.splitTime <= segment.startTime || input.splitTime >= segment.endTime) {
+      if (
+        input.splitTime <= segment.startTime ||
+        input.splitTime >= segment.endTime
+      ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Split time must be within segment bounds",

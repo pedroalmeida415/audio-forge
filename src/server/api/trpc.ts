@@ -8,11 +8,15 @@
  */
 
 import { initTRPC, TRPCError } from "@trpc/server";
+import type { Layer } from "effect";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { db } from "~/server/db";
+import { ServicesLive } from "~/services";
+import { MockServicesLayer } from "~/services/mock";
 import { getSession } from "../better-auth/server";
+import { createMockDb, createMockSession, seedMockDb } from "./mock-context";
 
 /**
  * 1. CONTEXT
@@ -26,12 +30,53 @@ import { getSession } from "../better-auth/server";
  *
  * @see https://trpc.io/docs/server/context
  */
+
+/**
+ * Check if we're running in test/Storybook environment
+ */
+const isTestEnv = () =>
+  process.env.NODE_ENV === "test" ||
+  process.env.STORYBOOK === "true" ||
+  (typeof globalThis !== "undefined" &&
+    // @ts-expect-error - __STORYBOOK__ is set by Storybook
+    globalThis.__STORYBOOK__ === true);
+
+/**
+ * Singleton mock DB instance for test environments
+ * Reused across requests to maintain state during a Storybook session
+ */
+let mockDbInstance: ReturnType<typeof createMockDb> | null = null;
+
+/**
+ * Get or create mock database instance
+ * Creates tables and seeds with default data on first call
+ */
+function getMockDb() {
+  if (!mockDbInstance) {
+    mockDbInstance = createMockDb();
+    seedMockDb(mockDbInstance);
+  }
+  return mockDbInstance;
+}
+
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+  // Use mock context in test/Storybook environments
+  if (isTestEnv()) {
+    return {
+      db: getMockDb(),
+      session: createMockSession(),
+      servicesLayer: MockServicesLayer as Layer<never>,
+      ...opts,
+    };
+  }
+
+  // Production context
   const session = await getSession();
 
   return {
     db,
     session,
+    servicesLayer: ServicesLive as Layer<never>,
     ...opts,
   };
 };

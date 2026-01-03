@@ -13,19 +13,9 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { clippingSessions, files } from "~/server/db/schema";
 import {
   QueueService,
-  ServicesLive,
   StorageService,
   VideoExtractionService,
 } from "~/services";
-
-// Helper to run Effect with services
-const runEffect = <A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    StorageService | VideoExtractionService | QueueService
-  >,
-) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 // S3 client for direct uploads
 const s3Client = new S3Client({
@@ -89,14 +79,14 @@ export const fileRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await runEffect(
+      const result = await Effect.runPromise(
         Effect.flatMap(StorageService, (storage) =>
           storage.generatePresignedUploadUrl({
             fileName: input.fileName,
             contentType: input.contentType,
             userId: ctx.session.user.id,
           }),
-        ),
+        ).pipe(Effect.provide(ctx.servicesLayer)),
       );
 
       return result;
@@ -153,13 +143,13 @@ export const fileRouter = createTRPCRouter({
       }
 
       // Enqueue waveform generation (fire and forget)
-      runEffect(
+      Effect.runPromise(
         Effect.flatMap(QueueService, (queue) =>
           queue.enqueueWaveformGeneration({
             fileId: file.id,
             audioStorageKey: input.storageKey,
           }),
-        ),
+        ).pipe(Effect.provide(ctx.servicesLayer)),
       ).catch((error) => {
         console.error("[file.create] Failed to enqueue waveform job:", error);
       });
@@ -196,13 +186,13 @@ export const fileRouter = createTRPCRouter({
         });
       }
 
-      const audioUrl = await runEffect(
+      const audioUrl = await Effect.runPromise(
         Effect.flatMap(StorageService, (storage) =>
           storage.generatePresignedDownloadUrl({
             key: storageKey,
             expiresIn: 3600, // 1 hour
           }),
-        ),
+        ).pipe(Effect.provide(ctx.servicesLayer)),
       );
 
       return audioUrl;
@@ -229,10 +219,10 @@ export const fileRouter = createTRPCRouter({
       // Delete from storage if file exists
       const storageKey = file.storageKey;
       if (storageKey) {
-        await runEffect(
+        await Effect.runPromise(
           Effect.flatMap(StorageService, (storage) =>
             storage.deleteObject({ key: storageKey }),
-          ),
+          ).pipe(Effect.provide(ctx.servicesLayer)),
         ).catch(() => {
           // Log but don't fail if storage deletion fails
           console.error("Failed to delete file from storage");
@@ -281,13 +271,13 @@ export const fileRouter = createTRPCRouter({
         await streamToFile(input, videoPath);
 
         // 2. Extract audio using VideoExtractionService
-        const extractionResult = await runEffect(
+        const extractionResult = await Effect.runPromise(
           Effect.flatMap(VideoExtractionService, (service) =>
             service.extractAudio({
               inputPath: videoPath,
               outputPath: audioPath,
             }),
-          ),
+          ).pipe(Effect.provide(ctx.servicesLayer)),
         ).catch((error) => {
           // Map Effect errors to TRPCError
           if (error._tag === "VideoExtractionError") {
@@ -350,18 +340,15 @@ export const fileRouter = createTRPCRouter({
         }
 
         // 6. Enqueue waveform generation (fire and forget)
-        runEffect(
+        Effect.runPromise(
           Effect.flatMap(QueueService, (queue) =>
             queue.enqueueWaveformGeneration({
               fileId: file.id,
               audioStorageKey: storageKey,
             }),
-          ),
+          ).pipe(Effect.provide(ctx.servicesLayer)),
         ).catch((error) => {
-          console.error(
-            "[uploadVideo] Failed to enqueue waveform job:",
-            error,
-          );
+          console.error("[uploadVideo] Failed to enqueue waveform job:", error);
         });
 
         return {
@@ -414,13 +401,13 @@ export const fileRouter = createTRPCRouter({
       }
 
       // Generate presigned URL for waveform
-      const url = await runEffect(
+      const url = await Effect.runPromise(
         Effect.flatMap(StorageService, (storage) =>
           storage.generatePresignedDownloadUrl({
             key: file.waveformStorageKey!,
             expiresIn: 3600, // 1 hour
           }),
-        ),
+        ).pipe(Effect.provide(ctx.servicesLayer)),
       );
 
       return {

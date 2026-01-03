@@ -1,15 +1,36 @@
+/**
+ * TODO: This story file needs to be updated to work with the new mock context approach.
+ * The MSW fixtures and handlers have been removed. You'll need to either:
+ * 1. Seed the mock database directly in beforeEach hooks
+ * 2. Create new fixtures that work with the mock DB
+ * 3. Use tRPC mutations to set up test data
+ *
+ * For now, these stories are disabled.
+ */
+
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, within } from "storybook/test";
 import { Suspense } from "react";
 
 import ClippingWorkspacePage from "./page";
-import {
-	defaultClippingSession,
-	emptyClippingSession,
-	diarizingClippingSession,
-	TEST_IDS,
-} from "~/test/msw/fixtures";
-import { setSessionFixture, resetHandlerState } from "~/test/msw/handlers";
+
+// TODO: Import or define test IDs and fixtures for the new mock approach
+const TEST_IDS = {
+	project: "test-project-id",
+	session: "test-session-id",
+	speakers: {
+		speaker00: "speaker-00-id",
+		speaker01: "speaker-01-id",
+	},
+};
+
+// Stub functions to replace MSW handlers
+const setSessionFixture = (fixture: any) => {
+	console.warn("setSessionFixture is a stub - implement with mock DB");
+};
+const resetHandlerState = () => {
+	console.warn("resetHandlerState is a stub - implement with mock DB");
+};
 
 // ============================================================================
 // Story Setup

@@ -1,6 +1,6 @@
-import { Context, Data, Effect, Layer } from "effect";
 import { execFile } from "node:child_process";
 import path from "node:path";
+import { Context, Data, Effect, Layer } from "effect";
 
 /**
  * Result of waveform generation
@@ -61,9 +61,7 @@ function runAudiowaveform(
 
     // Verify output is in the same directory
     if (path.dirname(outputPath) !== workDir) {
-      reject(
-        new Error("Input and output files must be in the same directory"),
-      );
+      reject(new Error("Input and output files must be in the same directory"));
       return;
     }
 
