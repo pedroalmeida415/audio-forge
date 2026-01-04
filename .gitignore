@@ -47,3 +47,5 @@ yarn-error.log*
 .idea
 
 mockups/
+*storybook.log
+storybook-static
