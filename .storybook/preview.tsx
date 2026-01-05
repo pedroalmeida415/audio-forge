@@ -1,5 +1,17 @@
 import type { Preview } from "@storybook/nextjs-vite";
+import React from "react";
+import { sb } from "storybook/test";
 import "../src/styles/globals.css";
+
+// ============================================================================
+// Mock Modules - uses __mocks__ folders automatically
+// ============================================================================
+
+// Mock the clipping store context - uses context/__mocks__/store.context.tsx
+sb.mock(import("../src/features/clipping/context/store.context.tsx"));
+
+// Mock tRPC react client - uses trpc/__mocks__/react.tsx
+sb.mock(import("../src/trpc/react.tsx"));
 
 // ============================================================================
 // Mock media-proxy endpoint for audio playback testing

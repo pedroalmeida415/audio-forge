@@ -2,6 +2,7 @@
 
 import { useValue } from "@legendapp/state/react";
 import { createContext, type ReactNode, use } from "react";
+import type { StoreStateOverrides } from "~/features/clipping/context/test-utils";
 import { usePlayback } from "~/features/clipping/hooks/use-playback";
 import {
   type $ClippingStore,
@@ -14,7 +15,7 @@ import { api } from "~/trpc/react";
 // Context
 // ============================================================================
 
-export const ClippingStoreContext = createContext<ReturnType<
+const ClippingStoreContext = createContext<ReturnType<
   typeof createClippingStore
 > | null>(null);
 
@@ -25,6 +26,8 @@ export const ClippingStoreContext = createContext<ReturnType<
 interface ClippingStoreProviderProps {
   children: ReactNode;
   initialData: ClippingStoreInitialData;
+  /** Only used in Storybook mocks - ignored in production */
+  stateOverrides?: StoreStateOverrides;
 }
 
 export function ClippingStoreProvider({

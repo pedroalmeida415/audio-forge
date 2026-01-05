@@ -20,6 +20,7 @@ const config: StorybookConfig = {
       "@legendapp/state",
       "@legendapp/state/react",
       "@tanstack/react-query",
+      "storybook/test",
     ];
 
     return config;

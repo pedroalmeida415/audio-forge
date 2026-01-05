@@ -1,17 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { TimelineContainer } from "~/features/clipping/components/timeline/timeline-container";
-import type {
-  ClippingStoreInitialData,
-  SegmentWithSpeaker,
-} from "~/features/clipping/store/clipping-store";
-import type { Speaker } from "~/server/db/schema";
+import { ClippingStoreProvider } from "~/features/clipping/context/store.context";
 import {
   createInitialData,
   createMockSegment,
   createMockSpeaker,
-  MockStoreProvider,
   type StoreStateOverrides,
-} from "~/features/clipping/__mocks__/store.context";
+} from "~/features/clipping/context/test-utils";
+import type { ClippingStoreInitialData } from "~/features/clipping/store/clipping-store";
+import type { Speaker } from "~/server/db/schema";
+import { TRPCReactProvider } from "~/trpc/react";
 
 // ============================================================================
 // Mock Data Sets
@@ -22,7 +20,7 @@ const speaker2 = createMockSpeaker("speaker-2", "SPEAKER_01");
 const speaker3 = createMockSpeaker("speaker-3", "SPEAKER_02");
 const speakers: Speaker[] = [speaker1, speaker2, speaker3];
 
-const segments: SegmentWithSpeaker[] = [
+const segments = [
   createMockSegment("seg-1", speaker1, 0, 5),
   createMockSegment("seg-2", speaker2, 6, 12),
   createMockSegment("seg-3", speaker1, 15, 22),
@@ -37,42 +35,32 @@ const hostSpeaker = createMockSpeaker("long-speaker-1", "Host");
 const guestSpeaker = createMockSpeaker("long-speaker-2", "Guest");
 const longAudioSpeakers: Speaker[] = [hostSpeaker, guestSpeaker];
 
-const longAudioSegments: SegmentWithSpeaker[] = Array.from(
-  { length: 30 },
-  (_, i) => {
-    const speaker = i % 2 === 0 ? hostSpeaker : guestSpeaker;
-    const startTime = i * 20;
-    const duration = 8 + Math.random() * 10;
-    return createMockSegment(
-      `long-seg-${i}`,
-      speaker,
-      startTime,
-      startTime + duration,
-    );
-  },
-);
-
-// ============================================================================
-// Story Decorator
-// ============================================================================
-
-function TimelineDecorator({
-  initialData,
-  stateOverrides,
-  children,
-}: {
-  initialData: ClippingStoreInitialData;
-  stateOverrides?: StoreStateOverrides;
-  children: React.ReactNode;
-}) {
-  return (
-    <MockStoreProvider
-      initialData={initialData}
-      stateOverrides={stateOverrides}
-    >
-      <div className="h-56 w-full bg-background">{children}</div>
-    </MockStoreProvider>
+const longAudioSegments = Array.from({ length: 30 }, (_, i) => {
+  const speaker = i % 2 === 0 ? hostSpeaker : guestSpeaker;
+  const startTime = i * 20;
+  const duration = 8 + Math.random() * 10;
+  return createMockSegment(
+    `long-seg-${i}`,
+    speaker,
+    startTime,
+    startTime + duration,
   );
+});
+
+// Default initial data
+const defaultInitialData = createInitialData({
+  segments,
+  speakers,
+  duration: 120,
+});
+
+// ============================================================================
+// Custom Parameters Type
+// ============================================================================
+
+interface TimelineParameters {
+  initialData?: ClippingStoreInitialData;
+  stateOverrides?: StoreStateOverrides;
 }
 
 // ============================================================================
@@ -86,6 +74,25 @@ const meta: Meta<typeof TimelineContainer> = {
     layout: "fullscreen",
   },
   tags: ["autodocs"],
+  decorators: [
+    // Global decorator that reads initialData and stateOverrides from parameters
+    (Story, { parameters }) => {
+      const { initialData = defaultInitialData, stateOverrides } =
+        parameters as TimelineParameters;
+      return (
+        <TRPCReactProvider>
+          <ClippingStoreProvider
+            initialData={initialData}
+            stateOverrides={stateOverrides}
+          >
+            <div className="h-56 w-full bg-background">
+              <Story />
+            </div>
+          </ClippingStoreProvider>
+        </TRPCReactProvider>
+      );
+    },
+  ],
 };
 
 export default meta;
@@ -99,36 +106,20 @@ type Story = StoryObj<typeof TimelineContainer>;
  * Default state with segments loaded and ready for interaction.
  * Shows the full timeline with multiple speakers and segments.
  */
-export const Default: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
-};
+export const Default: Story = {};
 
 /**
  * Empty timeline with no segments.
  * Useful for testing the timeline appearance before diarization.
  */
 export const Empty: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({
-          segments: [],
-          speakers: [],
-          duration: 180,
-        })}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    initialData: createInitialData({
+      segments: [],
+      speakers: [],
+      duration: 180,
+    }),
+  },
 };
 
 /**
@@ -137,19 +128,13 @@ export const Empty: Story = {
  * This shows the timeline with zero duration (before audio loads).
  */
 export const Loading: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({
-          segments: [],
-          speakers: [],
-          duration: 0,
-        })}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    initialData: createInitialData({
+      segments: [],
+      speakers: [],
+      duration: 0,
+    }),
+  },
 };
 
 /**
@@ -157,16 +142,9 @@ export const Loading: Story = {
  * The play button should show pause icon.
  */
 export const Playing: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{ currentTime: 45, isPlaying: true }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: { currentTime: 45, isPlaying: true },
+  },
 };
 
 /**
@@ -174,20 +152,13 @@ export const Playing: Story = {
  * Shows the segment highlight and enables segment actions.
  */
 export const WithActiveSegment: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{
-          currentTime: 18,
-          activeSegmentId: "seg-3",
-          selectedSpeakerId: "speaker-1",
-        }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: {
+      currentTime: 18,
+      activeSegmentId: "seg-3",
+      selectedSpeakerId: "speaker-1",
+    },
+  },
 };
 
 /**
@@ -195,16 +166,9 @@ export const WithActiveSegment: Story = {
  * Non-matching segments should appear dimmed.
  */
 export const WithSpeakerFilter: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{ selectedSpeakerId: "speaker-1" }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: { selectedSpeakerId: "speaker-1" },
+  },
 };
 
 /**
@@ -212,16 +176,9 @@ export const WithSpeakerFilter: Story = {
  * Shows more detail with larger waveform and segment display.
  */
 export const ZoomedIn: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{ zoomLevel: 150, scrollOffset: 100, currentTime: 30 }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: { zoomLevel: 150, scrollOffset: 100, currentTime: 30 },
+  },
 };
 
 /**
@@ -229,16 +186,9 @@ export const ZoomedIn: Story = {
  * Shows the full timeline in a compressed view.
  */
 export const ZoomedOut: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{ zoomLevel: 50 }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: { zoomLevel: 50 },
+  },
 };
 
 /**
@@ -246,19 +196,13 @@ export const ZoomedOut: Story = {
  * Tests scrolling and virtualization performance.
  */
 export const LongAudio: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({
-          segments: longAudioSegments,
-          speakers: longAudioSpeakers,
-          duration: 600,
-        })}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    initialData: createInitialData({
+      segments: longAudioSegments,
+      speakers: longAudioSpeakers,
+      duration: 600,
+    }),
+  },
 };
 
 /**
@@ -266,20 +210,14 @@ export const LongAudio: Story = {
  * Tests the scrollbar and segment display when scrolled.
  */
 export const LongAudioScrolled: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({
-          segments: longAudioSegments,
-          speakers: longAudioSpeakers,
-          duration: 600,
-        })}
-        stateOverrides={{ scrollOffset: 400, currentTime: 300 }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    initialData: createInitialData({
+      segments: longAudioSegments,
+      speakers: longAudioSpeakers,
+      duration: 600,
+    }),
+    stateOverrides: { scrollOffset: 400, currentTime: 300 },
+  },
 };
 
 /**
@@ -287,25 +225,16 @@ export const LongAudioScrolled: Story = {
  * Zoom should be disabled for short audio.
  */
 export const ShortAudio: Story = {
-  decorators: [
-    (Story) => {
-      const shortSegments = [
+  parameters: {
+    initialData: createInitialData({
+      segments: [
         createMockSegment("short-seg-1", speaker1, 0, 4),
         createMockSegment("short-seg-2", speaker2, 5, 10),
-      ];
-      return (
-        <TimelineDecorator
-          initialData={createInitialData({
-            segments: shortSegments,
-            speakers,
-            duration: 12,
-          })}
-        >
-          <Story />
-        </TimelineDecorator>
-      );
-    },
-  ],
+      ],
+      speakers,
+      duration: 12,
+    }),
+  },
 };
 
 /**
@@ -313,16 +242,9 @@ export const ShortAudio: Story = {
  * Shows the playhead indicator at a non-zero position.
  */
 export const PlayheadAtTime: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{ currentTime: 42.5 }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: { currentTime: 42.5 },
+  },
 };
 
 /**
@@ -330,27 +252,20 @@ export const PlayheadAtTime: Story = {
  * Common for solo recordings or monologues.
  */
 export const SingleSpeaker: Story = {
-  decorators: [
-    (Story) => {
+  parameters: {
+    initialData: (() => {
       const soloSpeaker = createMockSpeaker("solo-speaker", "Narrator");
-      const soloSegments = [
-        createMockSegment("solo-1", soloSpeaker, 0, 15),
-        createMockSegment("solo-2", soloSpeaker, 18, 35),
-        createMockSegment("solo-3", soloSpeaker, 40, 60),
-      ];
-      return (
-        <TimelineDecorator
-          initialData={createInitialData({
-            segments: soloSegments,
-            speakers: [soloSpeaker],
-            duration: 90,
-          })}
-        >
-          <Story />
-        </TimelineDecorator>
-      );
-    },
-  ],
+      return createInitialData({
+        segments: [
+          createMockSegment("solo-1", soloSpeaker, 0, 15),
+          createMockSegment("solo-2", soloSpeaker, 18, 35),
+          createMockSegment("solo-3", soloSpeaker, 40, 60),
+        ],
+        speakers: [soloSpeaker],
+        duration: 90,
+      });
+    })(),
+  },
 };
 
 /**
@@ -358,8 +273,8 @@ export const SingleSpeaker: Story = {
  * Tests color differentiation with multiple speakers.
  */
 export const ManySpeakers: Story = {
-  decorators: [
-    (Story) => {
+  parameters: {
+    initialData: (() => {
       const manySpeakers = Array.from({ length: 6 }, (_, i) =>
         createMockSpeaker(`multi-speaker-${i}`, `Speaker ${i + 1}`),
       );
@@ -372,19 +287,13 @@ export const ManySpeakers: Story = {
           90 + i * 10 + 6,
         ),
       ]);
-      return (
-        <TimelineDecorator
-          initialData={createInitialData({
-            segments: manySegments,
-            speakers: manySpeakers,
-            duration: 180,
-          })}
-        >
-          <Story />
-        </TimelineDecorator>
-      );
-    },
-  ],
+      return createInitialData({
+        segments: manySegments,
+        speakers: manySpeakers,
+        duration: 180,
+      });
+    })(),
+  },
 };
 
 /**
@@ -392,26 +301,20 @@ export const ManySpeakers: Story = {
  * Tests segment rendering when segments are tightly packed.
  */
 export const DenseSegments: Story = {
-  decorators: [
-    (Story) => {
+  parameters: {
+    initialData: (() => {
       const speakerOptions = [speaker1, speaker2, speaker3];
       const denseSegments = Array.from({ length: 20 }, (_, i) => {
         const speaker = speakerOptions[i % 3] as Speaker;
         return createMockSegment(`dense-seg-${i}`, speaker, i * 3, i * 3 + 2.5);
       });
-      return (
-        <TimelineDecorator
-          initialData={createInitialData({
-            segments: denseSegments,
-            speakers,
-            duration: 70,
-          })}
-        >
-          <Story />
-        </TimelineDecorator>
-      );
-    },
-  ],
+      return createInitialData({
+        segments: denseSegments,
+        speakers,
+        duration: 70,
+      });
+    })(),
+  },
 };
 
 /**
@@ -419,19 +322,12 @@ export const DenseSegments: Story = {
  * Shows the multi-selection highlight state.
  */
 export const MultipleSegmentsSelected: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{
-          selectedSpeakerId: "speaker-1",
-          activeSegmentId: "seg-1",
-        }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: {
+      selectedSpeakerId: "speaker-1",
+      activeSegmentId: "seg-1",
+    },
+  },
 };
 
 /**
@@ -439,16 +335,9 @@ export const MultipleSegmentsSelected: Story = {
  * Tests playhead behavior near the end of the timeline.
  */
 export const NearEnd: Story = {
-  decorators: [
-    (Story) => (
-      <TimelineDecorator
-        initialData={createInitialData({ segments, speakers, duration: 120 })}
-        stateOverrides={{ currentTime: 115 }}
-      >
-        <Story />
-      </TimelineDecorator>
-    ),
-  ],
+  parameters: {
+    stateOverrides: { currentTime: 115 },
+  },
 };
 
 /**
@@ -456,20 +345,11 @@ export const NearEnd: Story = {
  * Tests rendering of a single segment that spans most of the timeline.
  */
 export const VeryLongSegment: Story = {
-  decorators: [
-    (Story) => {
-      const longSegment = createMockSegment("long-seg", speaker1, 5, 110);
-      return (
-        <TimelineDecorator
-          initialData={createInitialData({
-            segments: [longSegment],
-            speakers: [speaker1],
-            duration: 120,
-          })}
-        >
-          <Story />
-        </TimelineDecorator>
-      );
-    },
-  ],
+  parameters: {
+    initialData: createInitialData({
+      segments: [createMockSegment("long-seg", speaker1, 5, 110)],
+      speakers: [speaker1],
+      duration: 120,
+    }),
+  },
 };
