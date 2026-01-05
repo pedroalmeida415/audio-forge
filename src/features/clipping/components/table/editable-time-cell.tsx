@@ -2,10 +2,10 @@
 
 import { useSelector } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { formatTimestampWithMs, parseTimestamp } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
 
 interface EditableTimeCellProps {
   value: number;

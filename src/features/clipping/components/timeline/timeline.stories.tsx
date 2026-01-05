@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { TimelineContainer } from "~/app/(app)/app/project/[projectId]/clipping/[sessionId]/_components/timeline/timeline-container";
+import { TimelineContainer } from "~/features/clipping/components/timeline/timeline-container";
 import type {
   ClippingStoreInitialData,
   SegmentWithSpeaker,
-} from "~/app/(app)/app/project/[projectId]/clipping/[sessionId]/_store/clipping-store";
+} from "~/features/clipping/store/clipping-store";
 import type { Speaker } from "~/server/db/schema";
 import {
   createInitialData,
@@ -11,7 +11,7 @@ import {
   createMockSpeaker,
   MockStoreProvider,
   type StoreStateOverrides,
-} from "./store.context";
+} from "~/features/clipping/__mocks__/store.context";
 
 // ============================================================================
 // Mock Data Sets

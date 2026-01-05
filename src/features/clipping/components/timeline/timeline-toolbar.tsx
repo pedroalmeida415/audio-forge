@@ -25,10 +25,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { useClippingStore } from "~/features/clipping/context/store.context";
+import { TIMELINE_CONSTANTS } from "~/features/clipping/store/constants";
+import { isZoomEnabled } from "~/features/clipping/utils/zoom-utils";
 import { formatTimestamp } from "~/lib/time-utils";
-import { useClippingStore } from "../../_context/store.context";
-import { TIMELINE_CONSTANTS } from "../../_store/constants";
-import { isZoomEnabled } from "../../_utils/zoom-utils";
 import { ActiveSegmentActions } from "./active-segment-actions";
 import { InlineSelectionControls } from "./inline-selection-controls";
 

@@ -9,8 +9,8 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
 
 interface ChangeSpeakerDialogProps {
   open: boolean;

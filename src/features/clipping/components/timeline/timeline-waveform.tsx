@@ -10,13 +10,13 @@ import { useEffect, useRef } from "react";
 import type WaveformData from "waveform-data";
 
 import { Skeleton } from "~/components/ui/skeleton";
-import { useClippingStore } from "../../_context/store.context";
-import { useWaveformData } from "../../_hooks/use-waveform-data";
+import { useClippingStore } from "~/features/clipping/context/store.context";
+import { useWaveformData } from "~/features/clipping/hooks/use-waveform-data";
 import {
   CHUNK_DURATION,
   getChunkCount,
   getVisibleChunkIndices,
-} from "../../_utils/chunk-utils";
+} from "~/features/clipping/utils/chunk-utils";
 
 const WAVEFORM_HEIGHT = 60;
 const OVERSCAN = 1;

@@ -2,15 +2,17 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
-import { createContext, type ReactNode, use, useState } from "react";
+import { type ReactNode, useState } from "react";
 import SuperJSON from "superjson";
-import { usePlayback } from "~/app/(app)/app/project/[projectId]/clipping/[sessionId]/_hooks/use-playback";
+// Import the REAL context so we share the same React context instance
+import { ClippingStoreContext } from "~/features/clipping/context/store.context";
+import { usePlayback } from "~/features/clipping/hooks/use-playback";
 import {
   type $ClippingStore,
   type ClippingStoreInitialData,
   createClippingStore,
   type SegmentWithSpeaker,
-} from "~/app/(app)/app/project/[projectId]/clipping/[sessionId]/_store/clipping-store";
+} from "~/features/clipping/store/clipping-store";
 import type { AppRouter } from "~/server/api/root";
 import type { Speaker } from "~/server/db/schema";
 
@@ -69,26 +71,10 @@ function MockTRPCProvider({ children }: { children: ReactNode }) {
 }
 
 // ============================================================================
-// Store Context (mirrors real implementation)
+// Store Context - uses the REAL context imported from the real file
 // ============================================================================
-
-const ClippingStoreContext = createContext<$ClippingStore | null>(null);
-
-/**
- * Hook to access the clipping store - mirrors the real useClippingStore.
- * This export is what gets aliased in Storybook via the Vite plugin.
- */
-export function useClippingStore(): $ClippingStore {
-  const $store = use(ClippingStoreContext);
-
-  if (!$store) {
-    throw new Error(
-      "useClippingStore must be used within ClippingStoreProvider",
-    );
-  }
-
-  return $store;
-}
+// By importing and using the real ClippingStoreContext, components that use
+// the real useClippingStore hook will find the value we provide here.
 
 // ============================================================================
 // Storybook Store Provider
@@ -132,7 +118,7 @@ function StorybookStoreProvider({
 
   return (
     <ClippingStoreContext.Provider value={$store}>
-      <PlaybackInitializer stateOverrides={stateOverrides} />
+      <PlaybackInitializer $store={$store} stateOverrides={stateOverrides} />
       {children}
     </ClippingStoreContext.Provider>
   );
@@ -143,11 +129,12 @@ function StorybookStoreProvider({
  * Audio will fail gracefully since we don't have real audio data.
  */
 function PlaybackInitializer({
+  $store,
   stateOverrides,
 }: {
+  $store: $ClippingStore;
   stateOverrides?: StoreStateOverrides;
 }) {
-  const $store = useClippingStore();
 
   // Use the REAL playback hook - this sets up audio, RAF loops, etc.
   usePlayback($store);

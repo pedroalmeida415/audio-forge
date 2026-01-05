@@ -3,7 +3,7 @@
 import { useValue } from "@legendapp/state/react";
 import { Users } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { useClippingStore } from "../../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { SegmentActions } from "./bulk-actions";
 import { SelectionSummary } from "./selection-summary";
 

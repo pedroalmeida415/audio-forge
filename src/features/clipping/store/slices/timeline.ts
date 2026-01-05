@@ -1,10 +1,10 @@
+import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
+import { TIMELINE_CONSTANTS } from "~/features/clipping/store/constants";
 import {
   calculatePixelsPerSecond,
   calculateVisibleTimespan,
   isZoomEnabled,
-} from "../../_utils/zoom-utils";
-import type { $ClippingStore } from "../clipping-store";
-import { TIMELINE_CONSTANTS } from "../constants";
+} from "~/features/clipping/utils/zoom-utils";
 
 export function createTimelineState(
   getStore: () => $ClippingStore,

@@ -2,7 +2,7 @@
 
 import { observe } from "@legendapp/state";
 import { useCallback, useEffect, useRef } from "react";
-import { useClippingStore } from "../../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 
 /**
  * Timeline scrubber (playhead) component using Legend-State's observe() pattern.

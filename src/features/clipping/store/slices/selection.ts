@@ -1,6 +1,6 @@
 import { batch } from "@legendapp/state";
-import type { $ClippingStore } from "../clipping-store";
-import { SELECTION_CONSTANTS } from "../constants";
+import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
+import { SELECTION_CONSTANTS } from "~/features/clipping/store/constants";
 
 export function createSelectionState(
   getStore: () => $ClippingStore,

@@ -1,13 +1,13 @@
 import { batch, ObservableHint } from "@legendapp/state";
 import { createRef, type RefObject } from "react";
+import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
+import { TIMELINE_CONSTANTS } from "~/features/clipping/store/constants";
 import {
   calculatePixelsPerSecond,
   isZoomEnabled,
   pixelsToTime as zoomPixelsToTime,
   timeToPixels as zoomTimeToPixels,
-} from "../../_utils/zoom-utils";
-import type { $ClippingStore } from "../clipping-store";
-import { TIMELINE_CONSTANTS } from "../constants";
+} from "~/features/clipping/utils/zoom-utils";
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 

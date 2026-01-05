@@ -22,9 +22,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
 
 /**
  * Formats time in MM:SS.mmm format

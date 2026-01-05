@@ -2,7 +2,7 @@
 
 import { observe } from "@legendapp/state";
 import { useEffect, useRef } from "react";
-import { useClippingStore } from "../../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 
 /**
  * Selection overlay component that shows the selected time range.

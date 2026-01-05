@@ -3,7 +3,7 @@
 import { observe } from "@legendapp/state";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useClippingStore } from "../../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 
 interface HandlePosition {
   left: number;

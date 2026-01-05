@@ -5,14 +5,14 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Play } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
-import { formatDuration } from "~/lib/time-utils";
-import { cn } from "~/lib/utils";
-import { useClippingStore } from "../../_context/store.context";
-import type { SegmentWithSpeaker } from "../../_store/clipping-store";
+import { useClippingStore } from "~/features/clipping/context/store.context";
+import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
 import {
   DURATION_THRESHOLDS,
   getSegmentDuration,
-} from "../../_utils/segment-utils";
+} from "~/features/clipping/utils/segment-utils";
+import { formatDuration } from "~/lib/time-utils";
+import { cn } from "~/lib/utils";
 import { EditableTimeCell } from "./editable-time-cell";
 
 // Get sort icon based on column state

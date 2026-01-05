@@ -3,8 +3,8 @@
 import { useSelector } from "@legendapp/state/react";
 import { $React } from "@legendapp/state/react-web";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { cn } from "~/lib/utils";
-import { useClippingStore } from "../../_context/store.context";
 
 const SCROLLBAR_HEIGHT = 6;
 const FADE_DELAY = 1500; // ms before scrollbar fades out

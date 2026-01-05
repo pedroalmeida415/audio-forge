@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import type { $ClippingStore } from "../_store/clipping-store";
-import { SELECTION_CONSTANTS } from "../_store/constants";
+import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
+import { SELECTION_CONSTANTS } from "~/features/clipping/store/constants";
 
 const { DRAG_THRESHOLD } = SELECTION_CONSTANTS;
 

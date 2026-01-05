@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useClippingStore } from "../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 
 /**
  * Hook that manages timeline container ref and updates containerWidth in store.

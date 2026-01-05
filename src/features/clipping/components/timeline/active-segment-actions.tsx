@@ -16,8 +16,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
 
 /**
  * Active segment actions shown in the timeline toolbar.

@@ -2,7 +2,7 @@
 
 import { useValue } from "@legendapp/state/react";
 import { useState } from "react";
-import { useClippingStore } from "../../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 
 /**
  * Duration distribution chart with dynamic bucketing.

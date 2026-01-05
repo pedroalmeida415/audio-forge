@@ -2,10 +2,10 @@
 
 import { observe } from "@legendapp/state";
 import { useEffect, useRef, useState } from "react";
+import { useClippingStore } from "~/features/clipping/context/store.context";
+import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
+import { getSpeakerName } from "~/features/clipping/utils/segment-utils";
 import { withAlpha } from "~/lib/speaker-colors";
-import { useClippingStore } from "../../_context/store.context";
-import type { SegmentWithSpeaker } from "../../_store/clipping-store";
-import { getSpeakerName } from "../../_utils/segment-utils";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 

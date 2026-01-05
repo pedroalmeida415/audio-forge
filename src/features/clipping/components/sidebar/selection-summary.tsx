@@ -1,7 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { useClippingStore } from "../../_context/store.context";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 
 export function SelectionSummary() {
   const $store = useClippingStore();

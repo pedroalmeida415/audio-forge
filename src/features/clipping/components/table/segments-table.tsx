@@ -11,9 +11,9 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useEffect, useRef, useState } from "react";
+import { useClippingStore } from "~/features/clipping/context/store.context";
+import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
 import { cn } from "~/lib/utils";
-import { useClippingStore } from "../../_context/store.context";
-import type { SegmentWithSpeaker } from "../../_store/clipping-store";
 import { createColumns } from "./columns";
 
 const columns = createColumns();

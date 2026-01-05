@@ -4,8 +4,8 @@ import { observe } from "@legendapp/state";
 import { useSelector } from "@legendapp/state/react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
 
 interface HandlePosition {
   left: number;

@@ -1,12 +1,12 @@
 "use client";
 
 import { use } from "react";
+import { OuterHeader } from "~/features/clipping/components/layout";
+import { RightSidebar } from "~/features/clipping/components/sidebar";
+import { TableView } from "~/features/clipping/components/table";
+import { TimelineContainer } from "~/features/clipping/components/timeline/timeline-container";
+import { ClippingStoreProvider } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
-import { OuterHeader } from "./_components/layout";
-import { RightSidebar } from "./_components/sidebar";
-import { TableView } from "./_components/table";
-import { TimelineContainer } from "./_components/timeline/timeline-container";
-import { ClippingStoreProvider } from "./_context/store.context";
 
 export default function ClippingWorkspacePage({
   params,

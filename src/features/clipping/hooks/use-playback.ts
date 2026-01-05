@@ -1,10 +1,10 @@
 import { observe } from "@legendapp/state";
 import { useObserve, useSelector } from "@legendapp/state/react";
 import { useEffect, useRef } from "react";
+import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
+import type { PlaybackRefs } from "~/features/clipping/store/slices/playback";
+import { calculatePixelsPerSecond } from "~/features/clipping/utils/zoom-utils";
 import { useMSEAudio } from "~/hooks/use-mse-audio";
-import type { $ClippingStore } from "../_store/clipping-store";
-import type { PlaybackRefs } from "../_store/slices/playback";
-import { calculatePixelsPerSecond } from "../_utils/zoom-utils";
 
 /**
  * Hook that connects the audio element (via MSE) and RAF loop to the store.

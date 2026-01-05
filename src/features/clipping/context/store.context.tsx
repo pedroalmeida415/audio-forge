@@ -2,19 +2,19 @@
 
 import { useValue } from "@legendapp/state/react";
 import { createContext, type ReactNode, use } from "react";
-import { api } from "~/trpc/react";
-import { usePlayback } from "../_hooks/use-playback";
+import { usePlayback } from "~/features/clipping/hooks/use-playback";
 import {
   type $ClippingStore,
   type ClippingStoreInitialData,
   createClippingStore,
-} from "../_store/clipping-store";
+} from "~/features/clipping/store/clipping-store";
+import { api } from "~/trpc/react";
 
 // ============================================================================
 // Context
 // ============================================================================
 
-const ClippingStoreContext = createContext<ReturnType<
+export const ClippingStoreContext = createContext<ReturnType<
   typeof createClippingStore
 > | null>(null);
 

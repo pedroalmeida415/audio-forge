@@ -1,4 +1,4 @@
-import { TIMELINE_CONSTANTS } from "../_store/constants";
+import { TIMELINE_CONSTANTS } from "~/features/clipping/store/constants";
 
 const { MIN_ZOOM, MAX_ZOOM, ZOOM_IN_TARGET } = TIMELINE_CONSTANTS;
 

@@ -6,9 +6,8 @@ import { axisBottom } from "d3-axis";
 import { scaleLinear } from "d3-scale";
 import { select } from "d3-selection";
 import { useEffect, useRef } from "react";
-
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { formatTimestamp } from "~/lib/time-utils";
-import { useClippingStore } from "../../_context/store.context";
 
 const TIMESTAMPS_HEIGHT = 24;
 

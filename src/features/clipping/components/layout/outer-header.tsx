@@ -19,8 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { Input } from "~/components/ui/input";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
 
 interface OuterHeaderProps {
   sessionName: string;

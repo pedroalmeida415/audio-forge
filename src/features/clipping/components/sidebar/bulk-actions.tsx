@@ -4,9 +4,9 @@ import { useValue } from "@legendapp/state/react";
 import { Trash2, User } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
+import { ChangeSpeakerDialog } from "~/features/clipping/components/dialogs/change-speaker-dialog";
+import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
-import { useClippingStore } from "../../_context/store.context";
-import { ChangeSpeakerDialog } from "../dialogs/change-speaker-dialog";
 
 /**
  * Bulk actions for checkbox-selected segments.

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { $ClippingStore } from "../_store/clipping-store";
-import { TIMELINE_CONSTANTS } from "../_store/constants";
-import { isZoomEnabled } from "../_utils/zoom-utils";
+import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
+import { TIMELINE_CONSTANTS } from "~/features/clipping/store/constants";
+import { isZoomEnabled } from "~/features/clipping/utils/zoom-utils";
 
 const { MIN_ZOOM, MAX_ZOOM, ZOOM_FACTOR } = TIMELINE_CONSTANTS;
 const SCROLL_SPEED = 1.5; // Pixels per wheel delta unit
