@@ -1,68 +1,91 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
-import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
-import { useState } from "react";
+import {
+  httpLink,
+  httpSubscriptionLink,
+  loggerLink,
+  splitLink,
+} from "@trpc/client";
+import { useMemo } from "react";
 import SuperJSON from "superjson";
-
-import type { AppRouter } from "~/server/api/root";
-
-// ============================================================================
-// Mock tRPC Client
-// ============================================================================
-
-export const api = createTRPCReact<AppRouter>();
-
-export type RouterInputs = inferRouterInputs<AppRouter>;
-export type RouterOutputs = inferRouterOutputs<AppRouter>;
+import { api } from "~/trpc/react";
 
 // ============================================================================
-// Mock Provider
+// Mock TRPC Provider for Storybook
 // ============================================================================
 
-export function TRPCReactProvider(props: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => {
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false, staleTime: Infinity },
-        mutations: { retry: false },
-      },
-    });
+export interface MockTRPCProviderProps {
+  children: React.ReactNode;
+}
 
-    // Pre-populate waveform URL query - uses tRPC's query key format
-    client.setQueryData(
-      [
-        ["file", "getWaveformUrl"],
-        { input: { fileId: "mock-file" }, type: "query" },
-      ],
-      { status: "completed", url: "/test-audio.dat", error: null },
-    );
+/**
+ * Mock TRPC provider for Storybook stories.
+ *
+ * Uses httpLink (not batch) so each procedure is a separate request.
+ * MSW intercepts these requests at `/api/trpc/{procedure}`.
+ *
+ * @example
+ * ```tsx
+ * // In your story
+ * export const MyStory: Story = {
+ *   parameters: {
+ *     msw: {
+ *       handlers: [
+ *         http.post('/api/trpc/file.getWaveformUrl', () => {
+ *           return HttpResponse.json({
+ *             result: { data: { status: 'completed', url: '/test.dat', error: null } }
+ *           });
+ *         }),
+ *       ],
+ *     },
+ *   },
+ * };
+ * ```
+ */
+export function MockTRPCProvider({ children }: MockTRPCProviderProps) {
+  const queryClient = useMemo(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+          mutations: { retry: false },
+        },
+      }),
+    [],
+  );
 
-    return client;
-  });
-
-  const [trpcClient] = useState(() =>
-    api.createClient({
-      links: [
-        httpBatchLink({
-          transformer: SuperJSON,
-          url: "http://localhost:3000/api/trpc",
-          // No-op fetch - all data is pre-populated in queryClient
-          fetch: async () => {
-            return new Response(JSON.stringify([{ result: { data: null } }]), {
-              headers: { "Content-Type": "application/json" },
-            });
-          },
-        }),
-      ],
-    }),
+  const trpcClient = useMemo(
+    () =>
+      api.createClient({
+        links: [
+          loggerLink({
+            enabled: (op) =>
+              process.env.NODE_ENV === "development" ||
+              (op.direction === "down" && op.result instanceof Error),
+          }),
+          splitLink({
+            // Route subscriptions through SSE link (MSW can intercept these)
+            condition: (op) => op.type === "subscription",
+            true: httpSubscriptionLink({
+              url: "/api/trpc",
+              transformer: SuperJSON,
+            }),
+            // Queries/mutations use simple httpLink (MSW intercepts at /api/trpc/{procedure})
+            false: httpLink({
+              url: "/api/trpc",
+              transformer: SuperJSON,
+            }),
+          }),
+        ],
+      }),
+    [],
   );
 
   return (
     <QueryClientProvider client={queryClient}>
       <api.Provider client={trpcClient} queryClient={queryClient}>
-        {props.children}
+        {children}
       </api.Provider>
     </QueryClientProvider>
   );

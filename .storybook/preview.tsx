@@ -1,52 +1,9 @@
 import type { Preview } from "@storybook/nextjs-vite";
-import React from "react";
-import { sb } from "storybook/test";
+import { initialize, mswLoader } from "msw-storybook-addon";
 import "../src/styles/globals.css";
 
-// ============================================================================
-// Mock Modules - uses __mocks__ folders automatically
-// ============================================================================
-
-// Mock the clipping store context - uses context/__mocks__/store.context.tsx
-sb.mock(import("../src/features/clipping/context/store.context.tsx"));
-
-// Mock tRPC react client - uses trpc/__mocks__/react.tsx
-sb.mock(import("../src/trpc/react.tsx"));
-
-// ============================================================================
-// Mock media-proxy endpoint for audio playback testing
-// ============================================================================
-
-let testAudioData: ArrayBuffer | null = null;
-
-const originalFetch = window.fetch.bind(window);
-window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.href
-        : input.url;
-
-  // Intercept media-proxy requests and return test audio
-  if (url.includes("/api/media-proxy")) {
-    // Lazy load test audio on first request
-    if (!testAudioData) {
-      const response = await originalFetch("/test-audio.m4a");
-      testAudioData = await response.arrayBuffer();
-    }
-    return new Response(testAudioData, {
-      status: 200,
-      headers: { "Content-Type": "audio/mp4" },
-    });
-  }
-
-  return originalFetch(input, init);
-};
-
-// ============================================================================
-// Storybook Preview Config
-// ============================================================================
+// Initialize MSW - no default handlers, stories define their own
+initialize({ onUnhandledRequest: "bypass" });
 
 const preview: Preview = {
   parameters: {
@@ -56,7 +13,6 @@ const preview: Preview = {
         date: /Date$/i,
       },
     },
-
     a11y: {
       // 'todo' - show a11y violations in the test UI only
       // 'error' - fail CI on a11y violations
@@ -64,6 +20,7 @@ const preview: Preview = {
       test: "off",
     },
   },
+  loaders: [mswLoader],
 };
 
 export default preview;

@@ -7,9 +7,10 @@ const config: StorybookConfig = {
     "@storybook/addon-vitest",
     "@storybook/addon-a11y",
     "@storybook/addon-docs",
+    "msw-storybook-addon",
   ],
   framework: "@storybook/nextjs-vite",
-  staticDirs: ["../public"],
+  staticDirs: ["./static"],
   viteFinal: async (config) => {
     // Pre-optimize dependencies to avoid test flakiness
     config.optimizeDeps = config.optimizeDeps || {};
