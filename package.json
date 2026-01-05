@@ -19,7 +19,9 @@
     "worker:start": "bun run workers/clip-worker.ts",
     "worker:admin": "bun run workers/admin-ui.ts",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test": "vitest",
+    "test-storybook": "vitest --project=storybook"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",
