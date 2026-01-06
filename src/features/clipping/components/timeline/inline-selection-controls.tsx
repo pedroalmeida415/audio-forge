@@ -126,9 +126,12 @@ export function InlineSelectionControls() {
   );
 
   return (
-    <div className="flex items-center gap-2 border-l pl-3">
+    <div data-testid="selection-controls" className="flex items-center gap-2 border-l pl-3">
       {/* Time range display */}
-      <div className="flex items-center gap-1 rounded bg-muted px-2 py-1 font-mono text-muted-foreground text-xs">
+      <div
+        data-testid="selection-time-range"
+        className="flex items-center gap-1 rounded bg-muted px-2 py-1 font-mono text-muted-foreground text-xs"
+      >
         <span>{formatTimeWithMs(range.start)}</span>
         <span className="text-muted-foreground/60">→</span>
         <span>{formatTimeWithMs(range.end)}</span>
@@ -138,10 +141,11 @@ export function InlineSelectionControls() {
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            data-testid="speaker-combobox"
             variant="outline"
             size="sm"
-            role="combobox"
             aria-expanded={open}
+            aria-label="Select speaker"
             className="h-8 w-[160px] justify-between"
           >
             {selectedSpeaker ? (
@@ -224,6 +228,7 @@ export function InlineSelectionControls() {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            aria-label="Play selection"
             size="icon"
             variant="ghost"
             className="h-8 w-8"
@@ -243,7 +248,7 @@ export function InlineSelectionControls() {
         disabled={!selectedSpeakerId || createSegmentMutation.isPending}
       >
         <Plus className="mr-1 h-4 w-4" />
-        Create
+        Create segment
       </Button>
 
       {/* Cancel button */}

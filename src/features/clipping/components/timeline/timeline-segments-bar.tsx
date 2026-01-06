@@ -148,6 +148,8 @@ function createSegmentElement(
   const el = document.createElement("button");
   el.type = "button";
   el.dataset.segmentId = id;
+  el.dataset.testid = "segment-button";
+  el.setAttribute("aria-label", `Segment: ${label}`);
   el.className =
     "absolute left-0 top-1 h-6 overflow-hidden rounded border text-left transition-[opacity,filter]";
   el.style.willChange = "transform, width";

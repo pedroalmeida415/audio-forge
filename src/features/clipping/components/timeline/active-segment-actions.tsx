@@ -111,12 +111,16 @@ export function ActiveSegmentActions() {
   const currentSpeaker = speakers.find((s) => s.id === activeSegment.speakerId);
 
   return (
-    <div className="flex items-center gap-1 border-l pl-3">
+    <div
+      data-testid="active-segment-actions"
+      className="flex items-center gap-1 border-l pl-3"
+    >
       {/* Split at playhead */}
       <Tooltip>
         <TooltipTrigger asChild>
           <span>
             <Button
+              aria-label="Split segment"
               disabled={!canSplit || splitSegmentMutation.isPending}
               onClick={handleSplit}
               size="icon"
@@ -140,6 +144,7 @@ export function ActiveSegmentActions() {
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
+                aria-label="Change speaker"
                 size="icon"
                 variant="ghost"
                 className="h-8 w-8"
@@ -175,6 +180,7 @@ export function ActiveSegmentActions() {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            aria-label="Delete segment"
             size="icon"
             variant="ghost"
             className="h-8 w-8 text-destructive hover:text-destructive"
@@ -189,7 +195,10 @@ export function ActiveSegmentActions() {
 
       {/* Speaker indicator */}
       {currentSpeaker && (
-        <div className="ml-2 flex items-center gap-1.5 rounded-md bg-muted px-2 py-1">
+        <div
+          data-testid="active-segment-speaker"
+          className="ml-2 flex items-center gap-1.5 rounded-md bg-muted px-2 py-1"
+        >
           <div
             className="h-2.5 w-2.5 rounded-full"
             style={{ backgroundColor: speakerColors[activeSegment.speakerId] }}

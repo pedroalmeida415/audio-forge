@@ -103,17 +103,17 @@ export function TimelineToolbar() {
       {/* Navigation buttons */}
       <div className="flex items-center gap-1">
         <Button
+          aria-label="Previous segment"
           onClick={() => $store.navigateSegment("prev")}
           size="icon"
-          title="Previous segment"
           variant="ghost"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <Button
+          aria-label="Next segment"
           onClick={() => $store.navigateSegment("next")}
           size="icon"
-          title="Next segment"
           variant="ghost"
         >
           <ChevronRight className="h-4 w-4" />
@@ -122,6 +122,7 @@ export function TimelineToolbar() {
 
       {/* Play/Pause button */}
       <Button
+        aria-label={isPlaying ? "Pause" : "Play"}
         className="h-9 w-9"
         disabled={isLoading}
         onClick={togglePlayback}
@@ -167,16 +168,17 @@ export function TimelineToolbar() {
       {/* Zoom controls */}
       <div className="flex items-center gap-2">
         <Button
+          aria-label="Zoom out"
           disabled={!zoomEnabled || zoomLevel <= MIN_ZOOM}
           onClick={zoomOut}
           size="icon"
-          title="Zoom out"
           variant="ghost"
         >
           <Minus className="h-4 w-4" />
         </Button>
 
         <Slider
+          aria-label="Zoom level"
           className="w-24"
           disabled={!zoomEnabled}
           max={MAX_ZOOM}
@@ -187,10 +189,10 @@ export function TimelineToolbar() {
         />
 
         <Button
+          aria-label="Zoom in"
           disabled={!zoomEnabled || zoomLevel >= MAX_ZOOM}
           onClick={zoomIn}
           size="icon"
-          title="Zoom in"
           variant="ghost"
         >
           <Plus className="h-4 w-4" />

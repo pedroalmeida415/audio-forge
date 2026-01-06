@@ -113,3 +113,39 @@ export const DEFAULT_SESSION = {
   storageKey: "mock-storage-key",
   audioDuration: 120,
 } as const;
+
+/**
+ * Short audio session (< 15 seconds) - zoom should be disabled.
+ * Note: playback.duration must be set for zoom check to work correctly.
+ */
+export const SHORT_AUDIO_SESSION = {
+  sessionId: "mock-session",
+  fileId: "mock-file",
+  projectId: "mock-project",
+  segments: [
+    {
+      id: "short-seg-1",
+      sessionId: "mock-session",
+      speakerId: "speaker-1",
+      startTime: 0,
+      endTime: 5,
+      createdAt: new Date("2025-01-01"),
+      updatedAt: new Date("2025-01-01"),
+      speaker: MOCK_SPEAKERS[0]!,
+    },
+    {
+      id: "short-seg-2",
+      sessionId: "mock-session",
+      speakerId: "speaker-2",
+      startTime: 6,
+      endTime: 10,
+      createdAt: new Date("2025-01-01"),
+      updatedAt: new Date("2025-01-01"),
+      speaker: MOCK_SPEAKERS[1]!,
+    },
+  ],
+  speakers: MOCK_SPEAKERS,
+  storageKey: "mock-storage-key",
+  audioDuration: 10,
+  playback: { duration: 10 }, // Less than 15 seconds - disables zoom
+};
