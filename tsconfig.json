@@ -23,7 +23,7 @@
     "jsx": "preserve",
     "plugins": [{ "name": "next" }],
     "incremental": true,
-
+    "allowImportingTsExtensions": true,
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
@@ -37,7 +37,8 @@
     "**/*.cjs",
     "**/*.js",
     ".next/types/**/*.ts",
-    ".storybook/static/mockServiceWorker.js"
+    ".storybook/static/mockServiceWorker.js",
+    ".storybook/preview.tsx"
   ],
   "exclude": ["node_modules", "generated"]
 }

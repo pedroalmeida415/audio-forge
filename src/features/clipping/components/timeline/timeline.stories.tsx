@@ -12,7 +12,7 @@ import type {
   SegmentWithSpeaker,
 } from "~/features/clipping/store/clipping-store";
 import type { Speaker } from "~/server/db/schema";
-import { procedureSpy, TRPCReactProvider } from "~/trpc/react";
+import { procedureSpy } from "~/trpc/react";
 
 // ============================================================================
 // Inline Mock Data
@@ -246,21 +246,19 @@ const meta: Meta<TimelineStoryArgs> = {
   },
   decorators: [
     (Story, context: StoryContext) => (
-      <TRPCReactProvider>
-        <ClippingStoreProvider
-          initialData={context.args.initialData as ClippingStoreInitialData}
-        >
-          <StoreStateController
-            currentTime={context.args.currentTime as number}
-            zoomLevel={context.args.zoomLevel as number}
-            selectedSpeakerId={context.args.selectedSpeakerId as string | null}
-            activeSegmentId={context.args.activeSegmentId as string | null}
-          />
-          <div className="h-56 w-full bg-background">
-            <Story />
-          </div>
-        </ClippingStoreProvider>
-      </TRPCReactProvider>
+      <ClippingStoreProvider
+        initialData={context.args.initialData as ClippingStoreInitialData}
+      >
+        <StoreStateController
+          currentTime={context.args.currentTime as number}
+          zoomLevel={context.args.zoomLevel as number}
+          selectedSpeakerId={context.args.selectedSpeakerId as string | null}
+          activeSegmentId={context.args.activeSegmentId as string | null}
+        />
+        <div className="h-56 w-full bg-background">
+          <Story />
+        </div>
+      </ClippingStoreProvider>
     ),
   ],
 };
@@ -323,10 +321,6 @@ export const Interactive: Story = {
         diarizationSubscriptionHandler,
       ],
     },
-  },
-  beforeEach: () => {
-    // Reset spy before component mounts so we capture fresh calls
-    procedureSpy.reset();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
