@@ -17,6 +17,7 @@ const config: StorybookConfig = {
     config.optimizeDeps.include = [
       ...(config.optimizeDeps.include || []),
       "@trpc/client",
+      "@trpc/server/observable",
       "superjson",
       "@legendapp/state",
       "@legendapp/state/react",

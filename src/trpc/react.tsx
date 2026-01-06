@@ -15,6 +15,8 @@ import { useState } from "react";
 import SuperJSON from "superjson";
 
 import type { AppRouter } from "~/server/api/root";
+import type { ProcedureSpy } from "~/trpc/__mocks__/types";
+
 import { createQueryClient } from "./query-client";
 
 let clientQueryClientSingleton: QueryClient | undefined;
@@ -44,6 +46,13 @@ export type RouterInputs = inferRouterInputs<AppRouter>;
  * @example type HelloOutput = RouterOutputs['example']['hello']
  */
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
+
+/**
+ * No-op procedure spy for production.
+ * In Storybook tests, this is replaced by the mock implementation
+ * that actually tracks tRPC procedure calls.
+ */
+export const procedureSpy = {} as unknown as ProcedureSpy;
 
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
   const queryClient = getQueryClient();

@@ -1,6 +1,9 @@
 import type { Preview } from "@storybook/nextjs-vite";
 import { initialize, mswLoader } from "msw-storybook-addon";
+import { sb } from "storybook/test";
 import "../src/styles/globals.css";
+
+sb.mock(import("../src/trpc/react.tsx"));
 
 // Initialize MSW - no default handlers, stories define their own
 initialize({ onUnhandledRequest: "bypass" });

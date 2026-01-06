@@ -1,5 +1,5 @@
 import type { Meta, StoryContext, StoryObj } from "@storybook/react";
-import { expect, within } from "@storybook/test";
+import { expect, waitFor, within } from "@storybook/test";
 import { HttpResponse, http } from "msw";
 import { useEffect } from "react";
 import { TimelineContainer } from "~/features/clipping/components/timeline/timeline-container";
@@ -12,7 +12,7 @@ import type {
   SegmentWithSpeaker,
 } from "~/features/clipping/store/clipping-store";
 import type { Speaker } from "~/server/db/schema";
-import { MockTRPCProvider } from "~/trpc/__mocks__/react";
+import { procedureSpy, TRPCReactProvider } from "~/trpc/react";
 
 // ============================================================================
 // Inline Mock Data
@@ -244,10 +244,9 @@ const meta: Meta<TimelineStoryArgs> = {
     selectedSpeakerId: null,
     activeSegmentId: null,
   },
-
   decorators: [
     (Story, context: StoryContext) => (
-      <MockTRPCProvider>
+      <TRPCReactProvider>
         <ClippingStoreProvider
           initialData={context.args.initialData as ClippingStoreInitialData}
         >
@@ -261,7 +260,7 @@ const meta: Meta<TimelineStoryArgs> = {
             <Story />
           </div>
         </ClippingStoreProvider>
-      </MockTRPCProvider>
+      </TRPCReactProvider>
     ),
   ],
 };
@@ -325,6 +324,10 @@ export const Interactive: Story = {
       ],
     },
   },
+  beforeEach: () => {
+    // Reset spy before component mounts so we capture fresh calls
+    procedureSpy.reset();
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
@@ -336,5 +339,17 @@ export const Interactive: Story = {
         { timeout: 5000 },
       ),
     ).resolves.toBeInTheDocument();
+
+    // Assert that the waveform URL procedure was called
+    expect(procedureSpy["file.getWaveformUrl"].wasCalled).toBe(true);
+    expect(procedureSpy["file.getWaveformUrl"].calls[0]?.input.fileId).toBe(
+      "mock-file",
+    );
+
+    await waitFor(() => {
+      expect(procedureSpy["file.getWaveformUrl"].calls[0]?.output?.url).toBe(
+        "/test-audio.dat",
+      );
+    });
   },
 };
