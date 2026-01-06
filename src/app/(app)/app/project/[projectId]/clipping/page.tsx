@@ -10,10 +10,7 @@ import { Progress } from "~/components/ui/progress";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
 import { cn } from "~/lib/utils";
-import {
-  ACCEPTED_VIDEO_TYPES,
-  isVideoMimeType,
-} from "~/lib/video-types";
+import { ACCEPTED_VIDEO_TYPES, isVideoMimeType } from "~/lib/video-types";
 import { api } from "~/trpc/react";
 
 const ACCEPTED_AUDIO_TYPES = {
@@ -104,26 +101,28 @@ export default function ClippingEmptyStatePage({
     setUploadError(null);
 
     try {
-      // 1. Get presigned URL
-      const { url, key } = await getUploadUrl.mutateAsync({
-        fileName: file.name,
-        contentType: file.type,
-      });
+      // 1. Get presigned URL and extract duration in parallel
+      const [{ url, key }, duration] = await Promise.all([
+        getUploadUrl.mutateAsync({
+          fileName: file.name,
+          contentType: file.type,
+        }),
+        getAudioDuration(file),
+      ]);
 
       // 2. Upload to R2 with progress
       await uploadWithProgress(url, file, setUploadProgress);
 
-      // 3. Create file record and navigate
+      // 3. Create file record with duration and navigate
       await createFile.mutateAsync({
         storageKey: key,
         projectId,
         name: file.name,
+        duration,
       });
     } catch (error) {
       console.error("Upload failed:", error);
-      setUploadError(
-        error instanceof Error ? error.message : "Upload failed",
-      );
+      setUploadError(error instanceof Error ? error.message : "Upload failed");
       setIsUploading(false);
     }
   };
@@ -352,6 +351,43 @@ export default function ClippingEmptyStatePage({
       </div>
     </div>
   );
+}
+
+/**
+ * Extract audio duration using HTML5 Audio with preload="metadata".
+ * Only parses header bytes, doesn't load the full audio.
+ */
+function getAudioDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const audio = document.createElement("audio");
+    audio.preload = "metadata";
+
+    const objectUrl = URL.createObjectURL(file);
+
+    const cleanup = () => {
+      URL.revokeObjectURL(objectUrl);
+      audio.src = "";
+      audio.load();
+    };
+
+    audio.onloadedmetadata = () => {
+      const duration = audio.duration;
+      cleanup();
+
+      if (Number.isFinite(duration) && duration > 0) {
+        resolve(duration);
+      } else {
+        reject(new Error("Could not determine audio duration"));
+      }
+    };
+
+    audio.onerror = () => {
+      cleanup();
+      reject(new Error("Failed to load audio metadata"));
+    };
+
+    audio.src = objectUrl;
+  });
 }
 
 // Helper function for upload with progress

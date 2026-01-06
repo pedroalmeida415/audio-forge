@@ -78,20 +78,13 @@ export function usePlayback($store: $ClippingStore) {
     const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
     audioRef.current = audioElement;
 
-    // Set duration from our known value (MSE sets MediaSource.duration)
-    // We don't need to wait for loadedmetadata since we know the duration
+    // Set duration from the store's audioDuration (source of truth from DB)
+    // We trust the server-provided duration rather than the audio element
     $store.playback.duration.set(audioDuration);
     $store.playback.isLoading.set(false);
 
     // Preload the first slice so playback can start immediately
     ensureLoadedRef.current(0);
-
-    const handleLoadedMetadata = () => {
-      // Update duration from audio element if it differs
-      if (audioElement.duration && audioElement.duration !== audioDuration) {
-        $store.playback.duration.set(audioElement.duration);
-      }
-    };
 
     const handleEnded = () => {
       $store.playback.isPlaying.set(false);
@@ -112,23 +105,16 @@ export function usePlayback($store: $ClippingStore) {
       $store.playback.isPlaying.set(false);
     };
 
-    audioElement.addEventListener("loadedmetadata", handleLoadedMetadata);
     audioElement.addEventListener("ended", handleEnded);
     audioElement.addEventListener("error", handleError);
     audioElement.addEventListener("play", handlePlay);
     audioElement.addEventListener("pause", handlePause);
-
-    // If metadata already loaded, trigger handler
-    if (audioElement.readyState >= 1) {
-      handleLoadedMetadata();
-    }
 
     return () => {
       const animationFrameId = $store.playback.animationFrameId.peek();
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
-      audioElement.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audioElement.removeEventListener("ended", handleEnded);
       audioElement.removeEventListener("error", handleError);
       audioElement.removeEventListener("play", handlePlay);
