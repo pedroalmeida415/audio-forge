@@ -1,12 +1,8 @@
 import type { Meta, StoryContext, StoryObj } from "@storybook/react";
 import { expect, waitFor, within } from "@storybook/test";
 import { HttpResponse, http } from "msw";
-import { useEffect } from "react";
 import { TimelineContainer } from "~/features/clipping/components/timeline/timeline-container";
-import {
-  ClippingStoreProvider,
-  useClippingStore,
-} from "~/features/clipping/context/store.context";
+import { ClippingStoreProvider } from "~/features/clipping/context/store.context";
 import type {
   ClippingStoreInitialData,
   SegmentWithSpeaker,
@@ -122,17 +118,13 @@ const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
 ];
 
 const DEFAULT_INITIAL_DATA: ClippingStoreInitialData = {
-  session: {
-    id: "mock-session",
-    fileId: "mock-file",
-    projectId: "mock-project",
-    segments: MOCK_SEGMENTS,
-    speakers: MOCK_SPEAKERS,
-  },
-  audio: {
-    storageKey: "mock-storage-key",
-    duration: 120,
-  },
+  sessionId: "mock-session",
+  fileId: "mock-file",
+  projectId: "mock-project",
+  segments: MOCK_SEGMENTS,
+  speakers: MOCK_SPEAKERS,
+  storageKey: "mock-storage-key",
+  audioDuration: 120,
 };
 
 // ============================================================================
@@ -147,53 +139,14 @@ const mediaProxyHandler = http.get("/api/media-proxy", async () => {
 });
 
 // ============================================================================
-// Store State Controller
-// ============================================================================
-
-interface StoreStateProps {
-  currentTime?: number;
-  zoomLevel?: number;
-  selectedSpeakerId?: string | null;
-  activeSegmentId?: string | null;
-}
-
-function StoreStateController({
-  currentTime,
-  zoomLevel,
-  selectedSpeakerId,
-  activeSegmentId,
-}: StoreStateProps) {
-  const $store = useClippingStore();
-
-  useEffect(() => {
-    if (currentTime !== undefined) {
-      $store.playback.currentTime.set(currentTime);
-    }
-    if (zoomLevel !== undefined) {
-      $store.timeline.zoomLevel.set(zoomLevel);
-    }
-    if (selectedSpeakerId !== undefined) {
-      $store.selectedSpeakerId.set(selectedSpeakerId);
-    }
-    if (activeSegmentId !== undefined) {
-      $store.activeSegmentId.set(activeSegmentId);
-    }
-  }, [$store, currentTime, zoomLevel, selectedSpeakerId, activeSegmentId]);
-
-  return null;
-}
-
-// ============================================================================
 // Story Args Type
 // ============================================================================
 
-interface TimelineStoryArgs {
-  initialData: ClippingStoreInitialData;
-  currentTime: number;
-  zoomLevel: number;
-  selectedSpeakerId: string | null;
-  activeSegmentId: string | null;
-}
+/**
+ * Story args match ClippingStoreInitialData directly.
+ * State overrides are passed via initialData - no need for StoreStateController.
+ */
+type TimelineStoryArgs = ClippingStoreInitialData;
 
 // ============================================================================
 // Meta
@@ -208,14 +161,6 @@ const meta: Meta<TimelineStoryArgs> = {
   tags: ["autodocs"],
 
   argTypes: {
-    currentTime: {
-      control: { type: "range", min: 0, max: 120, step: 1 },
-      description: "Playhead position in seconds",
-    },
-    zoomLevel: {
-      control: { type: "range", min: 100, max: 500, step: 10 },
-      description: "Zoom level percentage (100 = fit to container)",
-    },
     selectedSpeakerId: {
       control: "select",
       options: [null, "speaker-1", "speaker-2", "speaker-3"],
@@ -238,23 +183,17 @@ const meta: Meta<TimelineStoryArgs> = {
   },
 
   args: {
-    initialData: DEFAULT_INITIAL_DATA,
-    currentTime: 0,
-    zoomLevel: 100,
+    // Required data
+    ...DEFAULT_INITIAL_DATA,
+    // Optional state overrides
     selectedSpeakerId: null,
     activeSegmentId: null,
+    playback: { currentTime: 0 },
+    timeline: { zoomLevel: 100 },
   },
   decorators: [
     (Story, context: StoryContext) => (
-      <ClippingStoreProvider
-        initialData={context.args.initialData as ClippingStoreInitialData}
-      >
-        <StoreStateController
-          currentTime={context.args.currentTime as number}
-          zoomLevel={context.args.zoomLevel as number}
-          selectedSpeakerId={context.args.selectedSpeakerId as string | null}
-          activeSegmentId={context.args.activeSegmentId as string | null}
-        />
+      <ClippingStoreProvider initialData={context.args as ClippingStoreInitialData}>
         <div className="h-56 w-full bg-background">
           <Story />
         </div>
@@ -296,7 +235,7 @@ const diarizationSubscriptionHandler = http.get(
   () => {
     // Return an SSE stream that stays open but doesn't emit
     const stream = new ReadableStream({
-      start(controller) {
+      start(_controller) {
         // Keep connection open but don't emit anything
       },
     });

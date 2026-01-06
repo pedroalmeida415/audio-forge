@@ -6,8 +6,20 @@ import {
   isZoomEnabled,
 } from "~/features/clipping/utils/zoom-utils";
 
+export type TimelineStateData = Pick<
+  TimelineState,
+  "zoomLevel" | "containerWidth" | "scrollOffset"
+>;
+
+const TIMELINE_DEFAULTS: TimelineStateData = {
+  zoomLevel: TIMELINE_CONSTANTS.DEFAULT_ZOOM,
+  containerWidth: 800,
+  scrollOffset: 0,
+};
+
 export function createTimelineState(
   getStore: () => $ClippingStore,
+  initial?: Partial<TimelineStateData>,
 ): TimelineState {
   // Lazy store access via proxy - defers initialization until first property access
   let _store: $ClippingStore | undefined;
@@ -18,10 +30,12 @@ export function createTimelineState(
     },
   });
 
+  // Merge defaults with initial overrides
+  const state = { ...TIMELINE_DEFAULTS, ...initial };
+
   return {
-    zoomLevel: TIMELINE_CONSTANTS.DEFAULT_ZOOM,
-    containerWidth: 800,
-    scrollOffset: 0, // Virtual scroll position in pixels
+    // State (defaults merged with initial overrides)
+    ...state,
 
     // Computed getters - used inside reactive contexts (Memo, observe, $style, etc.)
     getPixelsPerSecond: () => {

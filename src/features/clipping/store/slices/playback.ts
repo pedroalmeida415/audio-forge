@@ -11,8 +11,32 @@ import {
 
 const { MIN_ZOOM, MAX_ZOOM } = TIMELINE_CONSTANTS;
 
+export type PlaybackStateData = Pick<
+  PlaybackState,
+  | "isPlaying"
+  | "duration"
+  | "currentTime"
+  | "playbackRate"
+  | "isLoading"
+  | "error"
+  | "segmentEndTime"
+  | "animationFrameId"
+>;
+
+const PLAYBACK_DEFAULTS: PlaybackStateData = {
+  isPlaying: false,
+  duration: 0,
+  currentTime: 0,
+  playbackRate: 1,
+  isLoading: true,
+  error: null,
+  segmentEndTime: null,
+  animationFrameId: null,
+};
+
 export function createPlaybackState(
   getStore: () => $ClippingStore,
+  initial?: Partial<PlaybackStateData>,
 ): PlaybackState {
   // Lazy store access via proxy - defers initialization until first property access
   let _store: $ClippingStore | undefined;
@@ -28,6 +52,9 @@ export function createPlaybackState(
     audioRef: createRef<HTMLAudioElement | null>(),
     scrollContainerRef: createRef<HTMLDivElement | null>(),
   });
+
+  // Merge defaults with initial overrides
+  const state = { ...PLAYBACK_DEFAULTS, ...initial };
 
   // ============================================================================
   // Timeline utilities
@@ -230,20 +257,11 @@ export function createPlaybackState(
   };
 
   return {
+    // State (defaults merged with initial overrides)
+    ...state,
+
     // Refs (opaque - Legend State won't track these)
     refs,
-
-    // State
-    isPlaying: false,
-    duration: 0,
-    currentTime: 0,
-    playbackRate: 1,
-    isLoading: true,
-    error: null,
-
-    // Internal state
-    segmentEndTime: null,
-    animationFrameId: null,
 
     // Timeline utilities
     timeToPixels,

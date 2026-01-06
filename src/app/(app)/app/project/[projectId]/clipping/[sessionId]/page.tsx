@@ -27,14 +27,18 @@ export default function ClippingWorkspacePage({
     session.file.storageKey?.split("/").pop() ??
     "Untitled Session";
 
-  // Audio config for MSE streaming (no upfront download needed)
-  const audio = {
-    storageKey: session.file.storageKey!,
-    duration: session.file.duration ?? 0,
-  };
-
   return (
-    <ClippingStoreProvider initialData={{ session, audio }}>
+    <ClippingStoreProvider
+      initialData={{
+        sessionId: session.id,
+        fileId: session.file.id,
+        projectId: session.projectId,
+        segments: session.segments ?? [],
+        speakers: session.speakers ?? [],
+        storageKey: session.file.storageKey!,
+        audioDuration: session.file.duration ?? 0,
+      }}
+    >
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
         {/* Outer Header: Back button, session name dropdown, diarize button */}
         <OuterHeader sessionName={sessionName} projectId={projectId} />

@@ -1,5 +1,6 @@
 import { batch, type Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
+import type { RefObject } from "react";
 import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type { Segment, Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
@@ -13,27 +14,69 @@ import {
 import type { PlaybackState } from "./slices/playback";
 import type { SelectionState } from "./slices/selection";
 import type { TimelineState } from "./slices/timeline";
+import type { PlaybackStateData } from "./slices/playback";
+import type { TimelineStateData } from "./slices/timeline";
+import type { SelectionStateData } from "./slices/selection";
 
 export { TIMELINE_CONSTANTS } from "./constants";
+
+// ============================================================================
+// State Types
+// ============================================================================
 
 // Extended segment type with speaker info (returned by getById)
 export interface SegmentWithSpeaker extends Segment {
   speaker: Speaker;
 }
 
-export interface ClippingStoreInitialData {
-  session: {
-    id: string;
-    fileId: string;
-    projectId: string;
-    segments: SegmentWithSpeaker[];
-    speakers: Speaker[];
-  };
-  audio: {
-    storageKey: string;
-    duration: number;
-  };
-}
+/**
+ * Root-level state data (non-function properties).
+ */
+export type RootStateData = Pick<
+  ClippingStoreState,
+  | "sessionId"
+  | "fileId"
+  | "projectId"
+  | "segments"
+  | "speakers"
+  | "storageKey"
+  | "audioDuration"
+  | "selectedSpeakerId"
+  | "selectedSegmentIds"
+  | "activeSegmentId"
+>;
+
+/**
+ * Default values for optional root state.
+ */
+const ROOT_DEFAULTS: Pick<
+  RootStateData,
+  "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId"
+> = {
+  selectedSpeakerId: null,
+  selectedSegmentIds: new Set<string>(),
+  activeSegmentId: null,
+};
+
+/**
+ * Initial data for the clipping store.
+ * Required: core data fields (sessionId, fileId, etc).
+ * Optional: UI state and slice state overrides.
+ */
+export type ClippingStoreInitialData = Pick<
+  RootStateData,
+  | "sessionId"
+  | "fileId"
+  | "projectId"
+  | "segments"
+  | "speakers"
+  | "storageKey"
+  | "audioDuration"
+> &
+  Partial<Pick<RootStateData, "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId">> &
+  { playback?: Partial<PlaybackStateData> } &
+  { timeline?: Partial<TimelineStateData> } &
+  { selection?: Partial<SelectionStateData> };
 
 // ============================================================================
 // Store Factory
@@ -44,32 +87,19 @@ export interface ClippingStoreInitialData {
  * Must be called from a React component (the provider).
  * Uses useObservable which returns a stable observable across renders.
  */
-export function createClippingStore({
-  audio,
-  session,
-}: ClippingStoreInitialData) {
-  const segments = session.segments;
-  const speakers = session.speakers;
+export function createClippingStore(initialData: ClippingStoreInitialData) {
+  // Destructure slice overrides from root state
+  const { playback, timeline, selection, ...rootInitialData } = initialData;
+
+  // Merge defaults with initial data (excluding slices)
+  const rootState: RootStateData = { ...ROOT_DEFAULTS, ...rootInitialData };
 
   // Create the observable - closures capture $store by reference
   // This works because closures capture variables by reference, not value.
   // When the functions are later called, $store will be assigned.
   const $store = useObservable<ClippingStoreState>({
-    // Core data
-    sessionId: session.id,
-    fileId: session.fileId,
-    projectId: session.projectId,
-
-    segments,
-    speakers,
-
-    selectedSpeakerId: null,
-    selectedSegmentIds: new Set<string>(),
-    activeSegmentId: null,
-
-    // Audio source info for MSE streaming
-    storageKey: audio.storageKey,
-    audioDuration: audio.duration,
+    // State (defaults merged with initial data)
+    ...rootState,
 
     // Computed Values
     segmentsBySpeaker: () =>
@@ -218,13 +248,13 @@ export function createClippingStore({
     },
 
     // Playback state + actions
-    playback: createPlaybackState(() => $store),
+    playback: createPlaybackState(() => $store, playback),
 
     // Timeline state + actions
-    timeline: createTimelineState(() => $store),
+    timeline: createTimelineState(() => $store, timeline),
 
     // Selection state for click-and-drag segment creation
-    selection: createSelectionState(() => $store),
+    selection: createSelectionState(() => $store, selection),
   }) as $ClippingStore;
 
   const trpcUtils = api.useUtils();

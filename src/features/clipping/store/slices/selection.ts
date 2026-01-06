@@ -2,8 +2,22 @@ import { batch } from "@legendapp/state";
 import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
 import { SELECTION_CONSTANTS } from "~/features/clipping/store/constants";
 
+export type SelectionStateData = Pick<
+  SelectionState,
+  "mode" | "anchorTime" | "currentTime" | "selectedSpeaker" | "hoverTime"
+>;
+
+const SELECTION_DEFAULTS: SelectionStateData = {
+  mode: "idle",
+  anchorTime: null,
+  currentTime: null,
+  selectedSpeaker: null,
+  hoverTime: null,
+};
+
 export function createSelectionState(
   getStore: () => $ClippingStore,
+  initial?: Partial<SelectionStateData>,
 ): SelectionState {
   // Lazy store access via proxy - defers initialization until first property access
   let _store: $ClippingStore | undefined;
@@ -14,13 +28,12 @@ export function createSelectionState(
     },
   });
 
+  // Merge defaults with initial overrides
+  const state = { ...SELECTION_DEFAULTS, ...initial };
+
   return {
-    // State
-    mode: "idle",
-    anchorTime: null,
-    currentTime: null,
-    selectedSpeaker: null,
-    hoverTime: null,
+    // State (defaults merged with initial overrides)
+    ...state,
 
     // Computed getters
     getSelectionRange: () => {
