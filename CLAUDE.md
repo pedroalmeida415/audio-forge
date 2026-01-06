@@ -241,3 +241,157 @@ Key procedures in `src/server/api/routers/file.ts`:
 - `splitSegment` - Split segment at playhead time
 - `createSpeaker` / `updateSpeaker` / `deleteSpeaker` - Speaker CRUD
 - `exportToCollection` - Export segments to collection for clip generation
+
+## Storybook Testing
+
+The project uses Storybook with `@storybook/nextjs-vite` for component development and testing.
+
+### Commands
+
+```bash
+bun run storybook       # Start Storybook dev server
+bun run test-storybook  # Run Storybook tests via Vitest
+```
+
+### Configuration
+
+- **Framework**: `@storybook/nextjs-vite` - Supports `next/font`, `next/image`, app router
+- **Testing**: Vitest with `@storybook/addon-vitest`
+- **Mocking**: MSW (Mock Service Worker) via `msw-storybook-addon`
+- **Config location**: `.storybook/`
+
+### Global Setup (`.storybook/preview.tsx`)
+
+The preview file provides:
+- **Fonts**: Loads Syne and IBM Plex Sans via `next/font/google`
+- **Styling**: Applies `bg-background bg-studio-grid` and gradient mesh overlay
+- **tRPC**: Wraps stories with `TRPCReactProvider`
+- **MSW**: Initializes MSW for network mocking
+- **procedureSpy**: Resets before each story for tRPC call assertions
+
+### Query Patterns
+
+Use Testing Library queries correctly to ensure readable test output:
+
+| Query Type | When to Use | Async |
+|------------|-------------|-------|
+| `getBy*` | Element exists immediately | No |
+| `getAllBy*` | Multiple elements exist immediately | No |
+| `findBy*` | Wait for element to appear | Yes |
+| `findAllBy*` | Wait for multiple elements | Yes |
+
+**Rules:**
+- `findBy*` should ONLY be used when the element is NOT immediately available (e.g., waiting for async render)
+- Use `getBy*` for elements that exist after initial render
+- Always `await` the `expect()` calls
+- Prefer `{ canvas }` from play function params over `within(canvasElement)`
+- Don't create unnecessary const variables for elements that won't be reused
+
+```typescript
+// ✅ GOOD - await findBy for initial async element, then getBy for rest
+play: async ({ canvas }) => {
+  // Wait for component to render (async)
+  await canvas.findByRole("slider", { name: /audio progress/i });
+
+  // Elements already present after render (sync)
+  await expect(canvas.getByRole("button", { name: /play/i })).toBeInTheDocument();
+  await expect(canvas.getByRole("button", { name: /pause/i })).toBeInTheDocument();
+}
+
+// ❌ BAD - don't use .resolves pattern (shows "Promise" in logs)
+await expect(canvas.findByRole("button")).resolves.toBeInTheDocument();
+
+// ❌ BAD - don't use findBy for elements that already exist
+await canvas.findByRole("button", { name: /play/i }); // Use getBy instead
+```
+
+### MSW Handlers for tRPC
+
+Create type-safe MSW handlers for tRPC procedures in `__tests__/handlers/`:
+
+```typescript
+// handlers/trpc.ts
+import { http, HttpResponse } from "msw";
+
+type TRPCResponse<T> = { result: { data: { json: T } } };
+
+export function trpcQuery<T>(procedure: string, resolver: () => T) {
+  return http.get(`/api/trpc/${procedure}`, () => {
+    return HttpResponse.json<TRPCResponse<T>>({
+      result: { data: { json: resolver() } },
+    });
+  });
+}
+
+export function trpcMutation<T>(procedure: string, resolver: () => T) {
+  return http.post(`/api/trpc/${procedure}`, () => {
+    return HttpResponse.json<TRPCResponse<T>>({
+      result: { data: { json: resolver() } },
+    });
+  });
+}
+
+// handlers/index.ts
+export const getWaveformUrlHandler = trpcQuery("file.getWaveformUrl", () => ({
+  status: "completed",
+  url: "/test-audio.dat",
+  error: null,
+}));
+
+export const timelineHandlers = [getWaveformUrlHandler, ...];
+```
+
+### Story Structure
+
+```typescript
+// Component.stories.tsx
+import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent } from "@storybook/test";
+import { myHandlers } from "./__tests__/handlers";
+
+const meta: Meta<typeof Component> = {
+  component: Component,
+  parameters: {
+    msw: { handlers: myHandlers },
+  },
+  decorators: [
+    (Story) => (
+      <ContextProvider>
+        <Story />
+      </ContextProvider>
+    ),
+  ],
+};
+
+export default meta;
+type Story = StoryObj<typeof Component>;
+
+export const Default: Story = {
+  args: { /* initial props */ },
+  play: async ({ canvas }) => {
+    // Wait for async render
+    await canvas.findByRole("button", { name: /submit/i });
+
+    // Interact
+    await userEvent.click(canvas.getByRole("button", { name: /submit/i }));
+
+    // Assert
+    await expect(canvas.getByText("Success")).toBeInTheDocument();
+  },
+};
+```
+
+### Asserting tRPC Calls
+
+Use `procedureSpy` to assert tRPC procedures were called:
+
+```typescript
+import { procedureSpy } from "~/trpc/react";
+
+play: async ({ canvas }) => {
+  await canvas.findByRole("slider");
+
+  // Assert procedure was called
+  await expect(procedureSpy["file.getWaveformUrl"].wasCalled).toBe(true);
+  await expect(procedureSpy["file.getWaveformUrl"].calls[0]?.input.fileId).toBe("mock-file");
+}
