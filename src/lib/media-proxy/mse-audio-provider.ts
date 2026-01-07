@@ -17,6 +17,9 @@ export interface MSEAudioProviderConfig {
 // Preload next slice when within this many ms of slice boundary
 const PRELOAD_THRESHOLD_MS = 5000;
 
+// Debounce seeking to avoid downloading every slice during scrubbing
+const SEEK_DEBOUNCE_MS = 200;
+
 interface PendingSlice {
   startMs: number;
   endMs: number;
@@ -36,6 +39,7 @@ export class MSEAudioProvider {
   private fetchedSlices: Set<number> = new Set();
   private appendQueue: { data: ArrayBuffer; offsetMs: number }[] = [];
   private isAppending = false;
+  private seekDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Bound event handlers for cleanup
   private handleTimeUpdate: () => void;
@@ -78,6 +82,11 @@ export class MSEAudioProvider {
    * Detach from audio element and cleanup
    */
   detach(): void {
+    if (this.seekDebounceTimer) {
+      clearTimeout(this.seekDebounceTimer);
+      this.seekDebounceTimer = null;
+    }
+
     if (this.audioElement) {
       this.audioElement.removeEventListener(
         "timeupdate",
@@ -125,7 +134,18 @@ export class MSEAudioProvider {
 
   private onSeeking(): void {
     if (!this.audioElement) return;
-    this.loadAtTime(this.audioElement.currentTime);
+
+    // Debounce to avoid downloading every slice during rapid scrubbing
+    if (this.seekDebounceTimer) {
+      clearTimeout(this.seekDebounceTimer);
+    }
+
+    this.seekDebounceTimer = setTimeout(() => {
+      if (this.audioElement) {
+        this.loadAtTime(this.audioElement.currentTime);
+      }
+      this.seekDebounceTimer = null;
+    }, SEEK_DEBOUNCE_MS);
   }
 
   // ============================================================================
