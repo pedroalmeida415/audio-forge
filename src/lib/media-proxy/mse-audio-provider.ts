@@ -2,7 +2,8 @@
  * MSE Audio Provider
  *
  * Manages progressive audio loading using Media Source Extensions.
- * Fetches audio slices on-demand as the user scrubs through the timeline.
+ * Self-managing: attaches to an audio element and handles all slice loading
+ * automatically based on playback position and seeking.
  *
  * Internally uses milliseconds for precision, converts to seconds only at boundaries.
  */
@@ -12,6 +13,9 @@ export interface MSEAudioProviderConfig {
   duration: number; // Duration in seconds (from audio metadata)
   sliceSize?: number; // Seconds per slice, defaults to 15
 }
+
+// Preload next slice when within this many ms of slice boundary
+const PRELOAD_THRESHOLD_MS = 5000;
 
 interface PendingSlice {
   startMs: number;
@@ -33,15 +37,23 @@ export class MSEAudioProvider {
   private appendQueue: { data: ArrayBuffer; offsetMs: number }[] = [];
   private isAppending = false;
 
+  // Bound event handlers for cleanup
+  private handleTimeUpdate: () => void;
+  private handleSeeking: () => void;
+
   constructor(config: MSEAudioProviderConfig) {
     this.storageKey = config.storageKey;
-    // Convert to milliseconds internally
     this.durationMs = Math.round(config.duration * 1000);
     this.sliceSizeMs = (config.sliceSize ?? 15) * 1000;
+
+    // Bind handlers once for proper cleanup
+    this.handleTimeUpdate = this.onTimeUpdate.bind(this);
+    this.handleSeeking = this.onSeeking.bind(this);
   }
 
   /**
-   * Attach to an HTML audio element
+   * Attach to an HTML audio element.
+   * The provider will automatically manage slice loading based on playback.
    */
   attachTo(audioElement: HTMLAudioElement): void {
     if (this.audioElement) {
@@ -56,6 +68,10 @@ export class MSEAudioProvider {
     this.mediaSource.addEventListener("sourceopen", () => {
       this.onSourceOpen();
     });
+
+    // Listen to audio events for automatic slice management
+    audioElement.addEventListener("timeupdate", this.handleTimeUpdate);
+    audioElement.addEventListener("seeking", this.handleSeeking);
   }
 
   /**
@@ -63,6 +79,11 @@ export class MSEAudioProvider {
    */
   detach(): void {
     if (this.audioElement) {
+      this.audioElement.removeEventListener(
+        "timeupdate",
+        this.handleTimeUpdate,
+      );
+      this.audioElement.removeEventListener("seeking", this.handleSeeking);
       URL.revokeObjectURL(this.audioElement.src);
       this.audioElement.src = "";
     }
@@ -76,66 +97,6 @@ export class MSEAudioProvider {
   }
 
   /**
-   * Ensure the audio at the given time is loaded
-   * @param time Time in seconds (from audio.currentTime)
-   */
-  async ensureLoaded(time: number): Promise<void> {
-    if (!this.sourceBuffer || !this.mediaSource) {
-      return;
-    }
-
-    const timeMs = Math.round(time * 1000);
-
-    // Calculate which slice we need
-    const sliceIndex = Math.floor(timeMs / this.sliceSizeMs);
-    const startMs = sliceIndex * this.sliceSizeMs;
-    const endMs = Math.min(startMs + this.sliceSizeMs, this.durationMs);
-
-    // Check if already buffered - use a point near the end of the slice
-    const checkTimeMs = Math.min(endMs - 100, startMs + this.sliceSizeMs / 2);
-    if (this.isTimeBuffered(checkTimeMs / 1000)) {
-      return;
-    }
-
-    // Check if already fetched or fetching
-    if (this.fetchedSlices.has(sliceIndex)) {
-      if (this.pendingSlices.has(sliceIndex)) {
-        await this.pendingSlices.get(sliceIndex)!.promise;
-      }
-      return;
-    }
-
-    await this.fetchAndAppendSlice(sliceIndex, startMs, endMs);
-  }
-
-  /**
-   * Preload slices ahead of the current time
-   * @param time Time in seconds (from audio.currentTime)
-   */
-  async preloadAhead(time: number, count = 1): Promise<void> {
-    if (!this.sourceBuffer || !this.mediaSource) {
-      return;
-    }
-
-    const timeMs = Math.round(time * 1000);
-    const currentSlice = Math.floor(timeMs / this.sliceSizeMs);
-    const promises: Promise<void>[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const sliceIndex = currentSlice + i;
-      const startMs = sliceIndex * this.sliceSizeMs;
-      const endMs = Math.min(startMs + this.sliceSizeMs, this.durationMs);
-
-      if (startMs >= this.durationMs) break;
-      if (this.fetchedSlices.has(sliceIndex)) continue;
-
-      promises.push(this.fetchAndAppendSlice(sliceIndex, startMs, endMs));
-    }
-
-    await Promise.all(promises);
-  }
-
-  /**
    * Check if MediaSource APIs are supported
    */
   static isSupported(): boolean {
@@ -146,6 +107,31 @@ export class MSEAudioProvider {
     );
   }
 
+  /**
+   * Get the current buffered time ranges
+   */
+  getBufferedRanges(): TimeRanges | null {
+    return this.sourceBuffer?.buffered ?? null;
+  }
+
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
+
+  private onTimeUpdate(): void {
+    if (!this.audioElement) return;
+    this.loadAtTime(this.audioElement.currentTime);
+  }
+
+  private onSeeking(): void {
+    if (!this.audioElement) return;
+    this.loadAtTime(this.audioElement.currentTime);
+  }
+
+  // ============================================================================
+  // Slice Loading
+  // ============================================================================
+
   private onSourceOpen(): void {
     if (!this.mediaSource) return;
 
@@ -153,7 +139,6 @@ export class MSEAudioProvider {
       'audio/mp4; codecs="mp4a.40.2"',
     );
 
-    // MediaSource.duration expects seconds
     this.mediaSource.duration = this.durationMs / 1000;
 
     this.sourceBuffer.addEventListener("updateend", () => {
@@ -164,6 +149,48 @@ export class MSEAudioProvider {
     this.sourceBuffer.addEventListener("error", (e) => {
       console.error("[MSEAudioProvider] SourceBuffer error:", e);
     });
+
+    // Load initial slice so playback can start immediately
+    this.loadAtTime(0);
+  }
+
+  /**
+   * Load the slice at current time, and preload next slice if within threshold
+   */
+  private loadAtTime(time: number): void {
+    if (!this.sourceBuffer || !this.mediaSource) return;
+
+    const timeMs = Math.round(time * 1000);
+    const currentSliceIndex = Math.floor(timeMs / this.sliceSizeMs);
+
+    // Always load current slice
+    this.loadSlice(currentSliceIndex);
+
+    // Preload next slice if within threshold of slice boundary
+    const nextSliceStartMs = (currentSliceIndex + 1) * this.sliceSizeMs;
+    const msUntilNextSlice = nextSliceStartMs - timeMs;
+
+    if (msUntilNextSlice <= PRELOAD_THRESHOLD_MS && nextSliceStartMs < this.durationMs) {
+      this.loadSlice(currentSliceIndex + 1);
+    }
+  }
+
+  /**
+   * Load a specific slice by index (if not already loaded)
+   */
+  private loadSlice(sliceIndex: number): void {
+    const startMs = sliceIndex * this.sliceSizeMs;
+
+    if (startMs >= this.durationMs) return;
+    if (this.fetchedSlices.has(sliceIndex)) return;
+
+    const endMs = Math.min(startMs + this.sliceSizeMs, this.durationMs);
+
+    // Check if already buffered
+    const checkTimeMs = Math.min(endMs - 100, startMs + this.sliceSizeMs / 2);
+    if (this.isTimeBuffered(checkTimeMs / 1000)) return;
+
+    this.fetchAndAppendSlice(sliceIndex, startMs, endMs);
   }
 
   private async fetchAndAppendSlice(
@@ -186,7 +213,7 @@ export class MSEAudioProvider {
       this.queueAppend(data, startMs);
     } catch (e) {
       this.fetchedSlices.delete(sliceIndex);
-      throw e;
+      console.error("[MSEAudioProvider] Failed to fetch slice:", e);
     } finally {
       this.pendingSlices.delete(sliceIndex);
     }
@@ -224,13 +251,14 @@ export class MSEAudioProvider {
       return;
     }
 
-    const { data, offsetMs } = this.appendQueue.shift()!;
+    const item = this.appendQueue.shift();
+    if (!item) return;
+
     this.isAppending = true;
 
     try {
-      // timestampOffset expects seconds
-      this.sourceBuffer.timestampOffset = offsetMs / 1000;
-      this.sourceBuffer.appendBuffer(data);
+      this.sourceBuffer.timestampOffset = item.offsetMs / 1000;
+      this.sourceBuffer.appendBuffer(item.data);
     } catch (e) {
       console.error("[MSEAudioProvider] Error appending buffer:", e);
       this.isAppending = false;
@@ -247,12 +275,5 @@ export class MSEAudioProvider {
       }
     }
     return false;
-  }
-
-  /**
-   * Get the current buffered time ranges
-   */
-  getBufferedRanges(): TimeRanges | null {
-    return this.sourceBuffer?.buffered ?? null;
   }
 }

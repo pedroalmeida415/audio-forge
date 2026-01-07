@@ -1,90 +1,53 @@
 import { observe } from "@legendapp/state";
 import { useObserve, useSelector } from "@legendapp/state/react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
 import type { PlaybackRefs } from "~/features/clipping/store/slices/playback";
 import { calculatePixelsPerSecond } from "~/features/clipping/utils/zoom-utils";
-import { useMSEAudio } from "~/hooks/use-mse-audio";
+import { MSEAudioProvider } from "~/lib/media-proxy/mse-audio-provider";
 
 /**
  * Hook that connects the audio element (via MSE) and RAF loop to the store.
- * This is a minimal connector - all state and actions live in the store.
+ * All state and actions live in the store - this just orchestrates side effects.
  */
 export function usePlayback($store: $ClippingStore) {
-  // Get audio config from store (stable values)
   const storageKey = useSelector(() => $store.storageKey.get());
   const audioDuration = useSelector(() => $store.audioDuration.get());
-
-  // MSE audio provider - creates and manages its own audio element
-  const mseEnabled = !!storageKey && audioDuration > 0;
-  const {
-    audioElement,
-    ensureLoaded,
-    preloadAhead,
-    error: mseError,
-  } = useMSEAudio({
-    storageKey,
-    duration: audioDuration,
-    sliceSize: 15,
-    enabled: mseEnabled,
-  });
-
-  // Keep a ref to the latest ensureLoaded/preloadAhead functions
-  const ensureLoadedRef = useRef(ensureLoaded);
-  const preloadAheadRef = useRef(preloadAhead);
-  useEffect(() => {
-    ensureLoadedRef.current = ensureLoaded;
-    preloadAheadRef.current = preloadAhead;
-  }, [ensureLoaded, preloadAhead]);
-
-  // Propagate MSE errors to store
-  useEffect(() => {
-    if (mseError) {
-      $store.playback.error.set(mseError);
-      $store.playback.isLoading.set(false);
-    }
-  }, [mseError]);
-
-  // Track if we've already handled the missing duration case
-  const hasSetMissingDurationError = useRef(false);
 
   // ============================================================================
   // Audio initialization with MSE
   // ============================================================================
 
   useEffect(() => {
-    // If duration is missing, show error and stop loading (only once)
-    if (audioDuration <= 0) {
-      if (!hasSetMissingDurationError.current) {
-        hasSetMissingDurationError.current = true;
-        if (storageKey) {
-          $store.playback.error.set(
-            "Audio duration not available. File may need reprocessing.",
-          );
-        }
-        $store.playback.isLoading.set(false);
-      }
+    if (!storageKey) return;
+
+    // Create audio element
+    const audioElement = document.createElement("audio");
+    audioElement.preload = "metadata";
+
+    // Create and attach MSE provider (self-managing - handles all slice loading)
+    const provider = new MSEAudioProvider({
+      storageKey,
+      duration: audioDuration,
+      sliceSize: 15,
+    });
+
+    try {
+      provider.attachTo(audioElement);
+    } catch (e) {
+      $store.playback.error.set(
+        e instanceof Error ? e.message : "Failed to attach MSE",
+      );
       return;
     }
 
-    // Reset the flag if duration becomes valid
-    hasSetMissingDurationError.current = false;
-
-    // Wait for audio element to be created
-    if (!audioElement) {
-      return;
-    }
-
+    // Store the audio element reference
     const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
     audioRef.current = audioElement;
 
-    // Set duration from the store's audioDuration (source of truth from DB)
-    // We trust the server-provided duration rather than the audio element
+    // Set duration and mark as ready
     $store.playback.duration.set(audioDuration);
     $store.playback.isLoading.set(false);
-
-    // Preload the first slice so playback can start immediately
-    ensureLoadedRef.current(0);
 
     const handleEnded = () => {
       $store.playback.isPlaying.set(false);
@@ -93,7 +56,6 @@ export function usePlayback($store: $ClippingStore) {
     };
 
     const handleError = () => {
-      $store.playback.isLoading.set(false);
       $store.playback.error.set("Failed to load audio");
     };
 
@@ -120,8 +82,9 @@ export function usePlayback($store: $ClippingStore) {
       audioElement.removeEventListener("play", handlePlay);
       audioElement.removeEventListener("pause", handlePause);
       audioRef.current = null;
+      provider.detach();
     };
-  }, [audioElement, audioDuration, storageKey]);
+  }, [storageKey, audioDuration]);
 
   // ============================================================================
   // RAF loop for smooth playhead updates + auto-scroll
@@ -134,7 +97,6 @@ export function usePlayback($store: $ClippingStore) {
     let targetVisibleRight = 0;
     let targetVisibleLeft = 0;
 
-    // observe() automatically tracks dependencies and runs when they change
     const dispose = observe(() => {
       const isPlaying = $store.playback.isPlaying.get();
 
@@ -165,10 +127,6 @@ export function usePlayback($store: $ClippingStore) {
         }
 
         const currentTime = audio.currentTime;
-
-        // MSE: Ensure current time is loaded and preload ahead
-        ensureLoadedRef.current(currentTime);
-        preloadAheadRef.current(currentTime, 2);
 
         // Update time in store
         $store.playback.currentTime.set(currentTime);
