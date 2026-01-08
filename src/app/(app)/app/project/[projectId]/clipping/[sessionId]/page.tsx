@@ -36,7 +36,7 @@ export default function ClippingWorkspacePage({
         segments: session.segments ?? [],
         speakers: session.speakers ?? [],
         storageKey: session.file.storageKey!,
-        audioDuration: session.file.duration ?? 0,
+        playback: { duration: session.file.duration ?? 0 },
       }}
     >
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">

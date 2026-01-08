@@ -1,52 +1,38 @@
 import { observe } from "@legendapp/state";
-import { useObserve, useSelector } from "@legendapp/state/react";
+import { useObserve } from "@legendapp/state/react";
 import { useEffect } from "react";
-import type { $ClippingStore } from "~/features/clipping/store/clipping-store";
 import type { PlaybackRefs } from "~/features/clipping/store/slices/playback";
 import { calculatePixelsPerSecond } from "~/features/clipping/utils/zoom-utils";
 import { MSEAudioProvider } from "~/lib/media-proxy/mse-audio-provider";
+import { useClippingStore } from "../context/store.context";
 
 /**
- * Hook that connects the audio element (via MSE) and RAF loop to the store.
- * All state and actions live in the store - this just orchestrates side effects.
+ * Hook that connects the MSE audio provider to the store.
+ * Creates the provider in useEffect and wires up event listeners + RAF loop.
  */
-export function usePlayback($store: $ClippingStore) {
-  const storageKey = useSelector(() => $store.storageKey.get());
-  const audioDuration = useSelector(() => $store.audioDuration.get());
-
+export function usePlayback() {
+  const $store = useClippingStore();
   // ============================================================================
-  // Audio initialization with MSE
+  // Create MSE provider and wire up to store
   // ============================================================================
 
   useEffect(() => {
-    if (!storageKey) return;
+    const storageKey = $store.storageKey.peek();
+    const duration = $store.playback.duration.peek();
+    const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
 
-    // Create audio element
-    const audioElement = document.createElement("audio");
-    audioElement.preload = "metadata";
-
-    // Create and attach MSE provider (self-managing - handles all slice loading)
     const provider = new MSEAudioProvider({
       storageKey,
-      duration: audioDuration,
+      duration,
       sliceSize: 15,
     });
 
-    try {
-      provider.attachTo(audioElement);
-    } catch (e) {
-      $store.playback.error.set(
-        e instanceof Error ? e.message : "Failed to attach MSE",
-      );
-      return;
-    }
+    const audioElement = provider.audioElement;
 
-    // Store the audio element reference
-    const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
+    // Set audioRef for store actions (play, pause, seek, etc.)
     audioRef.current = audioElement;
 
-    // Set duration and mark as ready
-    $store.playback.duration.set(audioDuration);
+    // Mark as ready (duration already set via initial data)
     $store.playback.isLoading.set(false);
 
     const handleEnded = () => {
@@ -84,23 +70,23 @@ export function usePlayback($store: $ClippingStore) {
       audioRef.current = null;
       provider.detach();
     };
-  }, [storageKey, audioDuration]);
+  }, []);
 
   // ============================================================================
   // RAF loop for smooth playhead updates + auto-scroll
   // ============================================================================
 
   useEffect(() => {
-    const { audioRef } = $store.playback.refs.peek();
-
     // Track the target visible area we're scrolling to
     let targetVisibleRight = 0;
     let targetVisibleLeft = 0;
 
     const dispose = observe(() => {
       const isPlaying = $store.playback.isPlaying.get();
+      const { audioRef } = $store.playback.refs.peek() as PlaybackRefs;
+      const audioElement = audioRef.current;
 
-      if (!isPlaying) {
+      if (!isPlaying || !audioElement) {
         const animationFrameId = $store.playback.animationFrameId.peek();
         if (animationFrameId) {
           cancelAnimationFrame(animationFrameId);
@@ -115,18 +101,18 @@ export function usePlayback($store: $ClippingStore) {
       targetVisibleRight = targetVisibleLeft + containerWidth;
 
       const updateTime = () => {
-        const audio = audioRef.current;
-        if (!audio) return;
-
         // Check segment end
         const segmentEndTime = $store.playback.segmentEndTime.peek();
-        if (segmentEndTime !== null && audio.currentTime >= segmentEndTime) {
-          audio.pause();
+        if (
+          segmentEndTime !== null &&
+          audioElement.currentTime >= segmentEndTime
+        ) {
+          audioElement.pause();
           $store.playback.segmentEndTime.set(null);
           return;
         }
 
-        const currentTime = audio.currentTime;
+        const currentTime = audioElement.currentTime;
 
         // Update time in store
         $store.playback.currentTime.set(currentTime);

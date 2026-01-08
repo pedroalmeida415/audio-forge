@@ -2,7 +2,7 @@
  * MSE Audio Provider
  *
  * Manages progressive audio loading using Media Source Extensions.
- * Self-managing: attaches to an audio element and handles all slice loading
+ * Self-managing: creates its own audio element and handles all slice loading
  * automatically based on playback position and seeking.
  *
  * Internally uses milliseconds for precision, converts to seconds only at boundaries.
@@ -31,9 +31,8 @@ export class MSEAudioProvider {
   private durationMs: number;
   private sliceSizeMs: number;
 
-  private mediaSource: MediaSource | null = null;
+  private mediaSource: MediaSource;
   private sourceBuffer: SourceBuffer | null = null;
-  private audioElement: HTMLAudioElement | null = null;
 
   private pendingSlices: Map<number, PendingSlice> = new Map();
   private fetchedSlices: Set<number> = new Set();
@@ -45,6 +44,9 @@ export class MSEAudioProvider {
   private handleTimeUpdate: () => void;
   private handleSeeking: () => void;
 
+  // Public audio element - created and owned by the provider
+  readonly audioElement: HTMLAudioElement;
+
   constructor(config: MSEAudioProviderConfig) {
     this.storageKey = config.storageKey;
     this.durationMs = Math.round(config.duration * 1000);
@@ -53,33 +55,26 @@ export class MSEAudioProvider {
     // Bind handlers once for proper cleanup
     this.handleTimeUpdate = this.onTimeUpdate.bind(this);
     this.handleSeeking = this.onSeeking.bind(this);
-  }
 
-  /**
-   * Attach to an HTML audio element.
-   * The provider will automatically manage slice loading based on playback.
-   */
-  attachTo(audioElement: HTMLAudioElement): void {
-    if (this.audioElement) {
-      this.detach();
-    }
+    // Create audio element
+    this.audioElement = document.createElement("audio");
+    this.audioElement.preload = "none";
 
-    this.audioElement = audioElement;
+    // Create and attach MediaSource
     this.mediaSource = new MediaSource();
-
-    audioElement.src = URL.createObjectURL(this.mediaSource);
+    this.audioElement.src = URL.createObjectURL(this.mediaSource);
 
     this.mediaSource.addEventListener("sourceopen", () => {
       this.onSourceOpen();
     });
 
     // Listen to audio events for automatic slice management
-    audioElement.addEventListener("timeupdate", this.handleTimeUpdate);
-    audioElement.addEventListener("seeking", this.handleSeeking);
+    this.audioElement.addEventListener("timeupdate", this.handleTimeUpdate);
+    this.audioElement.addEventListener("seeking", this.handleSeeking);
   }
 
   /**
-   * Detach from audio element and cleanup
+   * Detach and cleanup all resources
    */
   detach(): void {
     if (this.seekDebounceTimer) {
@@ -87,18 +82,12 @@ export class MSEAudioProvider {
       this.seekDebounceTimer = null;
     }
 
-    if (this.audioElement) {
-      this.audioElement.removeEventListener(
-        "timeupdate",
-        this.handleTimeUpdate,
-      );
-      this.audioElement.removeEventListener("seeking", this.handleSeeking);
-      URL.revokeObjectURL(this.audioElement.src);
-      this.audioElement.src = "";
-    }
+    this.audioElement.removeEventListener("timeupdate", this.handleTimeUpdate);
+    this.audioElement.removeEventListener("seeking", this.handleSeeking);
+    this.audioElement.pause();
+    URL.revokeObjectURL(this.audioElement.src);
+    this.audioElement.src = "";
 
-    this.audioElement = null;
-    this.mediaSource = null;
     this.sourceBuffer = null;
     this.pendingSlices.clear();
     this.fetchedSlices.clear();
@@ -128,22 +117,17 @@ export class MSEAudioProvider {
   // ============================================================================
 
   private onTimeUpdate(): void {
-    if (!this.audioElement) return;
     this.loadAtTime(this.audioElement.currentTime);
   }
 
   private onSeeking(): void {
-    if (!this.audioElement) return;
-
     // Debounce to avoid downloading every slice during rapid scrubbing
     if (this.seekDebounceTimer) {
       clearTimeout(this.seekDebounceTimer);
     }
 
     this.seekDebounceTimer = setTimeout(() => {
-      if (this.audioElement) {
-        this.loadAtTime(this.audioElement.currentTime);
-      }
+      this.loadAtTime(this.audioElement.currentTime);
       this.seekDebounceTimer = null;
     }, SEEK_DEBOUNCE_MS);
   }
@@ -153,8 +137,6 @@ export class MSEAudioProvider {
   // ============================================================================
 
   private onSourceOpen(): void {
-    if (!this.mediaSource) return;
-
     this.sourceBuffer = this.mediaSource.addSourceBuffer(
       'audio/mp4; codecs="mp4a.40.2"',
     );
@@ -178,7 +160,7 @@ export class MSEAudioProvider {
    * Load the slice at current time, and preload next slice if within threshold
    */
   private loadAtTime(time: number): void {
-    if (!this.sourceBuffer || !this.mediaSource) return;
+    if (!this.sourceBuffer) return;
 
     const timeMs = Math.round(time * 1000);
     const currentSliceIndex = Math.floor(timeMs / this.sliceSizeMs);
@@ -190,7 +172,10 @@ export class MSEAudioProvider {
     const nextSliceStartMs = (currentSliceIndex + 1) * this.sliceSizeMs;
     const msUntilNextSlice = nextSliceStartMs - timeMs;
 
-    if (msUntilNextSlice <= PRELOAD_THRESHOLD_MS && nextSliceStartMs < this.durationMs) {
+    if (
+      msUntilNextSlice <= PRELOAD_THRESHOLD_MS &&
+      nextSliceStartMs < this.durationMs
+    ) {
       this.loadSlice(currentSliceIndex + 1);
     }
   }

@@ -5,18 +5,16 @@ import { ClippingStoreProvider } from "~/features/clipping/context/store.context
 import type { ClippingStoreInitialData } from "~/features/clipping/store/clipping-store";
 import { procedureSpy } from "~/trpc/react";
 
-import { DEFAULT_SESSION, MOCK_SEGMENTS } from "./fixtures/session";
+import { DEFAULT_SESSION } from "./fixtures/session";
 import { timelineHandlers } from "./handlers";
 
 // ============================================================================
 // Story Args Type
 // ============================================================================
 
-/**
- * Story args match ClippingStoreInitialData directly.
- * State overrides are passed via initialData - no need for StoreStateController.
- */
-type TimelineStoryArgs = ClippingStoreInitialData;
+interface TimelineStoryArgs {
+  initialState: ClippingStoreInitialData;
+}
 
 // ============================================================================
 // Meta
@@ -32,32 +30,17 @@ const meta: Meta<TimelineStoryArgs> = {
     },
   },
   argTypes: {
-    selectedSpeakerId: {
-      control: "select",
-      options: [null, "speaker-1", "speaker-2", "speaker-3"],
-      description: "Currently selected speaker filter",
-    },
-    activeSegmentId: {
-      control: "select",
-      options: [null, ...MOCK_SEGMENTS.map((s) => s.id)],
-      description: "Currently active segment",
+    initialState: {
+      control: "object", // Complex object, controlled via story args
     },
   },
 
   args: {
-    // Required data
-    ...DEFAULT_SESSION,
-    // Optional state overrides
-    selectedSpeakerId: null,
-    activeSegmentId: null,
-    playback: { currentTime: 0 },
-    timeline: { zoomLevel: 100 },
+    initialState: DEFAULT_SESSION,
   },
   decorators: [
-    (Story, context: StoryContext) => (
-      <ClippingStoreProvider
-        initialData={context.args as ClippingStoreInitialData}
-      >
+    (Story, context: StoryContext<TimelineStoryArgs>) => (
+      <ClippingStoreProvider initialData={context.args.initialState}>
         <div className="h-56 w-full bg-background">
           <Story />
         </div>
@@ -85,13 +68,15 @@ type Story = StoryObj<TimelineStoryArgs>;
 export const Interactive: Story = {
   play: async ({ canvas }) => {
     // Basic verification - timeline renders with progress slider
-    await expect(await canvas.findByRole("slider", { name: /audio progress/i })).toBeInTheDocument();
+    await expect(
+      await canvas.findByRole("slider", { name: /audio progress/i }),
+    ).toBeInTheDocument();
 
     // Assert that the waveform URL procedure was called
     await expect(procedureSpy["file.getWaveformUrl"].wasCalled).toBe(true);
-    await expect(procedureSpy["file.getWaveformUrl"].calls[0]?.input.fileId).toBe(
-      "mock-file",
-    );
+    await expect(
+      procedureSpy["file.getWaveformUrl"].calls[0]?.input.fileId,
+    ).toBe("mock-file");
 
     await waitFor(() => {
       expect(procedureSpy["file.getWaveformUrl"].calls[0]?.output?.url).toBe(
@@ -107,20 +92,31 @@ export const Interactive: Story = {
  */
 export const WithActiveSegment: Story = {
   args: {
-    activeSegmentId: "seg-1",
-    playback: { currentTime: 2.5 }, // Position playhead inside segment for split action
+    initialState: {
+      ...DEFAULT_SESSION,
+      activeSegmentId: "seg-1",
+      playback: { ...DEFAULT_SESSION.playback, currentTime: 2.5 },
+    },
   },
   play: async ({ canvas }) => {
     // Wait for timeline to render
     await canvas.findByRole("slider", { name: /audio progress/i });
 
     // Verify active segment actions are visible (already rendered with initial state)
-    await expect(canvas.getByRole("button", { name: /split segment/i })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: /change speaker/i })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: /delete segment/i })).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /split segment/i }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /change speaker/i }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /delete segment/i }),
+    ).toBeInTheDocument();
 
     // Speaker badge should be visible (shows segment's speaker)
-    await expect(canvas.getByTestId("active-segment-speaker")).toBeInTheDocument();
+    await expect(
+      canvas.getByTestId("active-segment-speaker"),
+    ).toBeInTheDocument();
   },
 };
 
@@ -130,11 +126,14 @@ export const WithActiveSegment: Story = {
  */
 export const WithActiveSelection: Story = {
   args: {
-    selection: {
-      mode: "active",
-      anchorTime: 70,
-      currentTime: 75,
-      selectedSpeaker: null,
+    initialState: {
+      ...DEFAULT_SESSION,
+      selection: {
+        mode: "active",
+        anchorTime: 70,
+        currentTime: 75,
+        selectedSpeaker: null,
+      },
     },
   },
   play: async ({ canvas }) => {
@@ -142,16 +141,24 @@ export const WithActiveSelection: Story = {
     await canvas.findByRole("slider", { name: /audio progress/i });
 
     // Verify selection controls are visible (already rendered with initial state)
-    await expect(canvas.getByRole("button", { name: /play selection/i })).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /play selection/i }),
+    ).toBeInTheDocument();
 
     // Create segment button should be visible and disabled without speaker selection
-    await expect(canvas.getByRole("button", { name: /create segment/i })).toBeDisabled();
+    await expect(
+      canvas.getByRole("button", { name: /create segment/i }),
+    ).toBeDisabled();
 
     // Cancel button should be visible
-    await expect(canvas.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /cancel/i }),
+    ).toBeInTheDocument();
 
     // Speaker selector should be visible
-    await expect(canvas.getByRole("button", { name: /select speaker/i })).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /select speaker/i }),
+    ).toBeInTheDocument();
   },
 };
 
@@ -161,14 +168,19 @@ export const WithActiveSelection: Story = {
  */
 export const WithSpeakerFilter: Story = {
   args: {
-    selectedSpeakerId: "speaker-1", // Filter to only SPEAKER_00
+    initialState: {
+      ...DEFAULT_SESSION,
+      selectedSpeakerId: "speaker-1",
+    },
   },
   play: async ({ canvas }) => {
     // Wait for timeline to render
     await canvas.findByRole("slider", { name: /audio progress/i });
 
     // Get all segment buttons (they have aria-label starting with "Segment:")
-    const segmentButtons = canvas.getAllByRole("button", { name: /^segment:/i });
+    const segmentButtons = canvas.getAllByRole("button", {
+      name: /^segment:/i,
+    });
 
     // Should have multiple segments rendered
     await expect(segmentButtons.length).toBeGreaterThan(0);
@@ -202,8 +214,12 @@ export const ZoomControls: Story = {
     await canvas.findByRole("slider", { name: /audio progress/i });
 
     // Verify zoom buttons are rendered (already present after initial render)
-    await expect(canvas.getByRole("button", { name: /zoom in/i })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: /zoom out/i })).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /zoom in/i }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /zoom out/i }),
+    ).toBeInTheDocument();
   },
 };
 
@@ -216,7 +232,9 @@ export const SegmentClickActivation: Story = {
     await canvas.findByRole("slider", { name: /audio progress/i });
 
     // Find a segment button and click it (aria-label starts with "Segment:")
-    const segmentButtons = canvas.getAllByRole("button", { name: /^segment:/i });
+    const segmentButtons = canvas.getAllByRole("button", {
+      name: /^segment:/i,
+    });
     await expect(segmentButtons.length).toBeGreaterThan(0);
 
     const firstSegment = segmentButtons[0];
@@ -225,6 +243,8 @@ export const SegmentClickActivation: Story = {
     await userEvent.click(firstSegment);
 
     // After clicking, active segment actions should appear
-    await expect(await canvas.getByRole("button", { name: /split segment/i })).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /split segment/i }),
+    ).toBeInTheDocument();
   },
 };

@@ -111,7 +111,7 @@ export const DEFAULT_SESSION = {
   segments: MOCK_SEGMENTS,
   speakers: MOCK_SPEAKERS,
   storageKey: "mock-storage-key",
-  audioDuration: 120,
+  playback: { duration: 120 },
 } as const;
 
 /**
@@ -146,6 +146,5 @@ export const SHORT_AUDIO_SESSION = {
   ],
   speakers: MOCK_SPEAKERS,
   storageKey: "mock-storage-key",
-  audioDuration: 10,
   playback: { duration: 10 }, // Less than 15 seconds - disables zoom
 };

@@ -1,6 +1,5 @@
 import { batch, type Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
-import type { RefObject } from "react";
 import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type { Segment, Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
@@ -40,7 +39,6 @@ export type RootStateData = Pick<
   | "segments"
   | "speakers"
   | "storageKey"
-  | "audioDuration"
   | "selectedSpeakerId"
   | "selectedSegmentIds"
   | "activeSegmentId"
@@ -71,7 +69,6 @@ export type ClippingStoreInitialData = Pick<
   | "segments"
   | "speakers"
   | "storageKey"
-  | "audioDuration"
 > &
   Partial<Pick<RootStateData, "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId">> &
   { playback?: Partial<PlaybackStateData> } &
@@ -280,7 +277,6 @@ interface ClippingStoreState {
 
   // Audio source info for MSE streaming
   storageKey: string;
-  audioDuration: number;
 
   // Computed values
   segmentsBySpeaker: () => Record<string, SegmentWithSpeaker[]>;

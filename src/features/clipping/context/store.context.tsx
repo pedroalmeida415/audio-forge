@@ -91,9 +91,7 @@ export function useClippingStore(): $ClippingStore {
 // ============================================================================
 
 function PlaybackInitializer() {
-  const $store = useClippingStore();
-
-  usePlayback($store);
+  usePlayback();
 
   return null;
 }
