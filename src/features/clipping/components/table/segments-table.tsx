@@ -1,6 +1,6 @@
 "use client";
 
-import { observe } from "@legendapp/state";
+import type { Observable } from "@legendapp/state";
 import { useObserveEffect, useValue } from "@legendapp/state/react";
 import {
   flexRender,
@@ -10,7 +10,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import { cn } from "~/lib/utils";
 import type { Segment } from "~/server/db/schema";
@@ -19,7 +19,7 @@ import { createColumns } from "./columns";
 const columns = createColumns();
 
 interface TableRowProps {
-  row: Row<Segment>;
+  row: Row<Observable<Segment>>;
 }
 
 // Memoized with custom comparison to prevent re-renders when only sort order changes.
@@ -29,10 +29,11 @@ interface TableRowProps {
 
 function TableRow({ row }: TableRowProps) {
   const $store = useClippingStore();
+  const segmentId = row.original.id.peek();
 
   // Subscribe directly to selection state for this specific segment
   const isSelected = useValue(() =>
-    $store.selectedSegmentIds.get().has(row.original.id),
+    $store.selectedSegmentIds.get().has(segmentId),
   );
   const isActive = useValue(() => $store.activeSegmentId.get() === row.id);
 
@@ -44,7 +45,7 @@ function TableRow({ row }: TableRowProps) {
         isSelected && !isActive && "bg-primary/5",
         !isSelected && !isActive && "hover:bg-muted/50",
       )}
-      data-segment-id={row.original.id}
+      data-segment-id={segmentId}
       onClick={() => $store.setActiveSegment(row.id)}
     >
       {row.getVisibleCells().map((cell) => (
@@ -72,19 +73,12 @@ export function SegmentsTable() {
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<Segment[]>([]);
+  const [data, setData] = useState<Observable<Segment>[]>(
+    $store.segmentsBySpeaker.get().get($store.selectedSpeakerId.get()!) ?? [],
+  );
 
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
-
-  // Subscribe to segment changes outside of render cycle and after component mounts
-  useObserveEffect(() => {
-    const data = $store.segments
-      .filter(($seg) => $seg.speakerId.get() === $store.selectedSpeakerId.get())
-      .map(($seg) => $seg.peek());
-
-    setData(data);
-  });
 
   const table = useReactTable({
     data,
@@ -95,30 +89,36 @@ export function SegmentsTable() {
     state: {
       sorting,
     },
-    getRowId: (row) => row.id,
+    getRowId: (row) => row.id.peek(),
+  });
+
+  // Subscribe to segment changes outside of render cycle and after component mounts
+  useObserveEffect(() => {
+    const data =
+      $store.segmentsBySpeaker.get().get($store.selectedSpeakerId.get()!) ?? [];
+
+    setData(data);
   });
 
   // Scroll to active segment when it changes (bi-directional navigation)
-  useEffect(() => {
-    const dispose = observe(() => {
-      const activeId = $store.activeSegmentId.get();
-      if (!activeId || !tableContainerRef.current) return;
+  useObserveEffect(() => {
+    const activeId = $store.activeSegmentId.get();
+    if (!activeId || !tableContainerRef.current) return;
 
-      // Find the row element by data-segment-id attribute
-      const row = tableContainerRef.current.querySelector(
-        `tr[data-segment-id="${activeId}"]`,
-      );
+    // Find the row element by data-segment-id attribute
+    const row = tableContainerRef.current.querySelector(
+      `tr[data-segment-id="${activeId}"]`,
+    );
 
-      if (row) {
+    if (row) {
+      requestAnimationFrame(() =>
         row.scrollIntoView({
           behavior: "smooth",
           block: "center",
-        });
-      }
-    });
-
-    return dispose;
-  }, [$store]);
+        }),
+      );
+    }
+  });
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

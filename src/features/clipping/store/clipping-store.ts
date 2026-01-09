@@ -9,12 +9,9 @@ import {
   createSelectionState,
   createTimelineState,
 } from "./slices";
-import type { PlaybackState } from "./slices/playback";
-import type { SelectionState } from "./slices/selection";
-import type { TimelineState } from "./slices/timeline";
-import type { PlaybackStateData } from "./slices/playback";
-import type { TimelineStateData } from "./slices/timeline";
-import type { SelectionStateData } from "./slices/selection";
+import type { PlaybackState, PlaybackStateData } from "./slices/playback";
+import type { SelectionState, SelectionStateData } from "./slices/selection";
+import type { TimelineState, TimelineStateData } from "./slices/timeline";
 
 export { TIMELINE_CONSTANTS } from "./constants";
 
@@ -57,17 +54,16 @@ const ROOT_DEFAULTS: Pick<
  */
 export type ClippingStoreInitialData = Pick<
   RootStateData,
-  | "sessionId"
-  | "fileId"
-  | "projectId"
-  | "segments"
-  | "speakers"
-  | "storageKey"
+  "sessionId" | "fileId" | "projectId" | "segments" | "speakers" | "storageKey"
 > &
-  Partial<Pick<RootStateData, "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId">> &
-  { playback?: Partial<PlaybackStateData> } &
-  { timeline?: Partial<TimelineStateData> } &
-  { selection?: Partial<SelectionStateData> };
+  Partial<
+    Pick<
+      RootStateData,
+      "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId"
+    >
+  > & { playback?: Partial<PlaybackStateData> } & {
+    timeline?: Partial<TimelineStateData>;
+  } & { selection?: Partial<SelectionStateData> };
 
 // ============================================================================
 // Store Factory
@@ -96,13 +92,13 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     segmentsBySpeaker: () =>
       $store.segments.reduce(
         (acc, $segment) => {
-          const segment = $segment.get();
-          const speakerId = segment.speakerId;
-          acc[speakerId] ??= [];
-          acc[speakerId].push(segment);
+          const speakerId = $segment.speakerId.peek();
+          if (!acc.has(speakerId)) acc.set(speakerId, [$segment]);
+          else acc.get(speakerId)?.push($segment);
+
           return acc;
         },
-        {} as Record<string, Segment[]>,
+        new Map() as Map<string, Observable<Segment>[]>,
       ),
 
     // Actions
@@ -126,12 +122,11 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     selectAllSegments: () => {
       const selectedSpeakerId = $store.selectedSpeakerId.peek();
       if (!selectedSpeakerId) return;
-      const speakerSegments =
-        $store.segmentsBySpeaker.get()[selectedSpeakerId] ?? [];
 
-      const visibleSegmentIds = speakerSegments
-        .filter((s) => s.speakerId === selectedSpeakerId)
-        .map((s) => s.id);
+      const speakerSegments =
+        $store.segmentsBySpeaker.peek().get(selectedSpeakerId) ?? [];
+
+      const visibleSegmentIds = speakerSegments.map(($s) => $s.id.peek());
 
       $store.selectedSegmentIds.set(new Set(visibleSegmentIds));
       $store.activeSegmentId.set(null);
@@ -200,10 +195,7 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     },
 
     // Replace session data with server state (used when diarization completes)
-    replaceSessionData: (
-      newSegments: Segment[],
-      newSpeakers: Speaker[],
-    ) => {
+    replaceSessionData: (newSegments: Segment[], newSpeakers: Speaker[]) => {
       batch(() => {
         $store.segments.set(newSegments);
         $store.speakers.set(newSpeakers);
@@ -268,7 +260,7 @@ interface ClippingStoreState {
   storageKey: string;
 
   // Computed values
-  segmentsBySpeaker: () => Record<string, Segment[]>;
+  segmentsBySpeaker: () => Map<string, Observable<Segment>[]>;
 
   // Speaker selection
   selectSpeaker: (speakerId: string | null) => void;
@@ -282,10 +274,7 @@ interface ClippingStoreState {
   navigateSegment: (direction: "next" | "prev") => void;
 
   // Replace session data with server state (for diarization completion)
-  replaceSessionData: (
-    segments: Segment[],
-    speakers: Speaker[],
-  ) => void;
+  replaceSessionData: (segments: Segment[], speakers: Speaker[]) => void;
 
   // Speaker CRUD
   addSpeaker: (speaker: Speaker) => void;
