@@ -41,9 +41,6 @@ export const clippingSessionRouter = createTRPCRouter({
           file: true,
           project: true,
           segments: {
-            with: {
-              speaker: true,
-            },
             orderBy: (seg, { asc }) => [asc(seg.startTime)],
           },
         },

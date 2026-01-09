@@ -6,13 +6,13 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Play } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { useClippingStore } from "~/features/clipping/context/store.context";
-import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
 import {
   DURATION_THRESHOLDS,
   getSegmentDuration,
 } from "~/features/clipping/utils/segment-utils";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
+import type { Segment } from "~/server/db/schema";
 import { EditableTimeCell } from "./editable-time-cell";
 
 // Get sort icon based on column state
@@ -131,7 +131,7 @@ function DurationCell({ duration }: { duration: number }) {
 // Column Definitions
 // ============================================================================
 
-export function createColumns(): ColumnDef<SegmentWithSpeaker>[] {
+export function createColumns(): ColumnDef<Segment>[] {
   return [
     // Checkbox column - subscribes directly to store
     {

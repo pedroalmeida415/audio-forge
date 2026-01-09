@@ -1,7 +1,7 @@
 import { generateSpeakerColor } from "~/lib/speaker-colors";
-import type { Speaker } from "~/server/db/schema";
+import type { Segment, Speaker } from "~/server/db/schema";
 import type { api } from "~/trpc/react";
-import type { $ClippingStore, SegmentWithSpeaker } from "./clipping-store";
+import type { $ClippingStore } from "./clipping-store";
 
 type TrpcUtils = ReturnType<typeof api.useUtils>;
 
@@ -36,7 +36,7 @@ export function setupMutationDefaults(
       const segmentIdSet = new Set(segmentIds);
 
       // Store previous values for rollback (only affected segments)
-      const previousValues: Record<string, Partial<SegmentWithSpeaker>> = {};
+      const previousValues: Record<string, Partial<Segment>> = {};
 
       // Apply optimistic updates using fine-grained mutations
       for (let i = 0; i < $store.segments.length; i++) {
@@ -47,7 +47,7 @@ export function setupMutationDefaults(
 
         if (segmentIdSet.has(segmentId)) {
           // Capture previous values for the fields being updated
-          const prev: Partial<SegmentWithSpeaker> = {};
+          const prev: Partial<Segment> = {};
           for (const key of Object.keys(variables.updates) as Array<
             keyof typeof variables.updates
           >) {
@@ -103,7 +103,7 @@ export function setupMutationDefaults(
 
       // Create and insert new segment after the split
       const now = new Date();
-      const newSegment: SegmentWithSpeaker = {
+      const newSegment: Segment = {
         id: crypto.randomUUID(),
         sessionId: originalSegment.sessionId,
         speakerId: originalSegment.speakerId,
@@ -156,7 +156,7 @@ export function setupMutationDefaults(
       // Create optimistic segment with temporary ID
       const tempId = crypto.randomUUID();
       const now = new Date();
-      const newSegment: SegmentWithSpeaker = {
+      const newSegment: Segment = {
         id: tempId,
         sessionId: $store.sessionId.peek(),
         speakerId: variables.segment.speakerId,
@@ -227,7 +227,7 @@ export function setupMutationDefaults(
       // Store removed segments for rollback (with their indices for correct restoration)
       const removedSegments: Array<{
         index: number;
-        segment: SegmentWithSpeaker;
+        segment: Segment;
       }> = [];
 
       // Find and store segments to remove (iterate backwards for stable indices)
@@ -336,7 +336,7 @@ export function setupMutationDefaults(
       // Store affected segments for rollback
       const removedSegments: Array<{
         index: number;
-        segment: SegmentWithSpeaker;
+        segment: Segment;
       }> = [];
 
       // Remove segments for this speaker from the store

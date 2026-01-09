@@ -3,9 +3,12 @@
 import { observe } from "@legendapp/state";
 import { useEffect, useRef, useState } from "react";
 import { useClippingStore } from "~/features/clipping/context/store.context";
-import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
-import { getSpeakerName } from "~/features/clipping/utils/segment-utils";
+import {
+  getSpeakerColor,
+  getSpeakerName,
+} from "~/features/clipping/utils/segment-utils";
 import { withAlpha } from "~/lib/speaker-colors";
+import type { Segment } from "~/server/db/schema";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
@@ -20,7 +23,7 @@ export function TimelineSegmentsBar() {
   const $store = useClippingStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const segmentsDataRef = useRef<SegmentWithSpeaker[]>([]);
+  const segmentsDataRef = useRef<Segment[]>([]);
 
   const [isReady, setIsReady] = useState(false);
 
@@ -76,11 +79,11 @@ export function TimelineSegmentsBar() {
 
       // Add/update segments for visible IDs
       for (const segment of segmentsDataRef.current) {
-        const { id, speakerId, startTime, endTime, speaker } = segment;
+        const { id, speakerId, startTime, endTime } = segment;
         if (!visibleIds.has(id)) continue;
 
         // Get speaker color and name
-        const color = speaker.color;
+        const color = getSpeakerColor(speakerId, speakers);
         const name = getSpeakerName(speakerId, speakers);
 
         // Determine states

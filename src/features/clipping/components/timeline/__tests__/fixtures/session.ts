@@ -1,5 +1,4 @@
-import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
-import type { Speaker } from "~/server/db/schema";
+import type { Segment, Speaker } from "~/server/db/schema";
 
 export const MOCK_SPEAKERS: Speaker[] = [
   {
@@ -31,7 +30,7 @@ export const MOCK_SPEAKERS: Speaker[] = [
   },
 ];
 
-export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
+export const MOCK_SEGMENTS: Segment[] = [
   {
     id: "seg-1",
     sessionId: "mock-session",
@@ -40,7 +39,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 5,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[0]!,
   },
   {
     id: "seg-2",
@@ -50,7 +48,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 12,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[1]!,
   },
   {
     id: "seg-3",
@@ -60,7 +57,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 22,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[0]!,
   },
   {
     id: "seg-4",
@@ -70,7 +66,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 35,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[2]!,
   },
   {
     id: "seg-5",
@@ -80,7 +75,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 45,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[1]!,
   },
   {
     id: "seg-6",
@@ -90,7 +84,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 55,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[0]!,
   },
   {
     id: "seg-7",
@@ -100,7 +93,6 @@ export const MOCK_SEGMENTS: SegmentWithSpeaker[] = [
     endTime: 65,
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
-    speaker: MOCK_SPEAKERS[2]!,
   },
 ];
 
@@ -131,7 +123,6 @@ export const SHORT_AUDIO_SESSION = {
       endTime: 5,
       createdAt: new Date("2025-01-01"),
       updatedAt: new Date("2025-01-01"),
-      speaker: MOCK_SPEAKERS[0]!,
     },
     {
       id: "short-seg-2",
@@ -141,7 +132,6 @@ export const SHORT_AUDIO_SESSION = {
       endTime: 10,
       createdAt: new Date("2025-01-01"),
       updatedAt: new Date("2025-01-01"),
-      speaker: MOCK_SPEAKERS[1]!,
     },
   ],
   speakers: MOCK_SPEAKERS,

@@ -12,14 +12,14 @@ import {
 } from "@tanstack/react-table";
 import { useEffect, useRef, useState } from "react";
 import { useClippingStore } from "~/features/clipping/context/store.context";
-import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
 import { cn } from "~/lib/utils";
+import type { Segment } from "~/server/db/schema";
 import { createColumns } from "./columns";
 
 const columns = createColumns();
 
 interface TableRowProps {
-  row: Row<SegmentWithSpeaker>;
+  row: Row<Segment>;
 }
 
 // Memoized with custom comparison to prevent re-renders when only sort order changes.
@@ -72,7 +72,7 @@ export function SegmentsTable() {
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<SegmentWithSpeaker[]>([]);
+  const [data, setData] = useState<Segment[]>([]);
 
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);

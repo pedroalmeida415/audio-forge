@@ -200,7 +200,7 @@ export function ActiveSegmentActions() {
         >
           <div
             className="h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: activeSegment.speaker.color }}
+            style={{ backgroundColor: currentSpeaker.color }}
           />
           <span className="max-w-[100px] truncate text-muted-foreground text-xs">
             {currentSpeaker.name}

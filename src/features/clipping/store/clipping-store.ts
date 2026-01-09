@@ -22,11 +22,6 @@ export { TIMELINE_CONSTANTS } from "./constants";
 // State Types
 // ============================================================================
 
-// Extended segment type with speaker info (returned by getById)
-export interface SegmentWithSpeaker extends Segment {
-  speaker: Speaker;
-}
-
 /**
  * Root-level state data (non-function properties).
  */
@@ -107,7 +102,7 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
           acc[speakerId].push(segment);
           return acc;
         },
-        {} as Record<string, SegmentWithSpeaker[]>,
+        {} as Record<string, Segment[]>,
       ),
 
     // Actions
@@ -206,7 +201,7 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
 
     // Replace session data with server state (used when diarization completes)
     replaceSessionData: (
-      newSegments: SegmentWithSpeaker[],
+      newSegments: Segment[],
       newSpeakers: Speaker[],
     ) => {
       batch(() => {
@@ -262,7 +257,7 @@ interface ClippingStoreState {
   fileId: string;
   projectId: string;
 
-  segments: SegmentWithSpeaker[];
+  segments: Segment[];
   speakers: Speaker[];
 
   selectedSpeakerId: string | null;
@@ -273,7 +268,7 @@ interface ClippingStoreState {
   storageKey: string;
 
   // Computed values
-  segmentsBySpeaker: () => Record<string, SegmentWithSpeaker[]>;
+  segmentsBySpeaker: () => Record<string, Segment[]>;
 
   // Speaker selection
   selectSpeaker: (speakerId: string | null) => void;
@@ -288,7 +283,7 @@ interface ClippingStoreState {
 
   // Replace session data with server state (for diarization completion)
   replaceSessionData: (
-    segments: SegmentWithSpeaker[],
+    segments: Segment[],
     speakers: Speaker[],
   ) => void;
 
