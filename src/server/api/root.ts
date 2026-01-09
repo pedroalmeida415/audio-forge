@@ -1,6 +1,7 @@
 import { clippingSessionRouter } from "~/server/api/routers/clipping-session";
 import { fileRouter } from "~/server/api/routers/file";
 import { projectRouter } from "~/server/api/routers/project";
+import { speakerRouter } from "~/server/api/routers/speaker";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -12,6 +13,7 @@ export const appRouter = createTRPCRouter({
   projects: projectRouter,
   clippingSession: clippingSessionRouter,
   file: fileRouter,
+  speaker: speakerRouter,
 });
 
 // export type definition of API
