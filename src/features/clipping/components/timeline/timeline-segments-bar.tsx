@@ -51,7 +51,6 @@ export function TimelineSegmentsBar() {
       const activeSegmentId = $store.activeSegmentId.get();
       const selectedSpeakerId = $store.selectedSpeakerId.get();
       const speakers = $store.speakers.get();
-      const speakerColors = $store.speakerColors.get();
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
@@ -77,11 +76,11 @@ export function TimelineSegmentsBar() {
 
       // Add/update segments for visible IDs
       for (const segment of segmentsDataRef.current) {
-        const { id, speakerId, startTime, endTime } = segment;
+        const { id, speakerId, startTime, endTime, speaker } = segment;
         if (!visibleIds.has(id)) continue;
 
         // Get speaker color and name
-        const color = speakerColors[speakerId];
+        const color = speaker.color;
         const name = getSpeakerName(speakerId, speakers);
 
         // Determine states

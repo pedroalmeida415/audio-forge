@@ -34,7 +34,6 @@ export function ActiveSegmentActions() {
   const activeSegmentId = useValue($store.activeSegmentId);
   const sessionId = useValue($store.sessionId);
   const speakers = useValue($store.speakers);
-  const speakerColors = useValue($store.speakerColors);
 
   const splitSegmentMutation = api.clippingSession.splitSegment.useMutation();
   const updateSegmentsMutation =
@@ -165,7 +164,7 @@ export function ActiveSegmentActions() {
             >
               <div
                 className="h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: speakerColors[speaker.id] }}
+                style={{ backgroundColor: speaker.color }}
               />
               <span>{speaker.name}</span>
               {speaker.id === activeSegment.speakerId && (
@@ -201,7 +200,7 @@ export function ActiveSegmentActions() {
         >
           <div
             className="h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: speakerColors[activeSegment.speakerId] }}
+            style={{ backgroundColor: activeSegment.speaker.color }}
           />
           <span className="max-w-[100px] truncate text-muted-foreground text-xs">
             {currentSpeaker.name}

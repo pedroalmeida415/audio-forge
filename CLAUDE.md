@@ -125,9 +125,6 @@ const $store = useObservable<ClippingStoreState>({
   segments: file.segments ?? [],
   speakers: file.speakers ?? [],
 
-  // Computed values (use get() for reactivity)
-  speakerColors: () => createSpeakerColorMap($store.speakers.get()),
-
   // Actions
   selectSpeaker: (speakerId) => $store.selectedSpeakerId.set(speakerId),
 });

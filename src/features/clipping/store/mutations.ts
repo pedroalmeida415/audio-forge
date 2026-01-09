@@ -1,3 +1,4 @@
+import { generateSpeakerColor } from "~/lib/speaker-colors";
 import type { Speaker } from "~/server/db/schema";
 import type { api } from "~/trpc/react";
 import type { $ClippingStore, SegmentWithSpeaker } from "./clipping-store";
@@ -280,7 +281,7 @@ export function setupMutationDefaults(
         projectId: $store.projectId.peek(),
         userId: "", // Will be set by server
         name: variables.name,
-        color: variables.color ?? null,
+        color: variables.color ?? generateSpeakerColor(),
         createdAt: now,
         updatedAt: now,
       };

@@ -130,7 +130,7 @@ export const speakers = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
 
     name: varchar("name", { length: 255 }).notNull(),
-    color: varchar("color", { length: 50 }),
+    color: varchar("color", { length: 50 }).notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

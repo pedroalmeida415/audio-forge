@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { db } from "~/server/db";
 import {
   clippingSessions,
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
               projectId: session.projectId,
               userId: session.userId,
               name: label,
+              color: generateSpeakerColor(),
             })),
           )
           .returning();

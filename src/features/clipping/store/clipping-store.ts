@@ -1,6 +1,5 @@
 import { batch, type Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
-import { createSpeakerColorMap } from "~/lib/speaker-colors";
 import type { Segment, Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
@@ -239,11 +238,6 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
       }
     },
 
-    // Computed values
-    speakerColors: () => {
-      return createSpeakerColorMap($store.speakers.get());
-    },
-
     // Playback state + actions
     playback: createPlaybackState(() => $store, playback),
 
@@ -280,7 +274,6 @@ interface ClippingStoreState {
 
   // Computed values
   segmentsBySpeaker: () => Record<string, SegmentWithSpeaker[]>;
-  speakerColors: () => Record<string, string>;
 
   // Speaker selection
   selectSpeaker: (speakerId: string | null) => void;

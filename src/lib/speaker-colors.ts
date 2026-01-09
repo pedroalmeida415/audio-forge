@@ -1,37 +1,15 @@
-import type { Speaker } from "~/server/db/schema";
-
 /**
- * Dynamic speaker color generation for consistent visual representation.
- * Colors are generated as HSL values and distributed evenly across the color wheel.
+ * Speaker color utilities.
+ * Colors are HSL values distributed across the color wheel.
  */
 
 /**
- * Generate a color for a speaker based on their index and total speaker count.
+ * Generate a random color for a new speaker.
  * Returns an HSL color string (e.g., "hsl(120, 70%, 50%)").
  */
-export function generateSpeakerColor(
-  index: number,
-  totalSpeakers: number,
-): string {
-  const hue = (index * 360) / Math.max(totalSpeakers, 1);
-  return `hsl(${Math.round(hue)}, 70%, 50%)`;
-}
-
-/**
- * Create a color map for Speaker array.
- * Uses speaker's custom color if set, otherwise generates one.
- * Returns a Record from speaker ID to their color string.
- */
-export function createSpeakerColorMap(
-  speakers: Speaker[],
-): Record<string, string> {
-  const total = speakers.length;
-  return Object.fromEntries(
-    speakers.map((speaker, i) => [
-      speaker.id,
-      speaker.color ?? generateSpeakerColor(i, total),
-    ]),
-  );
+export function generateSpeakerColor(): string {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 70%, 50%)`;
 }
 
 /**

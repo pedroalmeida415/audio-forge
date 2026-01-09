@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { env } from "~/env";
+import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
   clippingSessions,
@@ -510,7 +511,7 @@ export const clippingSessionRouter = createTRPCRouter({
           projectId: input.projectId,
           userId: ctx.session.user.id,
           name: input.name,
-          color: input.color,
+          color: input.color ?? generateSpeakerColor(),
         })
         .returning();
 

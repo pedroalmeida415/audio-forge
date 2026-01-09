@@ -30,7 +30,6 @@ export function TableView() {
   const $store = useClippingStore();
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const speakers = useValue($store.speakers);
-  const speakerColors = useValue($store.speakerColors);
   const sessionId = useValue($store.sessionId);
   const projectId = useValue($store.projectId);
 
@@ -129,7 +128,7 @@ export function TableView() {
                     {/* Avatar */}
                     <div
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs"
-                      style={{ backgroundColor: speakerColors[speaker.id] }}
+                      style={{ backgroundColor: speaker.color }}
                     >
                       {initial}
                     </div>
@@ -165,7 +164,7 @@ export function TableView() {
                       >
                         <div
                           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs"
-                          style={{ backgroundColor: speakerColors[speaker.id] }}
+                          style={{ backgroundColor: speaker.color }}
                         >
                           {initial}
                         </div>
