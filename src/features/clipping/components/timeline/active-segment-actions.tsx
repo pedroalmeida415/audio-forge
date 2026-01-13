@@ -2,13 +2,14 @@
 
 import { observe } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
-import { Check, Scissors, Trash2, User } from "lucide-react";
+import { Check, Plus, Scissors, Trash2, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import {
@@ -16,6 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { CreateSpeakerDialog } from "~/features/clipping/components/dialogs/create-speaker-dialog";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
 
@@ -45,6 +47,7 @@ export function ActiveSegmentActions() {
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
+  const [isCreateSpeakerOpen, setIsCreateSpeakerOpen] = useState(false);
 
   // Get the active segment's current state
   const activeSegment = useValue(() => {
@@ -118,6 +121,11 @@ export function ActiveSegmentActions() {
     // Note: Local segment to local speaker is not allowed by the design
   };
 
+  const handleSpeakerCreated = (newSpeakerId: string) => {
+    // Assign active segment to the newly created speaker
+    handleChangeSpeaker(newSpeakerId);
+  };
+
   const handleDelete = () => {
     if (isLocalSegment) return; // Local segments cannot be deleted
     deleteSegmentsMutation.mutate({
@@ -176,8 +184,7 @@ export function ActiveSegmentActions() {
                 className="h-8 w-8"
                 disabled={
                   updateSegmentsMutation.isPending ||
-                  promoteLocalSegmentsMutation.isPending ||
-                  projectSpeakers.length === 0
+                  promoteLocalSegmentsMutation.isPending
                 }
               >
                 <User className="h-4 w-4" />
@@ -187,11 +194,6 @@ export function ActiveSegmentActions() {
           <TooltipContent>Change speaker</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start">
-          {projectSpeakers.length === 0 && (
-            <div className="px-2 py-1.5 text-muted-foreground text-sm">
-              Create a project speaker first
-            </div>
-          )}
           {projectSpeakers.map((speaker) => (
             <DropdownMenuItem
               key={speaker.id}
@@ -208,6 +210,14 @@ export function ActiveSegmentActions() {
               )}
             </DropdownMenuItem>
           ))}
+          {projectSpeakers.length > 0 && <DropdownMenuSeparator />}
+          <DropdownMenuItem
+            onClick={() => setIsCreateSpeakerOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-3 w-3" />
+            <span>Create new speaker...</span>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -247,6 +257,13 @@ export function ActiveSegmentActions() {
           </span>
         </div>
       )}
+
+      {/* Create speaker dialog */}
+      <CreateSpeakerDialog
+        open={isCreateSpeakerOpen}
+        onOpenChange={setIsCreateSpeakerOpen}
+        onSpeakerCreated={handleSpeakerCreated}
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +11,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { CreateSpeakerDialog } from "~/features/clipping/components/dialogs/create-speaker-dialog";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import { api } from "~/trpc/react";
 
@@ -27,6 +30,8 @@ export function ChangeSpeakerDialog({
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const sessionId = useValue($store.sessionId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
+
+  const [isCreateSpeakerOpen, setIsCreateSpeakerOpen] = useState(false);
 
   const updateSegmentsMutation =
     api.clippingSession.updateSegments.useMutation();
@@ -65,6 +70,11 @@ export function ChangeSpeakerDialog({
     onOpenChange(false);
   };
 
+  const handleSpeakerCreated = (newSpeakerId: string) => {
+    // Assign selected segments to the newly created speaker
+    handleSelectSpeaker(newSpeakerId);
+  };
+
   const segmentCount = selectedSegmentIds.size;
 
   return (
@@ -92,28 +102,39 @@ export function ChangeSpeakerDialog({
 
         <ScrollArea className="max-h-[400px]">
           <div className="grid gap-2 py-2 pr-4">
-            {projectSpeakers.length === 0 ? (
-              <div className="py-4 text-center text-muted-foreground text-sm">
-                No project speakers available. Create a speaker first.
-              </div>
-            ) : (
-              projectSpeakers.map((speaker) => (
-                <button
-                  key={speaker.id}
-                  type="button"
-                  onClick={() => handleSelectSpeaker(speaker.id)}
-                  className="flex items-center gap-3 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
-                >
-                  <div
-                    className="h-4 w-4 shrink-0 rounded-full"
-                    style={{ backgroundColor: speaker.color }}
-                  />
-                  <span className="font-medium">{speaker.name}</span>
-                </button>
-              ))
-            )}
+            {projectSpeakers.map((speaker) => (
+              <button
+                key={speaker.id}
+                type="button"
+                onClick={() => handleSelectSpeaker(speaker.id)}
+                className="flex items-center gap-3 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
+              >
+                <div
+                  className="h-4 w-4 shrink-0 rounded-full"
+                  style={{ backgroundColor: speaker.color }}
+                />
+                <span className="font-medium">{speaker.name}</span>
+              </button>
+            ))}
+
+            {/* Create new speaker option */}
+            <button
+              type="button"
+              onClick={() => setIsCreateSpeakerOpen(true)}
+              className="flex items-center gap-3 rounded-lg border border-dashed border-border/50 p-3 text-left text-muted-foreground transition-colors hover:border-border hover:bg-muted/50 hover:text-foreground"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="font-medium">Create new speaker...</span>
+            </button>
           </div>
         </ScrollArea>
+
+        {/* Create speaker dialog */}
+        <CreateSpeakerDialog
+          open={isCreateSpeakerOpen}
+          onOpenChange={setIsCreateSpeakerOpen}
+          onSpeakerCreated={handleSpeakerCreated}
+        />
       </DialogContent>
     </Dialog>
   );

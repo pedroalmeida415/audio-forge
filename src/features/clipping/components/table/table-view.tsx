@@ -16,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { CreateSpeakerDialog } from "~/features/clipping/components/dialogs/create-speaker-dialog";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import type { SpeakerWithSource } from "~/server/db/schema";
 import { api } from "~/trpc/react";
@@ -32,17 +33,16 @@ export function TableView() {
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const speakers = useValue($store.speakers);
   const sessionId = useValue($store.sessionId);
-  const projectId = useValue($store.projectId);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   // Group speakers by source - computed on each render to track Legend-State mutations
   const projectSpeakers = speakers.filter((s) => s.source === "project");
   const localSpeakers = speakers.filter((s) => s.source === "local");
 
-  const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation();
   const updateSpeakerMutation = api.clippingSession.updateSpeaker.useMutation();
   const updateLocalSpeakerMutation =
     api.clippingSession.updateLocalSpeaker.useMutation();
@@ -60,10 +60,7 @@ export function TableView() {
   }, [selectedSpeakerId, speakers, $store]);
 
   const handleAddSpeaker = () => {
-    createSpeakerMutation.mutate({
-      projectId,
-      name: `Speaker ${speakers.length + 1}`,
-    });
+    setIsCreateDialogOpen(true);
   };
 
   const handleStartEdit = (speaker: SpeakerWithSource) => {
@@ -233,6 +230,12 @@ export function TableView() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SegmentsTable />
       </div>
+
+      {/* Create speaker dialog */}
+      <CreateSpeakerDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+      />
     </div>
   );
 }
