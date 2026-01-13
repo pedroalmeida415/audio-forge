@@ -1,14 +1,14 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import {
   getSpeakerColor,
   getSpeakerName,
 } from "~/features/clipping/utils/segment-utils";
 import { withAlpha } from "~/lib/speaker-colors";
-import type { DataSource, SegmentWithSource } from "~/server/db/schema";
+import type { DataSource } from "~/server/db/schema";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
@@ -23,27 +23,10 @@ export function TimelineSegmentsBar() {
   const $store = useClippingStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const segmentsDataRef = useRef<SegmentWithSource[]>([]);
-
-  const [isReady, setIsReady] = useState(false);
-
-  // Store segments data once loaded
-  useEffect(() => {
-    const dispose = observe(() => {
-      const segments = $store.segments.get();
-      segmentsDataRef.current = segments;
-
-      if (segments.length > 0) {
-        setIsReady(true);
-      }
-    });
-
-    return dispose;
-  }, [$store]);
 
   // Manage DOM elements directly based on visibility
   useEffect(() => {
-    if (!isReady || !containerRef.current) return;
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
 
@@ -54,6 +37,8 @@ export function TimelineSegmentsBar() {
       const activeSegmentId = $store.activeSegmentId.get();
       const selectedSpeakerId = $store.selectedSpeakerId.get();
       const speakers = $store.speakers.get();
+      // Track segments to re-run when speakerId changes
+      const segments = $store.segments.get();
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
@@ -62,7 +47,7 @@ export function TimelineSegmentsBar() {
 
       // Build set of segment IDs that should be visible
       const visibleIds = new Set<string>();
-      for (const segment of segmentsDataRef.current) {
+      for (const segment of segments) {
         const { id, startTime, endTime } = segment;
         if (endTime >= visibleStartTime && startTime <= visibleEndTime) {
           visibleIds.add(id);
@@ -78,7 +63,7 @@ export function TimelineSegmentsBar() {
       });
 
       // Add/update segments for visible IDs
-      for (const segment of segmentsDataRef.current) {
+      for (const segment of segments) {
         const { id, speakerId, startTime, endTime, source } = segment;
         if (!visibleIds.has(id)) continue;
 
@@ -128,7 +113,7 @@ export function TimelineSegmentsBar() {
       }
       segmentElementsMap.current.clear();
     };
-  }, [isReady, $store]);
+  }, [$store]);
 
   return (
     <div
