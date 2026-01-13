@@ -8,7 +8,7 @@ import {
   getSpeakerName,
 } from "~/features/clipping/utils/segment-utils";
 import { withAlpha } from "~/lib/speaker-colors";
-import type { Segment } from "~/server/db/schema";
+import type { DataSource, SegmentWithSource } from "~/server/db/schema";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
@@ -23,7 +23,7 @@ export function TimelineSegmentsBar() {
   const $store = useClippingStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const segmentsDataRef = useRef<Segment[]>([]);
+  const segmentsDataRef = useRef<SegmentWithSource[]>([]);
 
   const [isReady, setIsReady] = useState(false);
 
@@ -79,7 +79,7 @@ export function TimelineSegmentsBar() {
 
       // Add/update segments for visible IDs
       for (const segment of segmentsDataRef.current) {
-        const { id, speakerId, startTime, endTime } = segment;
+        const { id, speakerId, startTime, endTime, source } = segment;
         if (!visibleIds.has(id)) continue;
 
         // Get speaker color and name
@@ -115,8 +115,8 @@ export function TimelineSegmentsBar() {
           span.textContent = name;
         }
 
-        // Update styling based on states
-        updateSegmentStyles(el, isActive, isDimmed, color);
+        // Update styling based on states and source
+        updateSegmentStyles(el, isActive, isDimmed, color, source);
       }
     });
 
@@ -167,15 +167,18 @@ function createSegmentElement(
 }
 
 /**
- * Update segment element styling based on active/dimmed states.
+ * Update segment element styling based on active/dimmed states and source.
+ * Local segments get a dashed border to distinguish them from project segments.
  */
 function updateSegmentStyles(
   el: HTMLButtonElement,
   isActive: boolean,
   isDimmed: boolean,
   color: string | undefined,
+  source: DataSource,
 ): void {
   const span = el.firstElementChild as HTMLSpanElement | null;
+  const isLocal = source === "local";
 
   // Base classes
   let className =
@@ -193,6 +196,9 @@ function updateSegmentStyles(
   }
 
   el.className = className;
+
+  // Border style based on source (dashed for local segments)
+  el.style.borderStyle = isLocal ? "dashed" : "solid";
 
   // Colors
   if (isDimmed) {

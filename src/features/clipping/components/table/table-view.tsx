@@ -9,7 +9,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Tooltip,
@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { useClippingStore } from "~/features/clipping/context/store.context";
+import type { SpeakerWithSource } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 import { SegmentsTable } from "./segments-table";
 
@@ -37,9 +38,26 @@ export function TableView() {
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
+  // Group speakers by source
+  const { projectSpeakers, localSpeakers } = useMemo(() => {
+    const project: SpeakerWithSource[] = [];
+    const local: SpeakerWithSource[] = [];
+    for (const speaker of speakers) {
+      if (speaker.source === "local") {
+        local.push(speaker);
+      } else {
+        project.push(speaker);
+      }
+    }
+    return { projectSpeakers: project, localSpeakers: local };
+  }, [speakers]);
+
   const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation();
   const updateSpeakerMutation = api.clippingSession.updateSpeaker.useMutation();
-  const deleteSpeakerMutation = api.clippingSession.deleteSpeaker.useMutation();
+  const updateLocalSpeakerMutation =
+    api.clippingSession.updateLocalSpeaker.useMutation();
+  const deleteSpeakerMutation =
+    api.clippingSession.deleteSpeakerFromSession.useMutation();
 
   // Auto-select first speaker on mount if none selected
   useEffect(() => {
@@ -58,21 +76,32 @@ export function TableView() {
     });
   };
 
-  const handleStartEdit = (speaker: { id: string; name: string }) => {
+  const handleStartEdit = (speaker: SpeakerWithSource) => {
     setEditingSpeakerId(speaker.id);
     setEditValue(speaker.name);
   };
 
   const handleConfirmEdit = () => {
     if (editingSpeakerId && editValue.trim()) {
-      updateSpeakerMutation.mutate({
-        speakerId: editingSpeakerId,
-        name: editValue.trim(),
-      });
+      // Find the speaker to determine source
+      const speaker = speakers.find((s) => s.id === editingSpeakerId);
+      if (speaker?.source === "local") {
+        updateLocalSpeakerMutation.mutate({
+          sessionId,
+          speakerId: editingSpeakerId,
+          name: editValue.trim(),
+        });
+      } else {
+        updateSpeakerMutation.mutate({
+          speakerId: editingSpeakerId,
+          name: editValue.trim(),
+        });
+      }
     }
     setEditingSpeakerId(null);
   };
 
+  // Delete only works for local speakers
   const handleDeleteSpeaker = (speakerId: string) => {
     deleteSpeakerMutation.mutate({ sessionId, speakerId });
   };
@@ -102,110 +131,62 @@ export function TableView() {
       >
         {/* Speaker list */}
         <div className="flex flex-1 flex-col gap-1 overflow-y-auto py-2">
-          {speakers.map((speaker) => {
-            const initial = speaker.name.charAt(0).toUpperCase();
-            const isSelected = selectedSpeakerId === speaker.id;
-            const isEditing = editingSpeakerId === speaker.id;
+          {/* Project Speakers Section */}
+          {projectSpeakers.length > 0 && (
+            <>
+              {isExpanded && (
+                <div className="mb-1 px-3 pt-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                  Project
+                </div>
+              )}
+              {projectSpeakers.map((speaker) => (
+                <SpeakerItem
+                  key={speaker.id}
+                  speaker={speaker}
+                  isSelected={selectedSpeakerId === speaker.id}
+                  isEditing={editingSpeakerId === speaker.id}
+                  isExpanded={isExpanded}
+                  editValue={editValue}
+                  setEditValue={setEditValue}
+                  onSelect={() => $store.selectSpeaker(speaker.id)}
+                  onStartEdit={() => handleStartEdit(speaker)}
+                  onConfirmEdit={handleConfirmEdit}
+                  onCancelEdit={() => setEditingSpeakerId(null)}
+                  onDelete={undefined} // Project speakers cannot be deleted
+                />
+              ))}
+            </>
+          )}
 
-            return (
-              <div
-                key={speaker.id}
-                className={`group flex items-center rounded-lg transition-colors ${
-                  isExpanded ? "mx-2 gap-2" : "mx-auto"
-                } ${
-                  isSelected
-                    ? "bg-primary/10 ring-2 ring-primary ring-inset"
-                    : "hover:bg-muted"
-                }`}
-              >
-                {/* Speaker button - wrapped in tooltip when collapsed */}
-                {isExpanded ? (
-                  <button
-                    type="button"
-                    onClick={() => $store.selectSpeaker(speaker.id)}
-                    className="flex flex-1 items-center gap-2 p-1.5"
-                  >
-                    {/* Avatar */}
-                    <div
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs"
-                      style={{ backgroundColor: speaker.color }}
-                    >
-                      {initial}
-                    </div>
-
-                    {/* Name */}
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onBlur={handleConfirmEdit}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleConfirmEdit();
-                          if (e.key === "Escape") setEditingSpeakerId(null);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="min-w-0 flex-1 truncate bg-transparent text-sm outline-none"
-                        autoFocus
-                      />
-                    ) : (
-                      <span className="min-w-0 flex-1 truncate text-left text-sm">
-                        {speaker.name}
-                      </span>
-                    )}
-                  </button>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => $store.selectSpeaker(speaker.id)}
-                        className="flex items-center gap-2 p-1.5"
-                      >
-                        <div
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs"
-                          style={{ backgroundColor: speaker.color }}
-                        >
-                          {initial}
-                        </div>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>{speaker.name}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-
-                {/* Actions (when expanded, visible on hover via CSS) */}
-                {isExpanded && !isEditing && (
-                  <div className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartEdit(speaker);
-                      }}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteSpeaker(speaker.id);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {/* Local Speakers Section */}
+          {localSpeakers.length > 0 && (
+            <>
+              {isExpanded && (
+                <div className="mb-1 mt-2 border-t px-3 pt-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                  Local
+                </div>
+              )}
+              {!isExpanded && projectSpeakers.length > 0 && (
+                <div className="mx-auto my-1 h-px w-6 bg-border" />
+              )}
+              {localSpeakers.map((speaker) => (
+                <SpeakerItem
+                  key={speaker.id}
+                  speaker={speaker}
+                  isSelected={selectedSpeakerId === speaker.id}
+                  isEditing={editingSpeakerId === speaker.id}
+                  isExpanded={isExpanded}
+                  editValue={editValue}
+                  setEditValue={setEditValue}
+                  onSelect={() => $store.selectSpeaker(speaker.id)}
+                  onStartEdit={() => handleStartEdit(speaker)}
+                  onConfirmEdit={handleConfirmEdit}
+                  onCancelEdit={() => setEditingSpeakerId(null)}
+                  onDelete={() => handleDeleteSpeaker(speaker.id)}
+                />
+              ))}
+            </>
+          )}
         </div>
 
         {/* Bottom actions */}
@@ -262,6 +243,142 @@ export function TableView() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SegmentsTable />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Individual speaker item in the sidebar.
+ * Renders differently based on expanded/collapsed state and source type.
+ */
+function SpeakerItem({
+  speaker,
+  isSelected,
+  isEditing,
+  isExpanded,
+  editValue,
+  setEditValue,
+  onSelect,
+  onStartEdit,
+  onConfirmEdit,
+  onCancelEdit,
+  onDelete,
+}: {
+  speaker: SpeakerWithSource;
+  isSelected: boolean;
+  isEditing: boolean;
+  isExpanded: boolean;
+  editValue: string;
+  setEditValue: (value: string) => void;
+  onSelect: () => void;
+  onStartEdit: () => void;
+  onConfirmEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: (() => void) | undefined; // undefined means delete is not allowed
+}) {
+  const initial = speaker.name.charAt(0).toUpperCase();
+
+  return (
+    <div
+      className={`group flex items-center rounded-lg transition-colors ${
+        isExpanded ? "mx-2 gap-2" : "mx-auto"
+      } ${
+        isSelected
+          ? "bg-primary/10 ring-2 ring-primary ring-inset"
+          : "hover:bg-muted"
+      }`}
+    >
+      {/* Speaker button - wrapped in tooltip when collapsed */}
+      {isExpanded ? (
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex flex-1 items-center gap-2 p-1.5"
+        >
+          {/* Avatar */}
+          <div
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
+              speaker.source === "local" ? "ring-1 ring-dashed ring-white/30" : ""
+            }`}
+            style={{ backgroundColor: speaker.color }}
+          >
+            {initial}
+          </div>
+
+          {/* Name */}
+          {isEditing ? (
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={onConfirmEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onConfirmEdit();
+                if (e.key === "Escape") onCancelEdit();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="min-w-0 flex-1 truncate bg-transparent text-sm outline-none"
+              autoFocus
+            />
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-left text-sm">
+              {speaker.name}
+            </span>
+          )}
+        </button>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onSelect}
+              className="flex items-center gap-2 p-1.5"
+            >
+              <div
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
+                  speaker.source === "local" ? "ring-1 ring-dashed ring-white/30" : ""
+                }`}
+                style={{ backgroundColor: speaker.color }}
+              >
+                {initial}
+              </div>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>{speaker.name}</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Actions (when expanded, visible on hover via CSS) */}
+      {isExpanded && !isEditing && (
+        <div className="flex shrink-0 items-center gap-0.5 pr-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartEdit();
+            }}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { generateSpeakerColor } from "~/lib/speaker-colors";
-import type { Segment, Speaker } from "~/server/db/schema";
+import type { SegmentWithSource, SpeakerWithSource } from "~/server/db/schema";
 import type { api } from "~/trpc/react";
 import type { $ClippingStore } from "./clipping-store";
 
@@ -36,7 +36,7 @@ export function setupMutationDefaults(
       const segmentIdSet = new Set(segmentIds);
 
       // Store previous values for rollback (only affected segments)
-      const previousValues: Record<string, Partial<Segment>> = {};
+      const previousValues: Record<string, Partial<SegmentWithSource>> = {};
 
       // Apply optimistic updates using fine-grained mutations
       for (let i = 0; i < $store.segments.length; i++) {
@@ -47,7 +47,7 @@ export function setupMutationDefaults(
 
         if (segmentIdSet.has(segmentId)) {
           // Capture previous values for the fields being updated
-          const prev: Partial<Segment> = {};
+          const prev: Partial<SegmentWithSource> = {};
           for (const key of Object.keys(variables.updates) as Array<
             keyof typeof variables.updates
           >) {
@@ -101,9 +101,9 @@ export function setupMutationDefaults(
       // Update existing segment's end time
       $store.segments[segmentIndex]?.endTime.set(variables.splitTime);
 
-      // Create and insert new segment after the split
+      // Create and insert new segment after the split (inherits source from original)
       const now = new Date();
-      const newSegment: Segment = {
+      const newSegment: SegmentWithSource = {
         id: crypto.randomUUID(),
         sessionId: originalSegment.sessionId,
         speakerId: originalSegment.speakerId,
@@ -111,7 +111,7 @@ export function setupMutationDefaults(
         endTime: originalEndTime,
         createdAt: now,
         updatedAt: now,
-        speaker: originalSegment.speaker,
+        source: originalSegment.source,
       };
 
       // Insert after the current segment
@@ -153,10 +153,10 @@ export function setupMutationDefaults(
         return { tempId: "", insertIndex: -1 };
       }
 
-      // Create optimistic segment with temporary ID
+      // Create optimistic segment with temporary ID (always project source)
       const tempId = crypto.randomUUID();
       const now = new Date();
-      const newSegment: Segment = {
+      const newSegment: SegmentWithSource = {
         id: tempId,
         sessionId: $store.sessionId.peek(),
         speakerId: variables.segment.speakerId,
@@ -164,7 +164,7 @@ export function setupMutationDefaults(
         endTime: variables.segment.endTime,
         createdAt: now,
         updatedAt: now,
-        speaker,
+        source: "project",
       };
 
       // Find insertion index to maintain sort order by start time
@@ -227,7 +227,7 @@ export function setupMutationDefaults(
       // Store removed segments for rollback (with their indices for correct restoration)
       const removedSegments: Array<{
         index: number;
-        segment: Segment;
+        segment: SegmentWithSource;
       }> = [];
 
       // Find and store segments to remove (iterate backwards for stable indices)
@@ -271,12 +271,12 @@ export function setupMutationDefaults(
   // Speaker Mutations
   // ============================================================================
 
-  // createSpeaker: handles adding a new speaker to the project
+  // createSpeaker: handles adding a new speaker to the project (always project source)
   trpcUtils.clippingSession.createSpeaker.setMutationDefaults({
     onMutate: async (variables) => {
       const tempId = crypto.randomUUID();
       const now = new Date();
-      const newSpeaker: Speaker = {
+      const newSpeaker: SpeakerWithSource = {
         id: tempId,
         projectId: $store.projectId.peek(),
         userId: "", // Will be set by server
@@ -284,6 +284,7 @@ export function setupMutationDefaults(
         color: variables.color ?? generateSpeakerColor(),
         createdAt: now,
         updatedAt: now,
+        source: "project",
       };
 
       $store.addSpeaker(newSpeaker);
@@ -330,14 +331,23 @@ export function setupMutationDefaults(
     },
   });
 
-  // deleteSpeakerFromSession: removes segments for a speaker within this session
+  // deleteSpeakerFromSession: removes a local speaker and their segments
+  // Only works for local speakers (backend will reject project speakers)
   trpcUtils.clippingSession.deleteSpeakerFromSession.setMutationDefaults({
     onMutate: async (variables) => {
       // Store affected segments for rollback
       const removedSegments: Array<{
         index: number;
-        segment: Segment;
+        segment: SegmentWithSource;
       }> = [];
+
+      // Store removed speaker for rollback
+      const speakers = $store.speakers.peek();
+      const speakerIndex = speakers.findIndex(
+        (s) => s.id === variables.speakerId,
+      );
+      const removedSpeaker =
+        speakerIndex !== -1 ? { ...speakers[speakerIndex]! } : undefined;
 
       // Remove segments for this speaker from the store
       const segments = $store.segments.peek();
@@ -349,19 +359,129 @@ export function setupMutationDefaults(
         }
       }
 
+      // Remove the local speaker from the store
+      if (speakerIndex !== -1) {
+        $store.speakers.splice(speakerIndex, 1);
+      }
+
       // Clear selection if the deleted speaker was selected
       if ($store.selectedSpeakerId.peek() === variables.speakerId) {
         $store.selectedSpeakerId.set(null);
       }
 
-      return { removedSegments };
+      return { removedSegments, removedSpeaker, speakerIndex };
     },
     onError: (_err, _variables, context) => {
-      if (!context?.removedSegments) return;
+      if (!context) return;
 
       // Restore segments in reverse order to maintain indices
-      for (const { index, segment } of context.removedSegments.reverse()) {
-        $store.segments.splice(index, 0, segment);
+      if (context.removedSegments) {
+        for (const { index, segment } of context.removedSegments.reverse()) {
+          $store.segments.splice(index, 0, segment);
+        }
+      }
+
+      // Restore speaker
+      if (context.removedSpeaker && context.speakerIndex !== -1) {
+        $store.speakers.splice(context.speakerIndex, 0, context.removedSpeaker);
+      }
+    },
+  });
+
+  // promoteLocalSegments: promotes local segments to project level with a new speaker
+  trpcUtils.clippingSession.promoteLocalSegments.setMutationDefaults({
+    onMutate: async (variables) => {
+      const localSegmentIds = new Set(variables.localSegmentIds);
+
+      // Store removed segments for rollback (with their indices)
+      const removedSegments: Array<{
+        index: number;
+        segment: SegmentWithSource;
+      }> = [];
+
+      // Find and store local segments to promote
+      const segments = $store.segments.peek();
+      for (let i = segments.length - 1; i >= 0; i--) {
+        const segment = segments[i];
+        if (segment && localSegmentIds.has(segment.id)) {
+          removedSegments.push({ index: i, segment: { ...segment } });
+          $store.segments.splice(i, 1);
+        }
+      }
+
+      // Create new project segments at the same positions (will be replaced on success)
+      const now = new Date();
+      const tempSegments: Array<{
+        tempId: string;
+        segment: SegmentWithSource;
+        insertIndex: number;
+      }> = [];
+
+      for (const { segment } of removedSegments) {
+        const tempId = crypto.randomUUID();
+        const newSegment: SegmentWithSource = {
+          id: tempId,
+          sessionId: segment.sessionId,
+          speakerId: variables.targetSpeakerId,
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          createdAt: now,
+          updatedAt: now,
+          source: "project",
+        };
+
+        // Find insertion index to maintain sort order
+        const currentSegments = $store.segments.peek();
+        let insertIndex = currentSegments.findIndex(
+          (s) => s.startTime > newSegment.startTime,
+        );
+        if (insertIndex === -1) insertIndex = currentSegments.length;
+
+        $store.segments.splice(insertIndex, 0, newSegment);
+        tempSegments.push({ tempId, segment: newSegment, insertIndex });
+      }
+
+      return { removedSegments, tempSegments };
+    },
+    onSuccess: (result, _variables, context) => {
+      if (!context?.tempSegments || !result.newSegments) return;
+
+      // Replace temp IDs with real IDs from server
+      for (let i = 0; i < context.tempSegments.length; i++) {
+        const { tempId } = context.tempSegments[i]!;
+        const realSegment = result.newSegments[i];
+        if (!realSegment) continue;
+
+        const segments = $store.segments.peek();
+        const index = segments.findIndex((s) => s.id === tempId);
+        if (index !== -1) {
+          $store.segments[index]?.assign({
+            id: realSegment.id,
+            createdAt: realSegment.createdAt,
+            updatedAt: realSegment.updatedAt,
+          });
+        }
+      }
+    },
+    onError: (_err, _variables, context) => {
+      if (!context) return;
+
+      // Remove optimistically added project segments
+      if (context.tempSegments) {
+        for (const { tempId } of context.tempSegments) {
+          const segments = $store.segments.peek();
+          const index = segments.findIndex((s) => s.id === tempId);
+          if (index !== -1) {
+            $store.segments.splice(index, 1);
+          }
+        }
+      }
+
+      // Restore local segments
+      if (context.removedSegments) {
+        for (const { index, segment } of context.removedSegments.reverse()) {
+          $store.segments.splice(index, 0, segment);
+        }
       }
     },
   });
