@@ -89,12 +89,13 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     ...rootState,
 
     // Computed Values
+    // Note: uses .get() for speakerId to track changes when segments are reassigned
     segmentsBySpeaker: () =>
       $store.segments.reduce(
         (acc, $segment) => {
-          const speakerId = $segment.speakerId.peek();
-          if (!acc.has(speakerId)) acc.set(speakerId, [$segment]);
-          else acc.get(speakerId)?.push($segment);
+          const speakerId = $segment.speakerId.get();
+          if (acc.has(speakerId)) acc.get(speakerId)?.push($segment);
+          else acc.set(speakerId, [$segment]);
 
           return acc;
         },
