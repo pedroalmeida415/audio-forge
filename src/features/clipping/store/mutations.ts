@@ -294,11 +294,11 @@ export function setupMutationDefaults(
     onSuccess: (result, _variables, context) => {
       if (!context?.tempId || !result.speaker) return;
 
-      // Replace temp speaker with real speaker from server
+      // Replace temp speaker with real speaker from server (preserving source)
       const speakers = $store.speakers.peek();
       const index = speakers.findIndex((s) => s.id === context.tempId);
       if (index !== -1) {
-        $store.speakers[index]?.set(result.speaker);
+        $store.speakers[index]?.set({ ...result.speaker, source: "project" });
       }
     },
     onError: (_err, _variables, context) => {
