@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { generateSpeakerColor } from "~/lib/speaker-colors";
+import { DEFAULT_LOCAL_SPEAKER_COLOR } from "~/lib/speaker-colors";
 import { db } from "~/server/db";
 import {
   clippingSessions,
@@ -65,10 +65,11 @@ export async function POST(request: NextRequest) {
       ];
 
       // Build local speakers with generated UUIDs (NOT inserted into speakers table)
+      // Local speakers start with a neutral grey color - they get a random color on rename
       const localSpeakers: LocalSpeaker[] = speakerLabels.map((label) => ({
         id: uuidv4(),
         label,
-        color: generateSpeakerColor(),
+        color: DEFAULT_LOCAL_SPEAKER_COLOR,
         createdAt: now,
       }));
 

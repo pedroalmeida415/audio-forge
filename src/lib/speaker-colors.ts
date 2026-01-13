@@ -4,6 +4,12 @@
  */
 
 /**
+ * Default neutral grey color for local speakers.
+ * Local speakers start with this color and get a random color on rename.
+ */
+export const DEFAULT_LOCAL_SPEAKER_COLOR = "hsl(0, 0%, 50%)";
+
+/**
  * Generate a random color for a new speaker.
  * Returns an HSL color string (e.g., "hsl(120, 70%, 50%)").
  */
