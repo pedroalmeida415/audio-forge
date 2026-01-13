@@ -331,6 +331,25 @@ export function setupMutationDefaults(
     },
   });
 
+  // updateLocalSpeaker: handles renaming a local speaker
+  trpcUtils.clippingSession.updateLocalSpeaker.setMutationDefaults({
+    onMutate: async (variables) => {
+      const speakers = $store.speakers.peek();
+      const speaker = speakers.find((s) => s.id === variables.speakerId);
+      const previousValue = speaker ? { ...speaker } : undefined;
+
+      if (speaker) {
+        $store.updateSpeaker(variables.speakerId, { name: variables.name });
+      }
+
+      return { previousValue };
+    },
+    onError: (_err, variables, context) => {
+      if (!context?.previousValue) return;
+      $store.updateSpeaker(variables.speakerId, context.previousValue);
+    },
+  });
+
   // deleteSpeakerFromSession: removes a local speaker and their segments
   // Only works for local speakers (backend will reject project speakers)
   trpcUtils.clippingSession.deleteSpeakerFromSession.setMutationDefaults({

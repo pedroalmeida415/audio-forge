@@ -9,7 +9,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Tooltip,
@@ -38,19 +38,9 @@ export function TableView() {
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  // Group speakers by source
-  const { projectSpeakers, localSpeakers } = useMemo(() => {
-    const project: SpeakerWithSource[] = [];
-    const local: SpeakerWithSource[] = [];
-    for (const speaker of speakers) {
-      if (speaker.source === "local") {
-        local.push(speaker);
-      } else {
-        project.push(speaker);
-      }
-    }
-    return { projectSpeakers: project, localSpeakers: local };
-  }, [speakers]);
+  // Group speakers by source - computed on each render to track Legend-State mutations
+  const projectSpeakers = speakers.filter((s) => s.source === "project");
+  const localSpeakers = speakers.filter((s) => s.source === "local");
 
   const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation();
   const updateSpeakerMutation = api.clippingSession.updateSpeaker.useMutation();
@@ -162,7 +152,7 @@ export function TableView() {
           {localSpeakers.length > 0 && (
             <>
               {isExpanded && (
-                <div className="mb-1 mt-2 border-t px-3 pt-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                <div className="mt-2 mb-1 border-t px-3 pt-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">
                   Local
                 </div>
               )}
@@ -298,7 +288,9 @@ function SpeakerItem({
           {/* Avatar */}
           <div
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
-              speaker.source === "local" ? "ring-1 ring-dashed ring-white/30" : ""
+              speaker.source === "local"
+                ? "ring-1 ring-dashed ring-white/30"
+                : ""
             }`}
             style={{ backgroundColor: speaker.color }}
           >
@@ -336,7 +328,9 @@ function SpeakerItem({
             >
               <div
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
-                  speaker.source === "local" ? "ring-1 ring-dashed ring-white/30" : ""
+                  speaker.source === "local"
+                    ? "ring-1 ring-dashed ring-white/30"
+                    : ""
                 }`}
                 style={{ backgroundColor: speaker.color }}
               >

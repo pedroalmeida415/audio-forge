@@ -68,7 +68,6 @@ export function SegmentActions() {
       <ChangeSpeakerDialog
         open={changeSpeakerOpen}
         onOpenChange={setChangeSpeakerOpen}
-        targetSegmentIds={Array.from(selectedSegmentIds)}
       />
     </div>
   );

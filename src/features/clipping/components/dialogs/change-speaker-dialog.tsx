@@ -15,19 +15,18 @@ import { api } from "~/trpc/react";
 interface ChangeSpeakerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  targetSegmentIds: string[];
 }
 
 export function ChangeSpeakerDialog({
   open,
   onOpenChange,
-  targetSegmentIds,
 }: ChangeSpeakerDialogProps) {
   const $store = useClippingStore();
 
   const speakers = useValue($store.speakers);
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const sessionId = useValue($store.sessionId);
+  const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
   const updateSegmentsMutation =
     api.clippingSession.updateSegments.useMutation();
@@ -42,18 +41,22 @@ export function ChangeSpeakerDialog({
   const projectSpeakers = speakers.filter((s) => s.source === "project");
 
   const handleSelectSpeaker = (speakerId: string) => {
+    // Get current segment IDs at mutation time
+    const targetIds = Array.from(selectedSegmentIds);
+    if (targetIds.length === 0) return;
+
     if (isLocalSpeaker) {
       // Promote local segments to project level
       promoteLocalSegmentsMutation.mutate({
         sessionId,
-        localSegmentIds: targetSegmentIds,
+        localSegmentIds: targetIds,
         targetSpeakerId: speakerId,
       });
     } else {
       // Update project segments
       updateSegmentsMutation.mutate({
         sessionId,
-        segmentIds: targetSegmentIds,
+        segmentIds: targetIds,
         updates: { speakerId },
       });
     }
@@ -62,7 +65,7 @@ export function ChangeSpeakerDialog({
     onOpenChange(false);
   };
 
-  const segmentCount = targetSegmentIds.length;
+  const segmentCount = selectedSegmentIds.size;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
