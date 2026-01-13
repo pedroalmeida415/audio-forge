@@ -1,12 +1,14 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
+import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { db } from "~/server/db";
 import {
   clippingSessions,
   type DiarizationInfo,
-  segments,
-  speakers,
+  type LocalSegment,
+  type LocalSpeaker,
 } from "~/server/db/schema";
 import { diarizationEvents } from "~/server/events/diarization-events";
 
@@ -62,51 +64,29 @@ export async function POST(request: NextRequest) {
         ...new Set(payload.output.diarization.map((s) => s.speaker)),
       ];
 
-      // Check for existing speakers with these names in the project
-      const existingSpeakers = await db.query.speakers.findMany({
-        where: and(
-          eq(speakers.projectId, session.projectId),
-          inArray(speakers.name, speakerLabels),
-        ),
-      });
+      // Build local speakers with generated UUIDs (NOT inserted into speakers table)
+      const localSpeakers: LocalSpeaker[] = speakerLabels.map((label) => ({
+        id: uuidv4(),
+        label,
+        color: generateSpeakerColor(),
+        createdAt: now,
+      }));
 
-      const existingMap = new Map(existingSpeakers.map((s) => [s.name, s]));
-      const newSpeakerLabels = speakerLabels.filter(
-        (label) => !existingMap.has(label),
-      );
+      // Build speaker map (label -> LocalSpeaker) for segment creation
+      const speakerMap = new Map(localSpeakers.map((s) => [s.label, s]));
 
-      // Create only new speakers (reuse existing ones)
-      let createdSpeakers: typeof existingSpeakers = [];
-      if (newSpeakerLabels.length > 0) {
-        createdSpeakers = await db
-          .insert(speakers)
-          .values(
-            newSpeakerLabels.map((label) => ({
-              projectId: session.projectId,
-              userId: session.userId,
-              name: label,
-            })),
-          )
-          .returning();
-      }
-
-      // Build complete speaker map (name -> speaker record)
-      const speakerMap = new Map([
-        ...existingSpeakers.map((s) => [s.name, s] as const),
-        ...createdSpeakers.map((s) => [s.name, s] as const),
-      ]);
-
-      // Create segments with real speaker IDs
-      await db.insert(segments).values(
-        payload.output.diarization.map((seg) => ({
-          sessionId: session.id,
+      // Build local segments referencing local speaker IDs
+      const localSegments: LocalSegment[] = payload.output.diarization.map(
+        (seg) => ({
+          id: uuidv4(),
           speakerId: speakerMap.get(seg.speaker)!.id,
           startTime: seg.start,
           endTime: seg.end,
-        })),
+          createdAt: now,
+        }),
       );
 
-      // Update diarization info (metadata only, no more JSONB segments/speakers)
+      // Update diarization info with full output stored in JSONB
       const diarizationInfo: DiarizationInfo = {
         ...(session.diarization ?? {
           jobId: payload.jobId,
@@ -117,6 +97,8 @@ export async function POST(request: NextRequest) {
         status: "completed",
         completedAt: now,
         error: null,
+        speakers: localSpeakers,
+        segments: localSegments,
       };
 
       await db
@@ -130,7 +112,7 @@ export async function POST(request: NextRequest) {
       diarizationEvents.emitCompletion(session.id, "completed");
 
       console.log(
-        `[Diarization] Completed for session ${session.id}: ${createdSpeakers.length} new speakers, ${existingSpeakers.length} reused, ${payload.output.diarization.length} segments`,
+        `[Diarization] Completed for session ${session.id}: ${localSpeakers.length} local speakers, ${localSegments.length} local segments (stored in JSONB)`,
       );
     } else if (payload.status === "failed" || payload.status === "canceled") {
       // Update diarization info with failed status

@@ -1,11 +1,14 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useClippingStore } from "~/features/clipping/context/store.context";
-import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
-import { getSpeakerName } from "~/features/clipping/utils/segment-utils";
+import {
+  getSpeakerColor,
+  getSpeakerName,
+} from "~/features/clipping/utils/segment-utils";
 import { withAlpha } from "~/lib/speaker-colors";
+import type { DataSource } from "~/server/db/schema";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
@@ -20,27 +23,10 @@ export function TimelineSegmentsBar() {
   const $store = useClippingStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const segmentsDataRef = useRef<SegmentWithSpeaker[]>([]);
-
-  const [isReady, setIsReady] = useState(false);
-
-  // Store segments data once loaded
-  useEffect(() => {
-    const dispose = observe(() => {
-      const segments = $store.segments.get();
-      segmentsDataRef.current = segments;
-
-      if (segments.length > 0) {
-        setIsReady(true);
-      }
-    });
-
-    return dispose;
-  }, [$store]);
 
   // Manage DOM elements directly based on visibility
   useEffect(() => {
-    if (!isReady || !containerRef.current) return;
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
 
@@ -51,7 +37,8 @@ export function TimelineSegmentsBar() {
       const activeSegmentId = $store.activeSegmentId.get();
       const selectedSpeakerId = $store.selectedSpeakerId.get();
       const speakers = $store.speakers.get();
-      const speakerColors = $store.speakerColors.get();
+      // Track segments to re-run when speakerId changes
+      const segments = $store.segments.get();
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
@@ -60,7 +47,7 @@ export function TimelineSegmentsBar() {
 
       // Build set of segment IDs that should be visible
       const visibleIds = new Set<string>();
-      for (const segment of segmentsDataRef.current) {
+      for (const segment of segments) {
         const { id, startTime, endTime } = segment;
         if (endTime >= visibleStartTime && startTime <= visibleEndTime) {
           visibleIds.add(id);
@@ -76,12 +63,12 @@ export function TimelineSegmentsBar() {
       });
 
       // Add/update segments for visible IDs
-      for (const segment of segmentsDataRef.current) {
-        const { id, speakerId, startTime, endTime } = segment;
+      for (const segment of segments) {
+        const { id, speakerId, startTime, endTime, source } = segment;
         if (!visibleIds.has(id)) continue;
 
         // Get speaker color and name
-        const color = speakerColors[speakerId];
+        const color = getSpeakerColor(speakerId, speakers);
         const name = getSpeakerName(speakerId, speakers);
 
         // Determine states
@@ -113,8 +100,8 @@ export function TimelineSegmentsBar() {
           span.textContent = name;
         }
 
-        // Update styling based on states
-        updateSegmentStyles(el, isActive, isDimmed, color);
+        // Update styling based on states and source
+        updateSegmentStyles(el, isActive, isDimmed, color, source);
       }
     });
 
@@ -126,7 +113,7 @@ export function TimelineSegmentsBar() {
       }
       segmentElementsMap.current.clear();
     };
-  }, [isReady, $store]);
+  }, [$store]);
 
   return (
     <div
@@ -165,15 +152,18 @@ function createSegmentElement(
 }
 
 /**
- * Update segment element styling based on active/dimmed states.
+ * Update segment element styling based on active/dimmed states and source.
+ * Local segments get a dashed border to distinguish them from project segments.
  */
 function updateSegmentStyles(
   el: HTMLButtonElement,
   isActive: boolean,
   isDimmed: boolean,
   color: string | undefined,
+  source: DataSource,
 ): void {
   const span = el.firstElementChild as HTMLSpanElement | null;
+  const isLocal = source === "local";
 
   // Base classes
   let className =
@@ -191,6 +181,9 @@ function updateSegmentStyles(
   }
 
   el.className = className;
+
+  // Border style based on source (dashed for local segments)
+  el.style.borderStyle = isLocal ? "dashed" : "solid";
 
   // Colors
   if (isDimmed) {

@@ -22,21 +22,18 @@ export function SegmentActions() {
 
   const sessionId = useValue($store.sessionId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
+  const hasSelection = selectedSegmentIds.size > 0;
 
   const deleteSegmentsMutation =
     api.clippingSession.deleteSegments.useMutation();
 
   const [changeSpeakerOpen, setChangeSpeakerOpen] = useState(false);
 
-  // Only use checkbox-selected segments, NOT active segment
-  const targetIds = Array.from(selectedSegmentIds);
-  const hasSelection = targetIds.length > 0;
-
   const handleDelete = () => {
     if (!hasSelection) return;
     deleteSegmentsMutation.mutate({
       sessionId,
-      segmentIds: targetIds,
+      segmentIds: Array.from(selectedSegmentIds),
     });
   };
 
@@ -71,7 +68,6 @@ export function SegmentActions() {
       <ChangeSpeakerDialog
         open={changeSpeakerOpen}
         onOpenChange={setChangeSpeakerOpen}
-        targetSegmentIds={targetIds}
       />
     </div>
   );

@@ -1,18 +1,16 @@
 "use client";
 
+import type { Observable } from "@legendapp/state";
 import { useValue } from "@legendapp/state/react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Play } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { useClippingStore } from "~/features/clipping/context/store.context";
-import type { SegmentWithSpeaker } from "~/features/clipping/store/clipping-store";
-import {
-  DURATION_THRESHOLDS,
-  getSegmentDuration,
-} from "~/features/clipping/utils/segment-utils";
+import { DURATION_THRESHOLDS } from "~/features/clipping/utils/segment-utils";
 import { formatDuration } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
+import type { Segment } from "~/server/db/schema";
 import { EditableTimeCell } from "./editable-time-cell";
 
 // Get sort icon based on column state
@@ -30,14 +28,20 @@ function SortIcon({ isSorted }: { isSorted: false | "asc" | "desc" }) {
 function SelectAllCheckbox() {
   const $store = useClippingStore();
 
-  const speakerSegments = useValue(
-    () => $store.segmentsBySpeaker.get()[$store.selectedSpeakerId.get()!] ?? [],
-  );
-  const selectedSegmentIds = useValue($store.selectedSegmentIds);
+  // Compute isAllSelected reactively - subscribes to both segments and selection
+  const isAllSelected = useValue(() => {
+    const speakerId = $store.selectedSpeakerId.get();
+    if (!speakerId) return false;
 
-  const isAllSelected =
-    speakerSegments.length > 0 &&
-    speakerSegments.every((segment) => selectedSegmentIds.has(segment.id));
+    const speakerSegments = $store.segmentsBySpeaker.get().get(speakerId) ?? [];
+    if (speakerSegments.length === 0) return false;
+
+    // Access the Set reactively via .get() to ensure we recompute on changes
+    const selectedIds = $store.selectedSegmentIds.get();
+    return speakerSegments.every(($segment) =>
+      selectedIds.has($segment.id.peek()),
+    );
+  });
 
   const handleToggleAll = (selectAll: boolean) => {
     if (selectAll) {
@@ -104,8 +108,45 @@ function PlayCell({ segmentId }: { segmentId: string }) {
   );
 }
 
-// Duration cell with color coding
-function DurationCell({ duration }: { duration: number }) {
+// Start time cell - subscribes to observable segment
+function StartTimeCell({ $segment }: { $segment: Observable<Segment> }) {
+  const startTime = useValue($segment.startTime);
+  const endTime = useValue($segment.endTime);
+  const segmentId = $segment.id.peek();
+
+  return (
+    <EditableTimeCell
+      value={startTime}
+      segmentId={segmentId}
+      field="startTime"
+      minValue={0}
+      maxValue={endTime - 0.1}
+    />
+  );
+}
+
+// End time cell - subscribes to observable segment
+function EndTimeCell({ $segment }: { $segment: Observable<Segment> }) {
+  const startTime = useValue($segment.startTime);
+  const endTime = useValue($segment.endTime);
+  const segmentId = $segment.id.peek();
+
+  return (
+    <EditableTimeCell
+      value={endTime}
+      segmentId={segmentId}
+      field="endTime"
+      minValue={startTime + 0.1}
+    />
+  );
+}
+
+// Duration cell with color coding - subscribes to observable segment
+function DurationCell({ $segment }: { $segment: Observable<Segment> }) {
+  const startTime = useValue($segment.startTime);
+  const endTime = useValue($segment.endTime);
+  const duration = endTime - startTime;
+
   const variant =
     duration > DURATION_THRESHOLDS.TOO_LONG
       ? "warning"
@@ -131,13 +172,13 @@ function DurationCell({ duration }: { duration: number }) {
 // Column Definitions
 // ============================================================================
 
-export function createColumns(): ColumnDef<SegmentWithSpeaker>[] {
+export function createColumns(): ColumnDef<Observable<Segment>>[] {
   return [
     // Checkbox column - subscribes directly to store
     {
       id: "select",
       header: () => <SelectAllCheckbox />,
-      cell: ({ row }) => <SelectCell segmentId={row.original.id} />,
+      cell: ({ row }) => <SelectCell segmentId={row.original.id.peek()} />,
       enableSorting: false,
       enableHiding: false,
       size: 40,
@@ -147,7 +188,7 @@ export function createColumns(): ColumnDef<SegmentWithSpeaker>[] {
     {
       id: "play",
       header: "",
-      cell: ({ row }) => <PlayCell segmentId={row.original.id} />,
+      cell: ({ row }) => <PlayCell segmentId={row.original.id.peek()} />,
       enableSorting: false,
       size: 40,
     },
@@ -164,43 +205,29 @@ export function createColumns(): ColumnDef<SegmentWithSpeaker>[] {
       ),
     },
 
-    // Start time column (editable)
+    // Start time column (editable) - subscribes to observable
     {
       id: "startTime",
-      accessorFn: (row) => row.startTime,
+      accessorFn: ($segment) => $segment.startTime.peek(),
       header: "Start",
-      cell: ({ row }) => (
-        <EditableTimeCell
-          value={row.original.startTime}
-          segmentId={row.original.id}
-          field="startTime"
-          minValue={0}
-          maxValue={row.original.endTime - 0.1}
-        />
-      ),
+      cell: ({ row }) => <StartTimeCell $segment={row.original} />,
       size: 95,
     },
 
-    // End time column (editable)
+    // End time column (editable) - subscribes to observable
     {
       id: "endTime",
-      accessorFn: (row) => row.endTime,
+      accessorFn: ($segment) => $segment.endTime.peek(),
       header: "End",
-      cell: ({ row }) => (
-        <EditableTimeCell
-          value={row.original.endTime}
-          segmentId={row.original.id}
-          field="endTime"
-          minValue={row.original.startTime + 0.1}
-        />
-      ),
+      cell: ({ row }) => <EndTimeCell $segment={row.original} />,
       size: 95,
     },
 
     // Duration column (sortable, color-coded)
     {
       id: "duration",
-      accessorFn: (row) => getSegmentDuration(row),
+      accessorFn: ($segment) =>
+        $segment.endTime.peek() - $segment.startTime.peek(),
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -212,9 +239,7 @@ export function createColumns(): ColumnDef<SegmentWithSpeaker>[] {
           <SortIcon isSorted={column.getIsSorted()} />
         </Button>
       ),
-      cell: ({ row }) => (
-        <DurationCell duration={getSegmentDuration(row.original)} />
-      ),
+      cell: ({ row }) => <DurationCell $segment={row.original} />,
       size: 90,
     },
 

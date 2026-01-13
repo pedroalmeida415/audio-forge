@@ -130,7 +130,7 @@ export const speakers = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
 
     name: varchar("name", { length: 255 }).notNull(),
-    color: varchar("color", { length: 50 }),
+    color: varchar("color", { length: 50 }).notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -233,7 +233,31 @@ export const files = pgTable(
 );
 
 /**
+ * Local speaker - stored in JSONB as part of diarization output
+ * These are session-local and not shared across the project.
+ */
+export interface LocalSpeaker {
+  id: string; // UUID generated during webhook processing
+  label: string; // Original pyannote label (e.g., "SPEAKER_00")
+  color: string; // HSL color string
+  createdAt: string; // ISO timestamp
+}
+
+/**
+ * Local segment - stored in JSONB as part of diarization output
+ * These are session-local and reference LocalSpeaker.id.
+ */
+export interface LocalSegment {
+  id: string;
+  speakerId: string; // References LocalSpeaker.id
+  startTime: number;
+  endTime: number;
+  createdAt: string; // ISO timestamp
+}
+
+/**
  * Diarization job info - embedded in clipping session
+ * Now includes full diarization output (speakers + segments) in JSONB.
  */
 export interface DiarizationInfo {
   jobId: string;
@@ -241,7 +265,15 @@ export interface DiarizationInfo {
   startedAt: string;
   completedAt: string | null;
   error: string | null;
+  // Full diarization output stored locally
+  speakers?: LocalSpeaker[];
+  segments?: LocalSegment[];
 }
+
+/**
+ * Source discriminator for unified speaker/segment types
+ */
+export type DataSource = "local" | "project";
 
 /**
  * Clipping Sessions - Workspace state for editing audio
@@ -365,3 +397,19 @@ export type File = typeof files.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Speaker = typeof speakers.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
+
+/**
+ * Speaker with source discrimination for unified API responses.
+ * Local speakers come from diarization JSONB, project speakers from the speakers table.
+ */
+export interface SpeakerWithSource extends Speaker {
+  source: DataSource;
+}
+
+/**
+ * Segment with source discrimination for unified API responses.
+ * Local segments come from diarization JSONB, project segments from the segments table.
+ */
+export interface SegmentWithSource extends Segment {
+  source: DataSource;
+}

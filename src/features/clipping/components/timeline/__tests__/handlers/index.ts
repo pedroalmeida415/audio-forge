@@ -83,7 +83,7 @@ export const createSpeakerHandler = trpcMutation("speaker.create", () => ({
   projectId: "mock-project",
   userId: "mock-user",
   name: "NEW_SPEAKER",
-  color: null,
+  color: "hsl(0, 70%, 50%)",
   createdAt: new Date(),
   updatedAt: new Date(),
 }));

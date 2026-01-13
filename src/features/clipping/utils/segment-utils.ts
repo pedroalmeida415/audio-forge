@@ -24,3 +24,11 @@ export function getSpeakerName(speakerId: string, speakers: Speaker[]): string {
   const speaker = speakers.find((s) => s.id === speakerId);
   return speaker?.name ?? speakerId;
 }
+
+export function getSpeakerColor(
+  speakerId: string,
+  speakers: Speaker[],
+): string {
+  const speaker = speakers.find((s) => s.id === speakerId);
+  return speaker?.color ?? "hsl(0, 0%, 50%)";
+}

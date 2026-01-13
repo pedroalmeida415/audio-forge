@@ -7,7 +7,6 @@ export function SelectionSummary() {
   const $store = useClippingStore();
 
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
-
   const hasSelection = selectedSegmentIds.size > 0;
 
   return (

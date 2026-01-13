@@ -4,12 +4,15 @@ import { and, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { env } from "~/env";
+import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
   clippingSessions,
   type DiarizationInfo,
   segments,
+  type SegmentWithSource,
   speakers,
+  type SpeakerWithSource,
 } from "~/server/db/schema";
 import {
   diarizationEvents,
@@ -28,6 +31,7 @@ const runEffect = <A, E>(
 
 export const clippingSessionRouter = createTRPCRouter({
   // Get session by ID with file, segments, and speakers
+  // Returns unified segments and speakers with source discrimination
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -40,9 +44,6 @@ export const clippingSessionRouter = createTRPCRouter({
           file: true,
           project: true,
           segments: {
-            with: {
-              speaker: true,
-            },
             orderBy: (seg, { asc }) => [asc(seg.startTime)],
           },
         },
@@ -55,18 +56,68 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      // Get all speakers that have segments in this session
-      const speakerIds = [...new Set(session.segments.map((s) => s.speakerId))];
-      const sessionSpeakers =
-        speakerIds.length > 0
-          ? await ctx.db.query.speakers.findMany({
-              where: inArray(speakers.id, speakerIds),
-            })
-          : [];
+      // Get all project speakers (shown regardless of whether they have segments)
+      const projectSpeakersRaw = await ctx.db.query.speakers.findMany({
+        where: eq(speakers.projectId, session.projectId),
+        orderBy: (sp, { asc }) => [asc(sp.createdAt)],
+      });
+
+      // Add source to project segments
+      const projectSegments: SegmentWithSource[] = session.segments.map(
+        (s) => ({
+          ...s,
+          source: "project" as const,
+        }),
+      );
+
+      // Add source to project speakers
+      const projectSpeakers: SpeakerWithSource[] = projectSpeakersRaw.map(
+        (s) => ({
+          ...s,
+          source: "project" as const,
+        }),
+      );
+
+      // Extract local speakers/segments from diarization JSONB
+      const localSpeakersRaw = session.diarization?.speakers ?? [];
+      const localSegmentsRaw = session.diarization?.segments ?? [];
+
+      // Convert local speakers to SpeakerWithSource format
+      const localSpeakers: SpeakerWithSource[] = localSpeakersRaw.map((s) => ({
+        id: s.id,
+        projectId: session.projectId,
+        userId: session.userId,
+        name: s.label,
+        color: s.color,
+        createdAt: new Date(s.createdAt),
+        updatedAt: new Date(s.createdAt),
+        source: "local" as const,
+      }));
+
+      // Convert local segments to SegmentWithSource format
+      const localSegments: SegmentWithSource[] = localSegmentsRaw.map((s) => ({
+        id: s.id,
+        sessionId: session.id,
+        speakerId: s.speakerId,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        createdAt: new Date(s.createdAt),
+        updatedAt: new Date(s.createdAt),
+        source: "local" as const,
+      }));
+
+      // Flatten and sort segments by start time
+      const unifiedSegments = [...projectSegments, ...localSegments].sort(
+        (a, b) => a.startTime - b.startTime,
+      );
+
+      // Flatten speakers (project first, then local)
+      const unifiedSpeakers = [...projectSpeakers, ...localSpeakers];
 
       return {
         ...session,
-        speakers: sessionSpeakers,
+        segments: unifiedSegments,
+        speakers: unifiedSpeakers,
       };
     }),
 
@@ -249,7 +300,8 @@ export const clippingSessionRouter = createTRPCRouter({
       return session.diarization;
     }),
 
-  // Update one or many segments
+  // Update one or many segments (project segments only)
+  // Local segments cannot be modified directly - use promoteLocalSegments for speaker changes
   updateSegments: protectedProcedure
     .input(
       z.object({
@@ -283,6 +335,22 @@ export const clippingSessionRouter = createTRPCRouter({
         ? input.segmentIds
         : [input.segmentIds];
 
+      // Check if any segments are local (stored in diarization JSONB)
+      const localSegmentIds = new Set(
+        session.diarization?.segments?.map((s) => s.id) ?? [],
+      );
+      const localSegmentsInRequest = segmentIds.filter((id) =>
+        localSegmentIds.has(id),
+      );
+
+      if (localSegmentsInRequest.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Local segments cannot be modified directly. Use promoteLocalSegments to change speaker.",
+        });
+      }
+
       // Validate time constraints if times are being updated
       if (
         input.updates.startTime !== undefined &&
@@ -296,7 +364,7 @@ export const clippingSessionRouter = createTRPCRouter({
         }
       }
 
-      // Update segments in the table
+      // Update project segments in the table
       await ctx.db
         .update(segments)
         .set({
@@ -384,7 +452,8 @@ export const clippingSessionRouter = createTRPCRouter({
       };
     }),
 
-  // Split a segment at a specific time
+  // Split a segment at a specific time (project segments only)
+  // Local segments cannot be split
   splitSegment: protectedProcedure
     .input(
       z.object({
@@ -409,7 +478,19 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      // Get the segment to split
+      // Check if segment is local (stored in diarization JSONB)
+      const localSegmentIds = new Set(
+        session.diarization?.segments?.map((s) => s.id) ?? [],
+      );
+
+      if (localSegmentIds.has(input.segmentId)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Local segments cannot be split",
+        });
+      }
+
+      // Get the project segment to split
       const segment = await ctx.db.query.segments.findFirst({
         where: and(
           eq(segments.id, input.segmentId),
@@ -425,7 +506,10 @@ export const clippingSessionRouter = createTRPCRouter({
       }
 
       // Validate split time is within segment bounds
-      if (input.splitTime <= segment.startTime || input.splitTime >= segment.endTime) {
+      if (
+        input.splitTime <= segment.startTime ||
+        input.splitTime >= segment.endTime
+      ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Split time must be within segment bounds",
@@ -456,7 +540,8 @@ export const clippingSessionRouter = createTRPCRouter({
       };
     }),
 
-  // Delete segments
+  // Delete segments (project segments only)
+  // Local segments cannot be deleted
   deleteSegments: protectedProcedure
     .input(
       z.object({
@@ -480,7 +565,22 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      // Delete segments
+      // Check if any segments are local (stored in diarization JSONB)
+      const localSegmentIds = new Set(
+        session.diarization?.segments?.map((s) => s.id) ?? [],
+      );
+      const localSegmentsInRequest = input.segmentIds.filter((id) =>
+        localSegmentIds.has(id),
+      );
+
+      if (localSegmentsInRequest.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Local segments cannot be deleted",
+        });
+      }
+
+      // Delete project segments
       await ctx.db
         .delete(segments)
         .where(
@@ -510,7 +610,7 @@ export const clippingSessionRouter = createTRPCRouter({
           projectId: input.projectId,
           userId: ctx.session.user.id,
           name: input.name,
-          color: input.color,
+          color: input.color ?? generateSpeakerColor(),
         })
         .returning();
 
@@ -520,7 +620,7 @@ export const clippingSessionRouter = createTRPCRouter({
       };
     }),
 
-  // Update a speaker
+  // Update a project speaker (name and/or color)
   updateSpeaker: protectedProcedure
     .input(
       z.object({
@@ -530,7 +630,7 @@ export const clippingSessionRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Get speaker to verify ownership and check name
+      // Get speaker to verify ownership
       const speaker = await ctx.db.query.speakers.findFirst({
         where: and(
           eq(speakers.id, input.speakerId),
@@ -545,14 +645,6 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      // Block renaming SPEAKER_* speakers
-      if (input.name !== undefined && speaker.name.startsWith("SPEAKER_")) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Diarization speakers cannot be renamed",
-        });
-      }
-
       await ctx.db
         .update(speakers)
         .set({
@@ -564,7 +656,75 @@ export const clippingSessionRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  // Delete a speaker's segments from a session (not the speaker itself)
+  // Update a local speaker (stored in diarization JSONB)
+  updateLocalSpeaker: protectedProcedure
+    .input(
+      z.object({
+        sessionId: z.string().uuid(),
+        speakerId: z.string().uuid(),
+        name: z.string().min(1).max(100).optional(),
+        color: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const session = await ctx.db.query.clippingSessions.findFirst({
+        where: and(
+          eq(clippingSessions.id, input.sessionId),
+          eq(clippingSessions.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Clipping session not found",
+        });
+      }
+
+      if (!session.diarization?.speakers) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No local speakers in this session",
+        });
+      }
+
+      // Find and update the local speaker
+      const speakerIndex = session.diarization.speakers.findIndex(
+        (s) => s.id === input.speakerId,
+      );
+
+      if (speakerIndex === -1) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Local speaker not found",
+        });
+      }
+
+      // Create updated speakers array
+      const updatedSpeakers = [...session.diarization.speakers];
+      updatedSpeakers[speakerIndex] = {
+        ...updatedSpeakers[speakerIndex]!,
+        ...(input.name !== undefined && { label: input.name }),
+        ...(input.color !== undefined && { color: input.color }),
+      };
+
+      // Update session with modified diarization
+      await ctx.db
+        .update(clippingSessions)
+        .set({
+          diarization: {
+            ...session.diarization,
+            speakers: updatedSpeakers,
+          },
+        })
+        .where(eq(clippingSessions.id, input.sessionId));
+
+      return { success: true };
+    }),
+
+  // Delete a local speaker and their segments from a session
+  // Only works for local speakers (stored in diarization JSONB)
+  // Project speakers cannot be deleted from inside the clipping session
   deleteSpeakerFromSession: protectedProcedure
     .input(
       z.object({
@@ -588,17 +748,135 @@ export const clippingSessionRouter = createTRPCRouter({
         });
       }
 
-      // Delete all segments for this speaker in this session
+      // Check if speaker is local (stored in diarization JSONB)
+      const localSpeakerIds = new Set(
+        session.diarization?.speakers?.map((s) => s.id) ?? [],
+      );
+
+      if (!localSpeakerIds.has(input.speakerId)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Project speakers cannot be deleted from inside the clipping session",
+        });
+      }
+
+      // Remove speaker and their segments from JSONB
+      const updatedSpeakers = (session.diarization?.speakers ?? []).filter(
+        (s) => s.id !== input.speakerId,
+      );
+      const updatedSegments = (session.diarization?.segments ?? []).filter(
+        (s) => s.speakerId !== input.speakerId,
+      );
+
+      // Update session with modified diarization
       await ctx.db
-        .delete(segments)
-        .where(
-          and(
-            eq(segments.sessionId, input.sessionId),
-            eq(segments.speakerId, input.speakerId),
-          ),
-        );
+        .update(clippingSessions)
+        .set({
+          diarization: {
+            ...session.diarization!,
+            speakers: updatedSpeakers,
+            segments: updatedSegments,
+          },
+        })
+        .where(eq(clippingSessions.id, input.sessionId));
 
       return { success: true };
+    }),
+
+  // Promote local segments to project level with a new speaker
+  // This is used when changing a local segment's speaker to a project speaker
+  promoteLocalSegments: protectedProcedure
+    .input(
+      z.object({
+        sessionId: z.string().uuid(),
+        localSegmentIds: z.array(z.string().uuid()).min(1),
+        targetSpeakerId: z.string().uuid(), // Must be a project speaker
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify session ownership
+      const session = await ctx.db.query.clippingSessions.findFirst({
+        where: and(
+          eq(clippingSessions.id, input.sessionId),
+          eq(clippingSessions.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Clipping session not found",
+        });
+      }
+
+      // Validate target speaker exists in speakers table (project speaker)
+      const targetSpeaker = await ctx.db.query.speakers.findFirst({
+        where: and(
+          eq(speakers.id, input.targetSpeakerId),
+          eq(speakers.userId, ctx.session.user.id),
+        ),
+      });
+
+      if (!targetSpeaker) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Target speaker not found or not a project speaker",
+        });
+      }
+
+      // Find local segments in diarization JSONB
+      const localSegmentsMap = new Map(
+        (session.diarization?.segments ?? []).map((s) => [s.id, s]),
+      );
+      const localSegmentIdsSet = new Set(input.localSegmentIds);
+
+      // Validate all requested segments exist in local segments
+      const segmentsToPromote = input.localSegmentIds
+        .map((id) => localSegmentsMap.get(id))
+        .filter((s) => s !== undefined);
+
+      if (segmentsToPromote.length !== input.localSegmentIds.length) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "One or more segments are not local segments",
+        });
+      }
+
+      // Create new project segments in the segments table
+      const newProjectSegments = await ctx.db
+        .insert(segments)
+        .values(
+          segmentsToPromote.map((seg) => ({
+            sessionId: input.sessionId,
+            speakerId: input.targetSpeakerId,
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+          })),
+        )
+        .returning();
+
+      // Remove promoted segments from JSONB
+      const updatedSegments = (session.diarization?.segments ?? []).filter(
+        (s) => !localSegmentIdsSet.has(s.id),
+      );
+
+      // Update session with modified diarization
+      await ctx.db
+        .update(clippingSessions)
+        .set({
+          diarization: {
+            ...session.diarization!,
+            segments: updatedSegments,
+          },
+        })
+        .where(eq(clippingSessions.id, input.sessionId));
+
+      return {
+        success: true,
+        promotedCount: newProjectSegments.length,
+        newSegments: newProjectSegments,
+      };
     }),
 
   // Get all speakers for a project (for speaker picker)

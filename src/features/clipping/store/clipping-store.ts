@@ -1,7 +1,6 @@
 import { batch, type Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
-import { createSpeakerColorMap } from "~/lib/speaker-colors";
-import type { Segment, Speaker } from "~/server/db/schema";
+import type { SegmentWithSource, SpeakerWithSource } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
 import { setupMutationDefaults } from "./mutations";
@@ -10,23 +9,15 @@ import {
   createSelectionState,
   createTimelineState,
 } from "./slices";
-import type { PlaybackState } from "./slices/playback";
-import type { SelectionState } from "./slices/selection";
-import type { TimelineState } from "./slices/timeline";
-import type { PlaybackStateData } from "./slices/playback";
-import type { TimelineStateData } from "./slices/timeline";
-import type { SelectionStateData } from "./slices/selection";
+import type { PlaybackState, PlaybackStateData } from "./slices/playback";
+import type { SelectionState, SelectionStateData } from "./slices/selection";
+import type { TimelineState, TimelineStateData } from "./slices/timeline";
 
 export { TIMELINE_CONSTANTS } from "./constants";
 
 // ============================================================================
 // State Types
 // ============================================================================
-
-// Extended segment type with speaker info (returned by getById)
-export interface SegmentWithSpeaker extends Segment {
-  speaker: Speaker;
-}
 
 /**
  * Root-level state data (non-function properties).
@@ -63,17 +54,16 @@ const ROOT_DEFAULTS: Pick<
  */
 export type ClippingStoreInitialData = Pick<
   RootStateData,
-  | "sessionId"
-  | "fileId"
-  | "projectId"
-  | "segments"
-  | "speakers"
-  | "storageKey"
+  "sessionId" | "fileId" | "projectId" | "segments" | "speakers" | "storageKey"
 > &
-  Partial<Pick<RootStateData, "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId">> &
-  { playback?: Partial<PlaybackStateData> } &
-  { timeline?: Partial<TimelineStateData> } &
-  { selection?: Partial<SelectionStateData> };
+  Partial<
+    Pick<
+      RootStateData,
+      "selectedSpeakerId" | "selectedSegmentIds" | "activeSegmentId"
+    >
+  > & { playback?: Partial<PlaybackStateData> } & {
+    timeline?: Partial<TimelineStateData>;
+  } & { selection?: Partial<SelectionStateData> };
 
 // ============================================================================
 // Store Factory
@@ -99,16 +89,17 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     ...rootState,
 
     // Computed Values
+    // Note: uses .get() for speakerId to track changes when segments are reassigned
     segmentsBySpeaker: () =>
       $store.segments.reduce(
         (acc, $segment) => {
-          const segment = $segment.get();
-          const speakerId = segment.speakerId;
-          acc[speakerId] ??= [];
-          acc[speakerId].push(segment);
+          const speakerId = $segment.speakerId.get();
+          if (acc.has(speakerId)) acc.get(speakerId)?.push($segment);
+          else acc.set(speakerId, [$segment]);
+
           return acc;
         },
-        {} as Record<string, SegmentWithSpeaker[]>,
+        new Map() as Map<string, Observable<SegmentWithSource>[]>,
       ),
 
     // Actions
@@ -118,12 +109,10 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     },
 
     toggleSelectSegment: (segmentId: string) => {
-      const $selectedSegmentIds = $store.selectedSegmentIds;
-
-      if ($selectedSegmentIds.has(segmentId)) {
-        $selectedSegmentIds.delete(segmentId);
+      if ($store.selectedSegmentIds.has(segmentId)) {
+        $store.selectedSegmentIds.delete(segmentId);
       } else {
-        $selectedSegmentIds.add(segmentId);
+        $store.selectedSegmentIds.add(segmentId);
       }
 
       $store.activeSegmentId.set(null);
@@ -132,12 +121,11 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     selectAllSegments: () => {
       const selectedSpeakerId = $store.selectedSpeakerId.peek();
       if (!selectedSpeakerId) return;
-      const speakerSegments =
-        $store.segmentsBySpeaker.get()[selectedSpeakerId] ?? [];
 
-      const visibleSegmentIds = speakerSegments
-        .filter((s) => s.speakerId === selectedSpeakerId)
-        .map((s) => s.id);
+      const speakerSegments =
+        $store.segmentsBySpeaker.peek().get(selectedSpeakerId) ?? [];
+
+      const visibleSegmentIds = speakerSegments.map(($s) => $s.id.peek());
 
       $store.selectedSegmentIds.set(new Set(visibleSegmentIds));
       $store.activeSegmentId.set(null);
@@ -207,8 +195,8 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
 
     // Replace session data with server state (used when diarization completes)
     replaceSessionData: (
-      newSegments: SegmentWithSpeaker[],
-      newSpeakers: Speaker[],
+      newSegments: SegmentWithSource[],
+      newSpeakers: SpeakerWithSource[],
     ) => {
       batch(() => {
         $store.segments.set(newSegments);
@@ -221,11 +209,11 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     },
 
     // Speaker CRUD actions (optimistic updates handled by mutations.ts)
-    addSpeaker: (speaker: Speaker) => {
+    addSpeaker: (speaker: SpeakerWithSource) => {
       $store.speakers.push(speaker);
     },
 
-    updateSpeaker: (speakerId: string, updates: Partial<Speaker>) => {
+    updateSpeaker: (speakerId: string, updates: Partial<SpeakerWithSource>) => {
       const index = $store.speakers.peek().findIndex((s) => s.id === speakerId);
       if (index !== -1) {
         $store.speakers[index]?.assign(updates);
@@ -237,11 +225,6 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
       if (index !== -1) {
         $store.speakers.splice(index, 1);
       }
-    },
-
-    // Computed values
-    speakerColors: () => {
-      return createSpeakerColorMap($store.speakers.get());
     },
 
     // Playback state + actions
@@ -268,8 +251,8 @@ interface ClippingStoreState {
   fileId: string;
   projectId: string;
 
-  segments: SegmentWithSpeaker[];
-  speakers: Speaker[];
+  segments: SegmentWithSource[];
+  speakers: SpeakerWithSource[];
 
   selectedSpeakerId: string | null;
   selectedSegmentIds: Set<string>;
@@ -279,8 +262,7 @@ interface ClippingStoreState {
   storageKey: string;
 
   // Computed values
-  segmentsBySpeaker: () => Record<string, SegmentWithSpeaker[]>;
-  speakerColors: () => Record<string, string>;
+  segmentsBySpeaker: () => Map<string, Observable<SegmentWithSource>[]>;
 
   // Speaker selection
   selectSpeaker: (speakerId: string | null) => void;
@@ -295,13 +277,16 @@ interface ClippingStoreState {
 
   // Replace session data with server state (for diarization completion)
   replaceSessionData: (
-    segments: SegmentWithSpeaker[],
-    speakers: Speaker[],
+    segments: SegmentWithSource[],
+    speakers: SpeakerWithSource[],
   ) => void;
 
   // Speaker CRUD
-  addSpeaker: (speaker: Speaker) => void;
-  updateSpeaker: (speakerId: string, updates: Partial<Speaker>) => void;
+  addSpeaker: (speaker: SpeakerWithSource) => void;
+  updateSpeaker: (
+    speakerId: string,
+    updates: Partial<SpeakerWithSource>,
+  ) => void;
   removeSpeaker: (speakerId: string) => void;
 
   // State slices

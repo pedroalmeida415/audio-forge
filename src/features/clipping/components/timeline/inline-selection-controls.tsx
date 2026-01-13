@@ -54,7 +54,6 @@ export function InlineSelectionControls() {
   const mode = useSelector(() => $store.selection.mode.get());
   const range = useSelector(() => $store.selection.getSelectionRange.get());
   const speakers = useSelector(() => $store.speakers.get());
-  const speakerColors = useSelector(() => $store.speakerColors.get());
 
   // Get selected speaker: selection's speaker or fall back to currently selected speaker
   const selectedSpeakerId = useSelector(() => {
@@ -152,7 +151,7 @@ export function InlineSelectionControls() {
               <div className="flex items-center gap-2">
                 <div
                   className="h-3 w-3 shrink-0 rounded-full"
-                  style={{ backgroundColor: speakerColors[selectedSpeakerId] }}
+                  style={{ backgroundColor: selectedSpeaker.color }}
                 />
                 <span className="truncate">{selectedSpeaker.name}</span>
               </div>
@@ -194,7 +193,7 @@ export function InlineSelectionControls() {
                   >
                     <div
                       className="mr-2 h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: speakerColors[speaker.id] }}
+                      style={{ backgroundColor: speaker.color }}
                     />
                     <span>{speaker.name}</span>
                     <Check
