@@ -553,13 +553,13 @@ After POC validated, clean up code and add missing features.
   - _Requirements: FR-16, AC-9.7, AC-9.8, AC-9.9, AC-9.10, AC-9.11_
   - _Design: Export Flow_
 
-- [ ] 2.5 [VERIFY] Quality checkpoint: export feature
+- [x] 2.5 [VERIFY] Quality checkpoint: export feature
   - **Do**: Run lint check on export files
   - **Verify**: `bun run biome:check -- "src/lib/export" && bun run biome:check -- "src/app/api/export"` exits 0
   - **Done when**: No lint errors, no type errors
   - **Commit**: `chore(export): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.6 Create processing worker for clips
+- [x] 2.6 Create processing worker for clips
   - **Do**:
     1. Create processing-worker.ts following waveform-worker pattern
     2. Process clip-processing queue jobs
