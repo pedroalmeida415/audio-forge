@@ -3,8 +3,8 @@
 import { useSelector } from "@legendapp/state/react";
 import { ListFilter } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
-import { DEFAULT_FILTERS, type SpeakerFilters } from "../store/speaker-store";
 import { useSpeakerStore } from "../context/store-context";
+import { DEFAULT_FILTERS, type SpeakerFilters } from "../store/speaker-store";
 import { SegmentUnitCard } from "./segment-unit-card";
 
 /**

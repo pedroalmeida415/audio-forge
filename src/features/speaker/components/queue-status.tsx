@@ -21,8 +21,6 @@ interface QueueCountProps {
  * Displays waiting and active counts for a single queue type.
  */
 function QueueCount({ label, waiting, active }: QueueCountProps) {
-  const hasActivity = waiting > 0 || active > 0;
-
   return (
     <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
       <div className="flex items-center gap-2">

@@ -45,11 +45,11 @@ function HistogramChart({
     <div className="flex flex-col gap-2">
       <span className="font-medium text-muted-foreground text-xs">{title}</span>
       <div className="flex h-24 items-end gap-0.5">
-        {buckets.map((bucket, index) => {
+        {buckets.map((bucket) => {
           const heightPercent = (bucket.count / maxCount) * 100;
           return (
             <div
-              key={index}
+              key={bucket.label}
               className="group relative flex-1"
               title={`${bucket.label}: ${bucket.count}`}
             >
@@ -62,7 +62,7 @@ function HistogramChart({
         })}
       </div>
       {/* X-axis labels - show first, middle, and last */}
-      <div className="flex justify-between text-muted-foreground text-[10px]">
+      <div className="flex justify-between text-[10px] text-muted-foreground">
         <span>{buckets[0]?.label.split("-")[0] ?? ""}</span>
         <span>{buckets[buckets.length - 1]?.label.split("-")[1] ?? ""}</span>
       </div>
@@ -147,7 +147,10 @@ export function StatisticsSection() {
       {/* Stat cards grid */}
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Total Segments" value={totalSegments} />
-        <StatCard label="Total Duration" value={formatTotalDuration(totalDuration)} />
+        <StatCard
+          label="Total Duration"
+          value={formatTotalDuration(totalDuration)}
+        />
         <StatCard
           label="Avg MOS"
           value={averageMos !== null ? averageMos.toFixed(2) : "-"}
