@@ -420,7 +420,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-20, AC-6.1, AC-6.2, AC-6.3, AC-7.1, AC-7.2_
   - _Design: Processing Actions Section_
 
-- [ ] 1.36 Create queue status section
+- [x] 1.36 Create queue status section
   - **Do**:
     1. Create queue-status.tsx
     2. Poll getQueueStatus every 5 seconds
