@@ -290,7 +290,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: AC-10.4, AC-10.5_
   - _Design: Speaker Page Route_
 
-- [ ] 1.26 Create speaker header component
+- [x] 1.26 Create speaker header component
   - **Do**:
     1. Create speaker-header.tsx
     2. Display back button (link to project), speaker name, export button
