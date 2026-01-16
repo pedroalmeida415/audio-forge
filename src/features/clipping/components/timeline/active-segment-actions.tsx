@@ -238,7 +238,9 @@ export function ActiveSegmentActions() {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {isLocalSegment ? "Local segments cannot be deleted" : "Delete segment"}
+          {isLocalSegment
+            ? "Local segments cannot be deleted"
+            : "Delete segment"}
         </TooltipContent>
       </Tooltip>
 

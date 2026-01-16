@@ -125,7 +125,10 @@ export function InlineSelectionControls() {
   );
 
   return (
-    <div data-testid="selection-controls" className="flex items-center gap-2 border-l pl-3">
+    <div
+      data-testid="selection-controls"
+      className="flex items-center gap-2 border-l pl-3"
+    >
       {/* Time range display */}
       <div
         data-testid="selection-time-range"

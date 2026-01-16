@@ -1,8 +1,9 @@
+import type { Readable } from "node:stream";
 import archiver from "archiver";
 
 export interface ZipFileEntry {
   name: string;
-  data: Buffer | NodeJS.ReadableStream;
+  data: Buffer | Readable;
 }
 
 export interface ZipStreamResult {

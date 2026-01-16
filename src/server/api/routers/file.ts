@@ -360,10 +360,7 @@ export const fileRouter = createTRPCRouter({
             }),
           ),
         ).catch((error) => {
-          console.error(
-            "[uploadVideo] Failed to enqueue waveform job:",
-            error,
-          );
+          console.error("[uploadVideo] Failed to enqueue waveform job:", error);
         });
 
         return {
@@ -419,7 +416,7 @@ export const fileRouter = createTRPCRouter({
       const url = await runEffect(
         Effect.flatMap(StorageService, (storage) =>
           storage.generatePresignedDownloadUrl({
-            key: file.waveformStorageKey!,
+            key: file.waveformStorageKey ?? "",
             expiresIn: 3600, // 1 hour
           }),
         ),

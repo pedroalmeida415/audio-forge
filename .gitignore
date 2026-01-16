@@ -49,3 +49,4 @@ yarn-error.log*
 mockups/
 *storybook.log
 storybook-static
+specs/.current-spec

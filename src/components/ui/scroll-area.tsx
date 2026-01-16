@@ -17,14 +17,14 @@ const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           orientation === "vertical" && "overflow-y-auto overflow-x-hidden",
           orientation === "horizontal" && "overflow-x-auto overflow-y-hidden",
           orientation === "both" && "overflow-auto",
-          className
+          className,
         )}
         {...props}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 ScrollArea.displayName = "ScrollArea";
 

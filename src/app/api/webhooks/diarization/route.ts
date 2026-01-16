@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       const localSegments: LocalSegment[] = payload.output.diarization.map(
         (seg) => ({
           id: uuidv4(),
-          speakerId: speakerMap.get(seg.speaker)!.id,
+          speakerId: speakerMap.get(seg.speaker)?.id ?? "",
           startTime: seg.start,
           endTime: seg.end,
           createdAt: now,

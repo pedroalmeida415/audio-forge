@@ -9,7 +9,6 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type WaveformData from "waveform-data";
 
-import { Skeleton } from "~/components/ui/skeleton";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import { useWaveformData } from "~/features/clipping/hooks/use-waveform-data";
 import {

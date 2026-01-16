@@ -73,9 +73,12 @@ export function SegmentsTable() {
 
   // Local UI state (not shared across components)
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data, setData] = useState<Observable<Segment>[]>(
-    $store.segmentsBySpeaker.get().get($store.selectedSpeakerId.get()!) ?? [],
-  );
+  const [data, setData] = useState<Observable<Segment>[]>(() => {
+    const speakerId = $store.selectedSpeakerId.get();
+    return speakerId
+      ? ($store.segmentsBySpeaker.get().get(speakerId) ?? [])
+      : [];
+  });
 
   // Ref for scrollable table container
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -94,10 +97,12 @@ export function SegmentsTable() {
 
   // Subscribe to segment changes outside of render cycle and after component mounts
   useObserveEffect(() => {
-    const data =
-      $store.segmentsBySpeaker.get().get($store.selectedSpeakerId.get()!) ?? [];
+    const speakerId = $store.selectedSpeakerId.get();
+    const segmentData = speakerId
+      ? ($store.segmentsBySpeaker.get().get(speakerId) ?? [])
+      : [];
 
-    setData(data);
+    setData(segmentData);
   });
 
   // Scroll to active segment when it changes (bi-directional navigation)

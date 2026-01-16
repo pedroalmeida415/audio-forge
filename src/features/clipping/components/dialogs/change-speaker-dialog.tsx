@@ -88,13 +88,17 @@ export function ChangeSpeakerDialog({
             {isLocalSpeaker ? (
               <>
                 Select a project speaker to assign to{" "}
-                {segmentCount === 1 ? "this segment" : `${segmentCount} segments`}
+                {segmentCount === 1
+                  ? "this segment"
+                  : `${segmentCount} segments`}
                 . Local segments will be promoted to project level.
               </>
             ) : (
               <>
                 Select a speaker to assign to{" "}
-                {segmentCount === 1 ? "this segment" : `${segmentCount} segments`}
+                {segmentCount === 1
+                  ? "this segment"
+                  : `${segmentCount} segments`}
               </>
             )}
           </DialogDescription>
@@ -121,7 +125,7 @@ export function ChangeSpeakerDialog({
             <button
               type="button"
               onClick={() => setIsCreateSpeakerOpen(true)}
-              className="flex items-center gap-3 rounded-lg border border-dashed border-border/50 p-3 text-left text-muted-foreground transition-colors hover:border-border hover:bg-muted/50 hover:text-foreground"
+              className="flex items-center gap-3 rounded-lg border border-border/50 border-dashed p-3 text-left text-muted-foreground transition-colors hover:border-border hover:bg-muted/50 hover:text-foreground"
             >
               <Plus className="h-4 w-4 shrink-0" />
               <span className="font-medium">Create new speaker...</span>

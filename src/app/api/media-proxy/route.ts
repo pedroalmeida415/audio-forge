@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  streamAudioSlice,
+  streamFullAudio,
+} from "~/lib/media-proxy/stream-audio";
 import { auth } from "~/server/better-auth";
 import { getSourceCache } from "~/services/media-proxy/source-cache";
-import { streamAudioSlice, streamFullAudio } from "~/lib/media-proxy/stream-audio";
 
 /**
  * Media Proxy endpoint for streaming audio slices
@@ -46,8 +49,16 @@ export async function GET(request: NextRequest) {
       const startMs = Number(startMsParam);
       const endMs = Number(endMsParam);
 
-      if (Number.isNaN(startMs) || Number.isNaN(endMs) || startMs < 0 || endMs <= startMs) {
-        return NextResponse.json({ error: "Invalid time range" }, { status: 400 });
+      if (
+        Number.isNaN(startMs) ||
+        Number.isNaN(endMs) ||
+        startMs < 0 ||
+        endMs <= startMs
+      ) {
+        return NextResponse.json(
+          { error: "Invalid time range" },
+          { status: 400 },
+        );
       }
 
       return streamAudioSlice({ localPath, startMs, endMs });
@@ -55,7 +66,6 @@ export async function GET(request: NextRequest) {
 
     // Full file mode - stream entire file
     return streamFullAudio({ localPath });
-
   } catch (error) {
     console.error("[media-proxy] Error:", error);
 
@@ -65,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

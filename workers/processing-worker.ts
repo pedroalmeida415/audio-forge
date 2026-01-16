@@ -169,6 +169,7 @@ async function processClipJob(
   if (!file?.storageKey) {
     throw new Error(`Source file not found for segment: ${segmentId}`);
   }
+  const sourceStorageKey = file.storageKey;
 
   // Create or get existing clip record
   let clip = segment.clip;
@@ -184,8 +185,10 @@ async function processClipJob(
       })
       .returning();
 
-    clip = newClip;
-    console.log(`[ProcessingWorker] Created new clip record: ${clip.id}`);
+    clip = newClip ?? null;
+    if (clip) {
+      console.log(`[ProcessingWorker] Created new clip record: ${clip.id}`);
+    }
   } else if (clip) {
     // Update existing clip to processing state
     await db
@@ -214,14 +217,14 @@ async function processClipJob(
     if (operations.includes("generate") || isNewClip) {
       // Generate clip from source audio via ClipGenerationService
       console.log(
-        `[ProcessingWorker] Generating clip from ${file.storageKey} (${startMs}ms - ${endMs}ms)`,
+        `[ProcessingWorker] Generating clip from ${sourceStorageKey} (${startMs}ms - ${endMs}ms)`,
       );
 
       const generateResult = await Effect.runPromise(
         pipe(
           Effect.flatMap(ClipGenerationService, (service) =>
             service.generateClip({
-              sourceStorageKey: file.storageKey,
+              sourceStorageKey,
               startMs,
               endMs,
               outputFormat: "flac",

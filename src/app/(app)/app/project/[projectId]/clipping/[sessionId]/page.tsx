@@ -35,7 +35,7 @@ export default function ClippingWorkspacePage({
         projectId: session.projectId,
         segments: session.segments ?? [],
         speakers: session.speakers ?? [],
-        storageKey: session.file.storageKey!,
+        storageKey: session.file.storageKey ?? "",
         playback: { duration: session.file.duration ?? 0 },
       }}
     >

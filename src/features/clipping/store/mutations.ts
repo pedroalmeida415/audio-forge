@@ -367,8 +367,11 @@ export function setupMutationDefaults(
       const speakerIndex = speakers.findIndex(
         (s) => s.id === variables.speakerId,
       );
+      const speakerAtIndex = speakers[speakerIndex];
       const removedSpeaker =
-        speakerIndex !== -1 ? { ...speakers[speakerIndex]! } : undefined;
+        speakerIndex !== -1 && speakerAtIndex
+          ? { ...speakerAtIndex }
+          : undefined;
 
       // Remove segments for this speaker from the store
       const segments = $store.segments.peek();
@@ -470,7 +473,9 @@ export function setupMutationDefaults(
 
       // Replace temp IDs with real IDs from server
       for (let i = 0; i < context.tempSegments.length; i++) {
-        const { tempId } = context.tempSegments[i]!;
+        const tempSegment = context.tempSegments[i];
+        if (!tempSegment) continue;
+        const { tempId } = tempSegment;
         const realSegment = result.newSegments[i];
         if (!realSegment) continue;
 

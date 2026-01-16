@@ -214,7 +214,7 @@ export const clippingSessionRouter = createTRPCRouter({
       const audioUrl = await runEffect(
         Effect.flatMap(StorageService, (storage) =>
           storage.generatePresignedDownloadUrl({
-            key: session.file.storageKey!,
+            key: session.file.storageKey ?? "",
             expiresIn: 7200, // 2 hours for processing
           }),
         ),
@@ -284,7 +284,7 @@ export const clippingSessionRouter = createTRPCRouter({
       ) {
         const statusResult = await runEffect(
           Effect.flatMap(DiarizationService, (service) =>
-            service.getJobStatus(session.diarization!.jobId),
+            service.getJobStatus(session.diarization?.jobId ?? ""),
           ),
         );
 
@@ -706,11 +706,14 @@ export const clippingSessionRouter = createTRPCRouter({
 
       // Create updated speakers array
       const updatedSpeakers = [...session.diarization.speakers];
-      updatedSpeakers[speakerIndex] = {
-        ...updatedSpeakers[speakerIndex]!,
-        ...(input.name !== undefined && { label: input.name }),
-        ...(input.color !== undefined && { color: input.color }),
-      };
+      const existingSpeaker = updatedSpeakers[speakerIndex];
+      if (existingSpeaker) {
+        updatedSpeakers[speakerIndex] = {
+          ...existingSpeaker,
+          ...(input.name !== undefined && { label: input.name }),
+          ...(input.color !== undefined && { color: input.color }),
+        };
+      }
 
       // Update session with modified diarization
       await ctx.db
@@ -774,16 +777,18 @@ export const clippingSessionRouter = createTRPCRouter({
       );
 
       // Update session with modified diarization
-      await ctx.db
-        .update(clippingSessions)
-        .set({
-          diarization: {
-            ...session.diarization!,
-            speakers: updatedSpeakers,
-            segments: updatedSegments,
-          },
-        })
-        .where(eq(clippingSessions.id, input.sessionId));
+      if (session.diarization) {
+        await ctx.db
+          .update(clippingSessions)
+          .set({
+            diarization: {
+              ...session.diarization,
+              speakers: updatedSpeakers,
+              segments: updatedSegments,
+            },
+          })
+          .where(eq(clippingSessions.id, input.sessionId));
+      }
 
       return { success: true };
     }),
@@ -866,15 +871,17 @@ export const clippingSessionRouter = createTRPCRouter({
       );
 
       // Update session with modified diarization
-      await ctx.db
-        .update(clippingSessions)
-        .set({
-          diarization: {
-            ...session.diarization!,
-            segments: updatedSegments,
-          },
-        })
-        .where(eq(clippingSessions.id, input.sessionId));
+      if (session.diarization) {
+        await ctx.db
+          .update(clippingSessions)
+          .set({
+            diarization: {
+              ...session.diarization,
+              segments: updatedSegments,
+            },
+          })
+          .where(eq(clippingSessions.id, input.sessionId));
+      }
 
       return {
         success: true,

@@ -652,7 +652,7 @@ After POC validated, clean up code and add missing features.
   - **Commit**: `test(api): add integration tests for speaker router`
   - _Design: Test Strategy - Integration Tests_
 
-- [ ] 3.4 [VERIFY] Quality checkpoint: tests
+- [x] 3.4 [VERIFY] Quality checkpoint: tests
   - **Do**: Run all tests
   - **Verify**: `bun test` exits 0
   - **Done when**: All tests pass
@@ -660,7 +660,7 @@ After POC validated, clean up code and add missing features.
 
 ## Phase 4: Quality Gates
 
-- [ ] 4.1 [VERIFY] Full local CI: lint, type check, test, build
+- [x] 4.1 [VERIFY] Full local CI: lint, type check, test, build
   - **Do**: Run complete local CI suite
   - **Verify**: All commands pass:
     - `bun run biome:check -- "src"` (lint)

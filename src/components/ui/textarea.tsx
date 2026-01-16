@@ -12,7 +12,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
         "focus:border-primary/50 focus:shadow-[0_0_15px_rgba(245,166,35,0.1)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "resize-none",
-        className
+        className,
       )}
       data-slot="textarea"
       {...props}

@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { Readable } from "node:stream";
 
 interface StreamAudioOptions {
   localPath: string;
@@ -27,13 +26,20 @@ export function streamAudioSlice(options: StreamAudioOptions): Response {
   // FFmpeg args for fMP4 streaming
   // -ss before -i for fast seeking (input seeking)
   const args = [
-    "-ss", startSec,
-    "-i", localPath,
-    "-t", durationSec,
-    "-c:a", "aac",
-    "-b:a", bitrate,
-    "-f", "mp4",
-    "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+    "-ss",
+    startSec,
+    "-i",
+    localPath,
+    "-t",
+    durationSec,
+    "-c:a",
+    "aac",
+    "-b:a",
+    bitrate,
+    "-f",
+    "mp4",
+    "-movflags",
+    "frag_keyframe+empty_moov+default_base_moof",
     "-", // Output to stdout
   ];
 
@@ -100,11 +106,16 @@ export function streamFullAudio(options: {
   const { localPath, bitrate = "128k" } = options;
 
   const args = [
-    "-i", localPath,
-    "-c:a", "aac",
-    "-b:a", bitrate,
-    "-f", "mp4",
-    "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+    "-i",
+    localPath,
+    "-c:a",
+    "aac",
+    "-b:a",
+    bitrate,
+    "-f",
+    "mp4",
+    "-movflags",
+    "frag_keyframe+empty_moov+default_base_moof",
     "-",
   ];
 

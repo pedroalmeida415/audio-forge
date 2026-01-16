@@ -27,9 +27,9 @@ export function KeyboardShortcutsSection() {
           >
             <span className="text-muted-foreground">{shortcut.label}</span>
             <div className="flex gap-1">
-              {shortcut.keys.map((key, idx) => (
+              {shortcut.keys.map((key) => (
                 <kbd
-                  key={idx}
+                  key={key}
                   className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
                 >
                   {key}

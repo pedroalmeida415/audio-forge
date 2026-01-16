@@ -19,7 +19,7 @@ function Slider({
     <SliderPrimitive.Root
       className={cn(
         "relative flex w-full touch-none select-none items-center",
-        className
+        className,
       )}
       data-slot="slider"
       defaultValue={defaultValue}
@@ -38,7 +38,7 @@ function Slider({
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             "disabled:pointer-events-none disabled:opacity-50",
             "hover:border-primary hover:shadow-[0_0_12px_rgba(245,166,35,0.4)]",
-            "focus:shadow-[0_0_12px_rgba(245,166,35,0.5)]"
+            "focus:shadow-[0_0_12px_rgba(245,166,35,0.5)]",
           )}
           // biome-ignore lint/suspicious/noArrayIndexKey: Slider thumbs are stable by index
           key={index}

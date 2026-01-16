@@ -145,7 +145,7 @@ export function ExportModal({
 
           {/* Audio Format */}
           <div className="grid grid-cols-2 items-center gap-4">
-            <label htmlFor="format" className="text-sm font-medium">
+            <label htmlFor="format" className="font-medium text-sm">
               Audio Format
             </label>
             <Select value={config.format} onValueChange={handleFormatChange}>
@@ -162,7 +162,7 @@ export function ExportModal({
 
           {/* Sample Rate */}
           <div className="grid grid-cols-2 items-center gap-4">
-            <label htmlFor="sampleRate" className="text-sm font-medium">
+            <label htmlFor="sampleRate" className="font-medium text-sm">
               Sample Rate
             </label>
             <Select
@@ -185,7 +185,7 @@ export function ExportModal({
           {/* Bit Depth - Only for WAV */}
           {config.format === "wav" && (
             <div className="grid grid-cols-2 items-center gap-4">
-              <label htmlFor="bitDepth" className="text-sm font-medium">
+              <label htmlFor="bitDepth" className="font-medium text-sm">
                 Bit Depth
               </label>
               <Select
@@ -205,7 +205,7 @@ export function ExportModal({
 
           {/* Channels */}
           <div className="grid grid-cols-2 items-center gap-4">
-            <label htmlFor="channels" className="text-sm font-medium">
+            <label htmlFor="channels" className="font-medium text-sm">
               Channels
             </label>
             <Select

@@ -19,7 +19,7 @@ function Checkbox({
         "data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
         "data-[state=checked]:shadow-[0_0_10px_rgba(245,166,35,0.3)]",
         "hover:border-primary hover:shadow-[0_0_8px_rgba(245,166,35,0.2)]",
-        className
+        className,
       )}
       data-slot="checkbox"
       {...props}

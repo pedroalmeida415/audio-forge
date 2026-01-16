@@ -58,25 +58,28 @@ const spyMethods = {
  * procedureSpy.getCallsFor("file.getWaveformUrl")
  * ```
  */
-export const procedureSpy: ProcedureSpy = new Proxy(spyMethods as ProcedureSpy, {
-  get(target, prop) {
-    // Return methods if accessing known spy methods
-    if (prop in target) {
-      return target[prop as keyof typeof spyMethods];
-    }
+export const procedureSpy: ProcedureSpy = new Proxy(
+  spyMethods as ProcedureSpy,
+  {
+    get(target, prop) {
+      // Return methods if accessing known spy methods
+      if (prop in target) {
+        return target[prop as keyof typeof spyMethods];
+      }
 
-    // Otherwise treat as procedure path and return accessor
-    const path = prop as AppProcedurePath;
-    return {
-      get wasCalled() {
-        return calls.some((c) => c.path === path);
-      },
-      get calls() {
-        return calls.filter((c) => c.path === path);
-      },
-    };
+      // Otherwise treat as procedure path and return accessor
+      const path = prop as AppProcedurePath;
+      return {
+        get wasCalled() {
+          return calls.some((c) => c.path === path);
+        },
+        get calls() {
+          return calls.filter((c) => c.path === path);
+        },
+      };
+    },
   },
-});
+);
 
 /**
  * tRPC link that records all procedure calls for test assertions.

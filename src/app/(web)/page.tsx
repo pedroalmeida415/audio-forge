@@ -16,7 +16,10 @@ export default function WebPage() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">
       <h1 className="font-bold text-2xl">Audio Forge</h1>
       <Button onClick={handleGitHubLogin}>Sign in with GitHub</Button>
-      <Link className="text-muted-foreground text-sm hover:underline" href="/app">
+      <Link
+        className="text-muted-foreground text-sm hover:underline"
+        href="/app"
+      >
         Go to App
       </Link>
     </div>

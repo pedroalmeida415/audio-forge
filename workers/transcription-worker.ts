@@ -166,6 +166,7 @@ async function processTranscriptionJob(
   if (!file?.storageKey) {
     throw new Error(`Source file not found for segment: ${segmentId}`);
   }
+  const sourceStorageKey = file.storageKey;
 
   const tempDir = mkdtempSync(join(tmpdir(), `transcription-${segmentId}-`));
 
@@ -200,7 +201,7 @@ async function processTranscriptionJob(
         pipe(
           Effect.flatMap(ClipGenerationService, (service) =>
             service.generateClip({
-              sourceStorageKey: file.storageKey,
+              sourceStorageKey,
               startMs,
               endMs,
               outputFormat: "flac",
@@ -227,7 +228,13 @@ async function processTranscriptionJob(
               status: "completed",
             })
             .returning();
-          clip = newClip;
+          clip = newClip ?? null;
+        }
+
+        if (!clip) {
+          throw new Error(
+            `Failed to create clip record for segment: ${segmentId}`,
+          );
         }
 
         // Upload clip to R2
