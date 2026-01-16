@@ -257,13 +257,13 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(speaker): create store context provider`
   - _Design: SpeakerPageStore_
 
-- [ ] 1.23 [VERIFY] Quality checkpoint: store layer
+- [x] 1.23 [VERIFY] Quality checkpoint: store layer
   - **Do**: Run lint check on store files
   - **Verify**: `bun run biome:check -- "src/features/speaker"` exits 0
   - **Done when**: No lint errors, no type errors
   - **Commit**: `chore(speaker): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 1.24 Create speaker page route with data fetching
+- [x] 1.24 Create speaker page route with data fetching
   - **Do**:
     1. Create page.tsx with server component
     2. Fetch speaker via tRPC prefetch or server-side call
