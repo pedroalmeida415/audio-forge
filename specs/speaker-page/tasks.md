@@ -604,7 +604,7 @@ After POC validated, clean up code and add missing features.
   - **Done when**: No lint errors, no type errors
   - **Commit**: `chore(workers): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 2.10 Add link to speaker page from project page
+- [x] 2.10 Add link to speaker page from project page
   - **Do**:
     1. Find speaker cards/list on project page
     2. Add navigation link to `/app/project/{projectId}/speaker/{speakerId}`
