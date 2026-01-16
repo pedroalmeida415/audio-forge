@@ -302,7 +302,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: AC-10.2, AC-10.3_
   - _Design: Speaker Header_
 
-- [ ] 1.27 [VERIFY] Quality checkpoint: page components
+- [x] 1.27 [VERIFY] Quality checkpoint: page components
   - **Do**: Run lint check on page and component files
   - **Verify**: `bun run biome:check -- "src/app/(app)/app/project/[projectId]/speaker" && bun run biome:check -- "src/features/speaker/components"` exits 0
   - **Done when**: No lint errors, no type errors
@@ -310,7 +310,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 ### Speaker Page UI - Audio Players
 
-- [ ] 1.28 Create segment audio player with lazy loading
+- [x] 1.28 Create segment audio player with lazy loading
   - **Do**:
     1. Create segment-audio-player.tsx
     2. On first play, fetch blob from media-proxy with storageKey, startMs, endMs
