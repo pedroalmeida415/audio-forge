@@ -58,7 +58,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-9_
   - _Design: Service Interfaces - TranscriptionService_
 
-- [ ] 1.5 Create ClipGenerationService interface with mock implementation
+- [x] 1.5 Create ClipGenerationService interface with mock implementation
   - **Do**:
     1. Create service file with GenerateClipParams, GenerateClipResult interfaces
     2. Define ClipGenerationService using Context.Tag pattern
