@@ -3,9 +3,9 @@
 import { FileAudio2, Trash2 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import type { SegmentWithClip } from "../store/speaker-store";
 import { ClipAudioPlayer } from "./clip-audio-player";
 import { SegmentAudioPlayer } from "./segment-audio-player";
-import type { SegmentWithClip } from "../store/speaker-store";
 
 interface SegmentUnitCardProps {
   segment: SegmentWithClip;
@@ -57,7 +57,7 @@ export function SegmentUnitCard({
 
         {/* Segment audio player */}
         <div className="flex flex-1 flex-col gap-1">
-          <span className="text-muted-foreground text-xs font-medium">
+          <span className="font-medium text-muted-foreground text-xs">
             Segment
           </span>
           <SegmentAudioPlayer
@@ -73,7 +73,7 @@ export function SegmentUnitCard({
 
         {/* Clip audio player or "No clip" indicator */}
         <div className="flex flex-1 flex-col gap-1">
-          <span className="text-muted-foreground text-xs font-medium">
+          <span className="font-medium text-muted-foreground text-xs">
             Clip
           </span>
           {hasClip && segment.clip ? (
@@ -94,18 +94,24 @@ export function SegmentUnitCard({
 
         {/* Duration label */}
         <div className="flex flex-col items-end gap-1">
-          <span className="text-muted-foreground text-xs font-medium">
+          <span className="font-medium text-muted-foreground text-xs">
             Duration
           </span>
-          <span className="font-mono text-sm">{formatDuration(durationMs)}</span>
+          <span className="font-mono text-sm">
+            {formatDuration(durationMs)}
+          </span>
         </div>
 
         {/* Delete clip button (only shown if clip exists) */}
-        {hasClip && segment.clip && (
+        {segment.clip && (
           <Button
             size="icon-sm"
             variant="ghost"
-            onClick={() => onDeleteClip(segment.clip!.id)}
+            onClick={() => {
+              if (segment.clip) {
+                onDeleteClip(segment.clip.id);
+              }
+            }}
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             aria-label="Delete clip"
           >
@@ -115,7 +121,7 @@ export function SegmentUnitCard({
       </div>
 
       {/* Transcription row */}
-      <div className="mt-3 border-t border-border pt-3">
+      <div className="mt-3 border-border border-t pt-3">
         {segment.transcription ? (
           <p className="text-sm leading-relaxed">{segment.transcription}</p>
         ) : (

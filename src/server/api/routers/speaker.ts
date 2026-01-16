@@ -364,7 +364,7 @@ export const speakerRouter = createTRPCRouter({
    */
   getClipPresignedUrl: protectedProcedure
     .input(z.object({ clipId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       // 1. Get the clip with ownership info
       const clip = await ctx.db.query.clips.findFirst({
         where: eq(clips.id, input.clipId),
