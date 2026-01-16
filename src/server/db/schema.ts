@@ -167,6 +167,9 @@ export const segments = pgTable(
     startTime: doublePrecision("start_time").notNull(),
     endTime: doublePrecision("end_time").notNull(),
 
+    // Optional transcription text for the segment
+    transcription: text("transcription"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

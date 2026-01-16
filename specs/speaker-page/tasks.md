@@ -13,7 +13,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 ### Database Layer
 
-- [ ] 1.1 Add transcription column to segments table
+- [x] 1.1 Add transcription column to segments table
   - **Do**: Add nullable `transcription` TEXT column to segments table in schema.ts
   - **Files**: `src/server/db/schema.ts`
   - **Done when**: Schema has transcription column, type exports include it
