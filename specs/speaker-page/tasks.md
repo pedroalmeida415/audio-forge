@@ -573,7 +573,7 @@ After POC validated, clean up code and add missing features.
   - _Requirements: AC-7.3, AC-7.5_
   - _Design: Workers - processing-worker.ts_
 
-- [ ] 2.7 Create transcription worker
+- [x] 2.7 Create transcription worker
   - **Do**:
     1. Create transcription-worker.ts following waveform-worker pattern
     2. Process transcription queue jobs
