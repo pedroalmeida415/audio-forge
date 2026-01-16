@@ -159,7 +159,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-3, AC-1.1, AC-1.5_
   - _Design: tRPC Router - getWithSegments_
 
-- [ ] 1.14 Add updateTranscription mutation to speaker router
+- [x] 1.14 Add updateTranscription mutation to speaker router
   - **Do**:
     1. Add updateTranscription procedure: input segmentId + transcription text
     2. Verify ownership via segment -> speaker -> project -> user chain

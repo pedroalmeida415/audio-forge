@@ -102,4 +102,54 @@ export const speakerRouter = createTRPCRouter({
         segments: segmentsWithClips,
       };
     }),
+
+  /**
+   * Update segment transcription
+   *
+   * Updates the transcription text for a segment after verifying ownership
+   * through the segment -> speaker -> project -> user chain.
+   */
+  updateTranscription: protectedProcedure
+    .input(
+      z.object({
+        segmentId: z.string().uuid(),
+        transcription: z.string().max(10000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // 1. Get the segment with speaker and project info for ownership verification
+      const segment = await ctx.db.query.segments.findFirst({
+        where: eq(segments.id, input.segmentId),
+        with: {
+          speaker: {
+            with: {
+              project: true,
+            },
+          },
+        },
+      });
+
+      if (!segment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Segment not found",
+        });
+      }
+
+      // 2. Verify ownership via segment -> speaker -> project -> user chain
+      if (segment.speaker.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You do not have access to this segment",
+        });
+      }
+
+      // 3. Update the transcription
+      await ctx.db
+        .update(segments)
+        .set({ transcription: input.transcription })
+        .where(eq(segments.id, input.segmentId));
+
+      return { success: true };
+    }),
 });
