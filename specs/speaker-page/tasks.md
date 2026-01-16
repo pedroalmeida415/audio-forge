@@ -391,7 +391,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-17, AC-3.3, AC-3.4_
   - _Design: Inline Transcription Editor_
 
-- [ ] 1.34 Create statistics section component
+- [x] 1.34 Create statistics section component
   - **Do**:
     1. Create statistics-section.tsx
     2. Display: total segments, total duration, average MOS, transcription coverage %
