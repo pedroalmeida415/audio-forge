@@ -640,7 +640,7 @@ After POC validated, clean up code and add missing features.
   - **Commit**: `test(speaker): add unit tests for speaker store`
   - _Design: Test Strategy - Unit Tests_
 
-- [ ] 3.3 Add integration tests for speaker router
+- [x] 3.3 Add integration tests for speaker router
   - **Do**:
     1. Create test file
     2. Test getWithSegments returns correct structure
