@@ -5,15 +5,17 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
   type Clip,
+  clips,
   projects,
   segments,
   speakers,
 } from "~/server/db/schema";
-import { QueueService, ServicesLive } from "~/services";
+import { QueueService, ServicesLive, StorageService } from "~/services";
 
 // Helper to run Effect with services
-const runEffect = <A, E>(effect: Effect.Effect<A, E, QueueService>) =>
-  Effect.runPromise(Effect.provide(effect, ServicesLive));
+const runEffect = <A, E>(
+  effect: Effect.Effect<A, E, QueueService | StorageService>,
+) => Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 /**
  * Segment with its associated clip and session info for media-proxy
@@ -283,4 +285,73 @@ export const speakerRouter = createTRPCRouter({
 
       return { queuedCount: results.length };
     }),
+
+  /**
+   * Delete a clip (reset processing)
+   *
+   * Deletes the clip from R2 storage and the database after verifying ownership
+   * through the clip -> segment -> speaker -> project -> user chain.
+   */
+  deleteClip: protectedProcedure
+    .input(z.object({ clipId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // 1. Get the clip with ownership info
+      const clip = await ctx.db.query.clips.findFirst({
+        where: eq(clips.id, input.clipId),
+        with: {
+          segment: {
+            with: {
+              speaker: {
+                with: {
+                  project: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!clip) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Clip not found",
+        });
+      }
+
+      // 2. Verify ownership via clip -> segment -> speaker -> project -> user chain
+      if (clip.segment.speaker.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You do not have access to this clip",
+        });
+      }
+
+      // 3. Delete from R2 if storage key exists
+      if (clip.storageKey) {
+        await runEffect(
+          Effect.flatMap(StorageService, (storage) =>
+            storage.deleteObject({ key: clip.storageKey as string }),
+          ),
+        );
+      }
+
+      // 4. Delete from database
+      await ctx.db.delete(clips).where(eq(clips.id, input.clipId));
+
+      return { success: true };
+    }),
+
+  /**
+   * Get queue status
+   *
+   * Returns the current status of clip processing and transcription queues,
+   * including waiting and active job counts.
+   */
+  getQueueStatus: protectedProcedure.query(async () => {
+    const status = await runEffect(
+      Effect.flatMap(QueueService, (queue) => queue.getProcessingQueueStatus()),
+    );
+
+    return status;
+  }),
 });

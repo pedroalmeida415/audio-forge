@@ -183,7 +183,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: AC-6.4, AC-7.4_
   - _Design: tRPC Router - enqueueTranscription, enqueueProcessing_
 
-- [ ] 1.16 Add deleteClip and getQueueStatus to speaker router
+- [x] 1.16 Add deleteClip and getQueueStatus to speaker router
   - **Do**:
     1. Add deleteClip: input clipId, delete from R2 via StorageService, delete from DB
     2. Add getQueueStatus: return processing queue counts from QueueService
