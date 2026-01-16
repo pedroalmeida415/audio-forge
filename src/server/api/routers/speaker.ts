@@ -354,4 +354,70 @@ export const speakerRouter = createTRPCRouter({
 
     return status;
   }),
+
+  /**
+   * Get pre-signed URL for clip audio playback
+   *
+   * Generates a pre-signed URL with 15 minute expiration for downloading
+   * clip audio from R2 storage after verifying ownership through the
+   * clip -> segment -> speaker -> project -> user chain.
+   */
+  getClipPresignedUrl: protectedProcedure
+    .input(z.object({ clipId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // 1. Get the clip with ownership info
+      const clip = await ctx.db.query.clips.findFirst({
+        where: eq(clips.id, input.clipId),
+        with: {
+          segment: {
+            with: {
+              speaker: {
+                with: {
+                  project: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!clip) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Clip not found",
+        });
+      }
+
+      // 2. Verify ownership via clip -> segment -> speaker -> project -> user chain
+      if (clip.segment.speaker.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You do not have access to this clip",
+        });
+      }
+
+      // 3. Check if clip has a storage key
+      if (!clip.storageKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Clip has no audio file",
+        });
+      }
+
+      // 4. Generate pre-signed URL with 15 minute expiration (900 seconds)
+      const expiresInSeconds = 900;
+      const url = await runEffect(
+        Effect.flatMap(StorageService, (storage) =>
+          storage.generatePresignedDownloadUrl({
+            key: clip.storageKey as string,
+            expiresIn: expiresInSeconds,
+          }),
+        ),
+      );
+
+      // 5. Calculate expiration timestamp (Unix timestamp in milliseconds)
+      const expiresAt = Date.now() + expiresInSeconds * 1000;
+
+      return { url, expiresAt };
+    }),
 });

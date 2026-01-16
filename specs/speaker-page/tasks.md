@@ -194,7 +194,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: AC-8.3, AC-7.6_
   - _Design: tRPC Router - deleteClip, getQueueStatus_
 
-- [ ] 1.17 Add getClipPresignedUrl query to speaker router
+- [x] 1.17 Add getClipPresignedUrl query to speaker router
   - **Do**:
     1. Add getClipPresignedUrl: input clipId, verify ownership
     2. Generate pre-signed URL using StorageService with 15 min expiration
