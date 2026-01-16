@@ -459,7 +459,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-7, AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-4.5, AC-4.6, AC-4.7_
   - _Design: Filter Controls_
 
-- [ ] 1.39 Wire up speaker page layout
+- [x] 1.39 Wire up speaker page layout
   - **Do**:
     1. Update speaker page to render: SpeakerHeader, SegmentList (with FilterControls), SpeakerSidebar
     2. Create component index file for exports
