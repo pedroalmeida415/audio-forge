@@ -186,14 +186,20 @@ export function createSpeakerPageStore(
 
         // MOS min filter (only applies if clip exists with MOS score)
         if (filters.mosMin !== null) {
-          if (!segment.clip?.mosScore || segment.clip.mosScore < filters.mosMin) {
+          if (
+            !segment.clip?.mosScore ||
+            segment.clip.mosScore < filters.mosMin
+          ) {
             return false;
           }
         }
 
         // MOS max filter (only applies if clip exists with MOS score)
         if (filters.mosMax !== null) {
-          if (!segment.clip?.mosScore || segment.clip.mosScore > filters.mosMax) {
+          if (
+            !segment.clip?.mosScore ||
+            segment.clip.mosScore > filters.mosMax
+          ) {
             return false;
           }
         }
@@ -202,7 +208,10 @@ export function createSpeakerPageStore(
         if (filters.transcriptionStatus === "has" && !segment.transcription) {
           return false;
         }
-        if (filters.transcriptionStatus === "missing" && segment.transcription) {
+        if (
+          filters.transcriptionStatus === "missing" &&
+          segment.transcription
+        ) {
           return false;
         }
 
@@ -225,8 +234,10 @@ export function createSpeakerPageStore(
 
       // Calculate average MOS (only for clips with scores)
       const mosScores = segments
-        .filter((seg) => seg.clip?.mosScore !== null && seg.clip?.mosScore !== undefined)
-        .map((seg) => seg.clip!.mosScore!);
+        .map((seg) => seg.clip?.mosScore)
+        .filter(
+          (score): score is number => score !== null && score !== undefined,
+        );
 
       const averageMos =
         mosScores.length > 0
@@ -264,7 +275,9 @@ export function createSpeakerPageStore(
       key: K,
       value: SpeakerFilters[K],
     ) => {
-      $store.filters[key].set(value);
+      // Use spread to update the specific filter key
+      // This avoids TypeScript's limitation with generic indexed access on observables
+      $store.filters.set({ ...$store.filters.peek(), [key]: value });
     },
 
     clearFilters: () => {
@@ -293,7 +306,8 @@ export function createSpeakerPageStore(
       const segments = $store.segments.peek();
       const index = segments.findIndex((seg) => seg.id === segmentId);
       if (index !== -1) {
-        $store.segments[index]!.transcription.set(text);
+        const segment = $store.segments[index];
+        segment?.transcription.set(text);
       }
     },
   }) as $SpeakerPageStore;

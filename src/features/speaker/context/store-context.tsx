@@ -3,8 +3,8 @@
 import { createContext, type ReactNode, use } from "react";
 import {
   type $SpeakerPageStore,
-  type SpeakerPageStoreInitialData,
   createSpeakerPageStore,
+  type SpeakerPageStoreInitialData,
 } from "~/features/speaker/store/speaker-store";
 
 // ============================================================================
@@ -69,9 +69,7 @@ export function useSpeakerStore(): $SpeakerPageStore {
   const $store = use(SpeakerStoreContext);
 
   if (!$store) {
-    throw new Error(
-      "useSpeakerStore must be used within SpeakerStoreProvider",
-    );
+    throw new Error("useSpeakerStore must be used within SpeakerStoreProvider");
   }
 
   return $store;

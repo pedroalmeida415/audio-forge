@@ -42,7 +42,7 @@ function formatBucketLabel(
   rangeStart: number,
   rangeEnd: number,
   precision: number,
-  suffix?: string
+  suffix?: string,
 ): string {
   const start = formatValue(rangeStart, precision);
   const end = formatValue(rangeEnd, precision);
@@ -69,7 +69,7 @@ function formatBucketLabel(
  */
 export function calculateHistogram(
   values: number[],
-  options: CalculateHistogramOptions = {}
+  options: CalculateHistogramOptions = {},
 ): HistogramData {
   const {
     bucketCount = DEFAULT_BUCKET_COUNT,
@@ -135,7 +135,10 @@ export function calculateHistogram(
       bucketIndex = bucketCount - 1;
     }
 
-    buckets[bucketIndex].count++;
+    const bucket = buckets[bucketIndex];
+    if (bucket) {
+      bucket.count++;
+    }
   }
 
   return {
