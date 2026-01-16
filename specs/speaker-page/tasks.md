@@ -325,7 +325,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-6, AC-1.2, AC-1.3_
   - _Design: Segment Audio Player_
 
-- [ ] 1.29 Create clip audio player with pre-signed URL caching
+- [x] 1.29 Create clip audio player with pre-signed URL caching
   - **Do**:
     1. Create clip-audio-player.tsx
     2. On first play, call speaker.getClipPresignedUrl via tRPC
