@@ -340,7 +340,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: AC-2.2, AC-2.3, AC-2.5_
   - _Design: Clip Audio Player_
 
-- [ ] 1.30 Create segment unit card component
+- [x] 1.30 Create segment unit card component
   - **Do**:
     1. Create segment-unit-card.tsx
     2. Render segment audio player (left) and clip audio player or "No clip" indicator (right)
