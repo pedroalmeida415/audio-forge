@@ -171,7 +171,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: AC-3.3_
   - _Design: tRPC Router - updateTranscription_
 
-- [ ] 1.15 Add enqueueTranscription and enqueueProcessing mutations
+- [x] 1.15 Add enqueueTranscription and enqueueProcessing mutations
   - **Do**:
     1. Add enqueueTranscription: input segmentIds array, queue jobs via QueueService
     2. Add enqueueProcessing: input segmentIds + operations array, queue processing jobs

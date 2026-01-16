@@ -1,16 +1,19 @@
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
   type Clip,
-  clips,
-  clippingSessions,
-  files,
   projects,
   segments,
   speakers,
 } from "~/server/db/schema";
+import { QueueService, ServicesLive } from "~/services";
+
+// Helper to run Effect with services
+const runEffect = <A, E>(effect: Effect.Effect<A, E, QueueService>) =>
+  Effect.runPromise(Effect.provide(effect, ServicesLive));
 
 /**
  * Segment with its associated clip and session info for media-proxy
@@ -151,5 +154,133 @@ export const speakerRouter = createTRPCRouter({
         .where(eq(segments.id, input.segmentId));
 
       return { success: true };
+    }),
+
+  /**
+   * Enqueue transcription jobs for segments
+   *
+   * Queues transcription jobs for the specified segments after verifying ownership.
+   * Returns the count of successfully queued jobs.
+   */
+  enqueueTranscription: protectedProcedure
+    .input(
+      z.object({
+        segmentIds: z.array(z.string().uuid()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.segmentIds.length === 0) {
+        return { queuedCount: 0 };
+      }
+
+      // 1. Get all segments with ownership info
+      const segmentsToQueue = await ctx.db.query.segments.findMany({
+        where: inArray(segments.id, input.segmentIds),
+        with: {
+          speaker: {
+            with: {
+              project: true,
+            },
+          },
+          clip: true,
+        },
+      });
+
+      // 2. Verify all segments exist and user owns them
+      if (segmentsToQueue.length !== input.segmentIds.length) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "One or more segments not found",
+        });
+      }
+
+      for (const segment of segmentsToQueue) {
+        if (segment.speaker.project.userId !== ctx.session.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You do not have access to one or more segments",
+          });
+        }
+      }
+
+      // 3. Queue transcription jobs
+      const results = await runEffect(
+        Effect.flatMap(QueueService, (queue) =>
+          Effect.all(
+            segmentsToQueue.map((segment) =>
+              queue.enqueueTranscription({
+                segmentId: segment.id,
+                clipStorageKey: segment.clip?.storageKey,
+              }),
+            ),
+          ),
+        ),
+      );
+
+      return { queuedCount: results.length };
+    }),
+
+  /**
+   * Enqueue clip processing jobs for segments
+   *
+   * Queues processing jobs (generate, denoise, overlap removal) for the specified
+   * segments after verifying ownership. Returns the count of successfully queued jobs.
+   */
+  enqueueProcessing: protectedProcedure
+    .input(
+      z.object({
+        segmentIds: z.array(z.string().uuid()),
+        operations: z.array(z.enum(["generate", "denoise", "overlap"])),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.segmentIds.length === 0 || input.operations.length === 0) {
+        return { queuedCount: 0 };
+      }
+
+      // 1. Get all segments with ownership info
+      const segmentsToQueue = await ctx.db.query.segments.findMany({
+        where: inArray(segments.id, input.segmentIds),
+        with: {
+          speaker: {
+            with: {
+              project: true,
+            },
+          },
+        },
+      });
+
+      // 2. Verify all segments exist and user owns them
+      if (segmentsToQueue.length !== input.segmentIds.length) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "One or more segments not found",
+        });
+      }
+
+      for (const segment of segmentsToQueue) {
+        if (segment.speaker.project.userId !== ctx.session.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You do not have access to one or more segments",
+          });
+        }
+      }
+
+      // 3. Queue clip processing jobs
+      const results = await runEffect(
+        Effect.flatMap(QueueService, (queue) =>
+          Effect.all(
+            segmentsToQueue.map((segment) =>
+              queue.enqueueClipProcessing({
+                segmentId: segment.id,
+                operations: input.operations,
+              }),
+            ),
+          ),
+        ),
+      );
+
+      return { queuedCount: results.length };
     }),
 });
