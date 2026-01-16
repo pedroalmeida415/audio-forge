@@ -628,7 +628,7 @@ After POC validated, clean up code and add missing features.
   - **Commit**: `test(speaker): add unit tests for histogram utility`
   - _Design: Test Strategy - Unit Tests_
 
-- [ ] 3.2 Add unit tests for speaker store
+- [x] 3.2 Add unit tests for speaker store
   - **Do**:
     1. Create test file
     2. Test filter computation
