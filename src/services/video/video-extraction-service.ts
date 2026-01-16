@@ -129,9 +129,10 @@ function extractAudioFromVideo(
         if (data.duration) {
           const parts = data.duration.split(":");
           if (parts.length === 3) {
-            const hours = Number.parseFloat(parts[0]!);
-            const minutes = Number.parseFloat(parts[1]!);
-            const seconds = Number.parseFloat(parts[2]!);
+            const [hoursStr, minutesStr, secondsStr] = parts;
+            const hours = Number.parseFloat(hoursStr ?? "0");
+            const minutes = Number.parseFloat(minutesStr ?? "0");
+            const seconds = Number.parseFloat(secondsStr ?? "0");
             duration = hours * 3600 + minutes * 60 + seconds;
           }
         }

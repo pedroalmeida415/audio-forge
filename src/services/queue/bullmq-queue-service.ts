@@ -3,10 +3,10 @@ import { Effect, Layer } from "effect";
 import IORedis from "ioredis";
 import { env } from "~/env";
 import {
+  type ClipProcessingJobPayload,
   QueueEnqueueError,
   QueueService,
   QueueStatusError,
-  type ClipProcessingJobPayload,
   type TranscriptionJobPayload,
   type WaveformJobPayload,
 } from "./queue-service";

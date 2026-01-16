@@ -1,7 +1,7 @@
 export {
   WaveformError,
-  WaveformService,
-  WaveformServiceLive,
   type WaveformErrorCode,
   type WaveformResult,
+  WaveformService,
+  WaveformServiceLive,
 } from "./waveform-service";
