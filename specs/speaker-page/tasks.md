@@ -139,7 +139,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(services): export new processing services`
   - _Design: Service Layer_
 
-- [ ] 1.12 [VERIFY] Quality checkpoint: queue and services index
+- [x] 1.12 [VERIFY] Quality checkpoint: queue and services index
   - **Do**: Run lint check and type verification
   - **Verify**: `bun run biome:check -- "src/services"` exits 0, no type errors via MCP
   - **Done when**: No lint errors, no type errors
@@ -147,7 +147,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 ### tRPC Router
 
-- [ ] 1.13 Create speaker tRPC router with getWithSegments endpoint
+- [x] 1.13 Create speaker tRPC router with getWithSegments endpoint
   - **Do**:
     1. Create speaker router file
     2. Implement getWithSegments procedure: input speakerId, query speaker + segments with clips and session info, verify ownership
