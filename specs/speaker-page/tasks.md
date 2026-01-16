@@ -234,7 +234,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(speaker): create speaker page Legend-State store`
   - _Design: SpeakerPageStore_
 
-- [ ] 1.21 Create histogram calculation utility
+- [x] 1.21 Create histogram calculation utility
   - **Do**:
     1. Create histogram.ts with calculateHistogram function
     2. Input: array of numbers, bucketCount (default 10)
