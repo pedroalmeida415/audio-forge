@@ -71,7 +71,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-12_
   - _Design: Service Interfaces - ClipGenerationService_
 
-- [ ] 1.6 Create DenoiseService interface with mock implementation
+- [x] 1.6 Create DenoiseService interface with mock implementation
   - **Do**:
     1. Create service file with DenoiseParams, DenoiseResult interfaces
     2. Define DenoiseService using Context.Tag pattern
