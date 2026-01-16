@@ -405,7 +405,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-8, AC-5.1, AC-5.2, AC-5.3, AC-5.4, AC-5.5, AC-5.6_
   - _Design: Statistics Section_
 
-- [ ] 1.35 Create processing actions section
+- [x] 1.35 Create processing actions section
   - **Do**:
     1. Create processing-actions.tsx
     2. Transcribe button: transcribe selected or all missing
