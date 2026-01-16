@@ -355,7 +355,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-5, AC-1.4, AC-2.1, AC-2.4, AC-3.1, AC-3.2_
   - _Design: Segment Unit Card_
 
-- [ ] 1.31 [VERIFY] Quality checkpoint: audio components
+- [x] 1.31 [VERIFY] Quality checkpoint: audio components
   - **Do**: Run lint check on audio player components
   - **Verify**: `bun run biome:check -- "src/features/speaker/components"` exits 0
   - **Done when**: No lint errors, no type errors
@@ -363,7 +363,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 ### Speaker Page UI - List and Sidebar
 
-- [ ] 1.32 Create segment list component
+- [x] 1.32 Create segment list component
   - **Do**:
     1. Create segment-list.tsx
     2. Render list header (placeholder for filters)
