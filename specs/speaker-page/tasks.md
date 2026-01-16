@@ -376,7 +376,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(speaker): create segment list component`
   - _Design: Segment List_
 
-- [ ] 1.33 Create transcription editor component
+- [x] 1.33 Create transcription editor component
   - **Do**:
     1. Create transcription-editor.tsx
     2. Display text or "No transcription" empty state
