@@ -97,13 +97,13 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-11_
   - _Design: Service Interfaces - OverlapRemovalService_
 
-- [ ] 1.8 [VERIFY] Quality checkpoint: services
+- [x] 1.8 [VERIFY] Quality checkpoint: services
   - **Do**: Run lint check on all new service files
   - **Verify**: `bun run biome:check -- "src/services/transcription" && bun run biome:check -- "src/services/clip" && bun run biome:check -- "src/services/denoise" && bun run biome:check -- "src/services/overlap"` exits 0
   - **Done when**: No lint errors, no type errors
   - **Commit**: `chore(services): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 1.9 Extend QueueService with clip processing and transcription methods
+- [x] 1.9 Extend QueueService with clip processing and transcription methods
   - **Do**:
     1. Add ClipProcessingJobPayload and TranscriptionJobPayload interfaces
     2. Add ClipProcessingEnqueueResult and TranscriptionEnqueueResult interfaces
