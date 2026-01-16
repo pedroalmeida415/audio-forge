@@ -129,7 +129,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-13_
   - _Design: Queue Layer_
 
-- [ ] 1.11 Update services index to export new services
+- [x] 1.11 Update services index to export new services
   - **Do**:
     1. Import and export TranscriptionService, ClipGenerationService, DenoiseService, OverlapRemovalService
     2. Add mock service layers to ServicesLive (use mock implementations for now)
