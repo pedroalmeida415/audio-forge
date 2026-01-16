@@ -670,7 +670,7 @@ After POC validated, clean up code and add missing features.
   - **Done when**: Build succeeds, all tests pass
   - **Commit**: `chore(speaker): pass local CI` (if fixes needed)
 
-- [ ] 4.2 [VERIFY] CI pipeline passes
+- [x] 4.2 [VERIFY] CI pipeline passes
   - **Do**: Verify GitHub Actions/CI passes after push
   - **Verify**: `gh pr checks` shows all green
   - **Done when**: CI pipeline passes
