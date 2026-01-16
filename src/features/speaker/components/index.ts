@@ -1,5 +1,13 @@
 // Speaker page components
 export { ClipAudioPlayer } from "./clip-audio-player";
+export { ExportModal } from "./export-modal";
+export type {
+  AudioFormat,
+  BitDepth,
+  Channels,
+  ExportConfig,
+  SampleRate,
+} from "./export-modal";
 export { FilterControls } from "./filter-controls";
 export { ProcessingActions } from "./processing-actions";
 export { QueueStatus } from "./queue-status";

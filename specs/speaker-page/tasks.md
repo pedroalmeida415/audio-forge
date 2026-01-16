@@ -497,7 +497,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 After POC validated, clean up code and add missing features.
 
-- [ ] 2.1 Create export modal component
+- [x] 2.1 Create export modal component
   - **Do**:
     1. Create export-modal.tsx with Dialog
     2. Audio format select (WAV, FLAC, MP3)
