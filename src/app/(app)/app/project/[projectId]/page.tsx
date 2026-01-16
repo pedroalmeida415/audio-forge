@@ -75,23 +75,25 @@ export default function ProjectPage({
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {project.speakers.map((speaker) => (
-              <Card
+              <Link
                 key={speaker.id}
-                className="h-full transition-colors hover:bg-muted/50"
+                href={`/app/project/${projectId}/speaker/${speaker.id}`}
               >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{speaker.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    className="mb-2 h-2 w-8 rounded"
-                    style={{ backgroundColor: speaker.color ?? "#888" }}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Created {speaker.createdAt.toLocaleDateString()}
-                  </p>
-                </CardContent>
-              </Card>
+                <Card className="h-full transition-colors hover:bg-muted/50">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{speaker.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div
+                      className="mb-2 h-2 w-8 rounded"
+                      style={{ backgroundColor: speaker.color ?? "#888" }}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      Created {speaker.createdAt.toLocaleDateString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         )}
