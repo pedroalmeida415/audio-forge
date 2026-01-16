@@ -240,7 +240,7 @@ async function processTranscriptionJob(
           .set({
             status: "completed",
             storageKey: newClipStorageKey,
-            duration: (segment.endTime - segment.startTime),
+            duration: segment.endTime - segment.startTime,
             errorMessage: null,
           })
           .where(eq(schema.clips.id, clip.id));

@@ -598,7 +598,7 @@ After POC validated, clean up code and add missing features.
   - _Requirements: FR-18, AC-8.1, AC-8.2, AC-8.4, AC-8.5_
   - _Design: Segment Unit Card_
 
-- [ ] 2.9 [VERIFY] Quality checkpoint: workers and dialogs
+- [x] 2.9 [VERIFY] Quality checkpoint: workers and dialogs
   - **Do**: Run lint check on worker files
   - **Verify**: `bun run biome:check -- "workers"` exits 0
   - **Done when**: No lint errors, no type errors
