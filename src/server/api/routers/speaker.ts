@@ -212,7 +212,7 @@ export const speakerRouter = createTRPCRouter({
             segmentsToQueue.map((segment) =>
               queue.enqueueTranscription({
                 segmentId: segment.id,
-                clipStorageKey: segment.clip?.storageKey,
+                clipStorageKey: segment.clip?.storageKey ?? undefined,
               }),
             ),
           ),
