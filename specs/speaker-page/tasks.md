@@ -433,7 +433,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-19, AC-6.5, AC-7.6_
   - _Design: Queue Status Section_
 
-- [ ] 1.37 Create speaker sidebar container
+- [x] 1.37 Create speaker sidebar container
   - **Do**:
     1. Create speaker-sidebar.tsx
     2. Compose StatisticsSection (top) and ProcessingActions + QueueStatus (bottom)
