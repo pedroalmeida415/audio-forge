@@ -537,7 +537,7 @@ After POC validated, clean up code and add missing features.
   - **Commit**: `feat(export): create FFmpeg format conversion utilities`
   - _Design: Export Flow_
 
-- [ ] 2.4 Create speaker export API endpoint
+- [x] 2.4 Create speaker export API endpoint
   - **Do**:
     1. Create route.ts as GET handler
     2. Accept query params: speakerId, format, sampleRate, bitDepth, channels, filterParams
