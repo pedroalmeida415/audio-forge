@@ -444,7 +444,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(speaker): create speaker sidebar container`
   - _Design: Speaker Sidebar_
 
-- [ ] 1.38 Create filter controls component
+- [x] 1.38 Create filter controls component
   - **Do**:
     1. Create filter-controls.tsx
     2. Duration range sliders (min/max seconds)
