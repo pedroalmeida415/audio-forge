@@ -1,0 +1,121 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Context
+
+Audio Forge is a webapp designed to streamline the process of creating high-quality speech datasets (like LJSpeech format) for TTS and ASR training. Users upload audio, run speaker diarization, curate segments in a timeline editor, and export structured datasets with transcriptions.
+
+## Important
+
+- **Package Manager**: Use BUN exclusively. NEVER use npm or pnpm.
+
+## Commands
+
+```bash
+# Development
+bun dev                    # Start Next.js dev server with Turbopack
+bun worker:dev             # Start BullMQ clip worker (separate terminal)
+bun worker:admin           # Start BullMQ admin UI
+
+# Database
+bun db:generate            # Generate Drizzle migrations
+bun db:push                # Push schema changes directly (dev only)
+bun db:migrate             # Run migrations
+bun db:studio              # Open Drizzle Studio
+
+# Linting & Formatting
+bun biome:check -- "<path>"           # Check linting/formatting issues (double dash required between command and file path)
+bun biome:fix -- "<path>"              # Auto-fix linting/formatting issues (double dash required between command and file path)
+
+# Testing
+bun test                   # Run Vitest (unit tests)
+bun test-storybook         # Run Storybook tests (browser tests)
+bun test <path>            # Run specific test file
+bun storybook              # Start Storybook dev server (port 6006)
+```
+
+## Architecture Overview
+
+### Tech Stack
+- **Framework**: Next.js 15 (App Router) + React 19 + TypeScript
+- **Database**: PostgreSQL with Drizzle ORM
+- **API**: tRPC v11 for type-safe RPCs
+- **Auth**: better-auth
+- **Storage**: Cloudflare R2 (S3-compatible)
+- **State Management**: Legend-State (reactive stores with observables)
+- **Services Layer**: Effect-TS for dependency injection and error handling
+- **Queue**: BullMQ with Redis for background jobs
+- **Styling**: Tailwind CSS v4 + Radix UI primitives
+
+### Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── (web)/              # Public marketing pages
+│   ├── (app)/app/          # Authenticated app routes
+│   │   └── project/[projectId]/
+│   │       ├── clipping/[sessionId]/  # Timeline editor
+│   │       └── speakers/[speakerId]/  # Speaker segment list
+│   └── api/                # API routes (trpc, webhooks, media-proxy)
+├── features/               # Feature modules with co-located components
+│   ├── clipping/           # Timeline editor feature
+│   │   ├── components/     # UI components (timeline, sidebar, table)
+│   │   ├── store/          # Legend-State store with slices
+│   │   ├── hooks/          # Feature-specific hooks
+│   │   └── context/        # React context for store provider
+│   └── speaker/            # Speaker management feature
+├── server/
+│   ├── api/                # tRPC routers
+│   │   ├── trpc.ts         # tRPC setup with context
+│   │   ├── root.ts         # Router composition
+│   │   └── routers/        # Individual routers
+│   ├── db/
+│   │   └── schema.ts       # Drizzle schema (single source of truth)
+│   └── better-auth/        # Auth configuration
+├── services/               # Effect-TS service layer
+│   ├── index.ts            # Combined ServicesLive layer
+│   ├── storage/            # R2 storage service
+│   ├── diarization/        # Pyannote diarization service
+│   ├── queue/              # BullMQ queue service
+│   └── waveform/           # Waveform generation
+├── components/ui/          # Shared UI components (shadcn/ui style)
+├── trpc/                   # tRPC client setup
+└── lib/                    # Utility functions
+workers/                    # BullMQ worker processes (run with bun)
+```
+
+### Key Patterns
+
+**Effect-TS Services**: Backend services use Effect for DI. Services are defined as Effect Tags with Live implementations:
+```typescript
+// Define service interface as Effect.Tag
+export class StorageService extends Effect.Tag("StorageService")<...>() {}
+// Provide via Layer composition
+export const ServicesLive = Layer.mergeAll(R2StorageServiceLive, ...)
+```
+
+**Legend-State Stores**: Client state uses observable stores with slices:
+```typescript
+// Store created in provider with useObservable
+const $store = useObservable<ClippingStoreState>({...})
+// Access via context: const $store = useClippingStore()
+// Read: $store.segments.get() or use()
+// Write: $store.segments.set([...])
+```
+
+**tRPC with Optimistic Updates**: Mutations use `setupMutationDefaults` pattern in `store/mutations.ts` for optimistic updates that sync with Legend-State stores.
+
+**Dual Data Sources**: Segments and speakers can be "local" (from diarization JSONB, not yet saved to DB) or "project" (persisted in DB). Both are unified via `SpeakerWithSource` and `SegmentWithSource` types with a `source` discriminator.
+
+### Domain Model
+
+- **Project**: Container for files, speakers, and sessions
+- **Speaker**: Project-level identity. `SPEAKER_XX` names are diarization-generated (immutable, hidden from project views)
+- **ClippingSession**: 1:1 with File, stores diarization job info in JSONB
+- **Segment**: Time range within a session, always assigned to a speaker
+- **Clip**: Processed audio from a segment (1:1 relationship)
+
+### Path Alias
+Use `~` for src imports: `import { api } from "~/trpc/react"`
