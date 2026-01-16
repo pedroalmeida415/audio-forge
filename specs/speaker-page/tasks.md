@@ -246,7 +246,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(speaker): add histogram calculation utility`
   - _Design: Statistics Section - Histogram Implementation_
 
-- [ ] 1.22 Create store context provider and hook
+- [x] 1.22 Create store context provider and hook
   - **Do**:
     1. Create SpeakerStoreProvider component that initializes store
     2. Create useSpeakerStore hook for accessing store
