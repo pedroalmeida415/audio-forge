@@ -525,7 +525,7 @@ After POC validated, clean up code and add missing features.
   - **Commit**: `feat(export): create streaming ZIP utilities`
   - _Design: Export Flow_
 
-- [ ] 2.3 Create FFmpeg format conversion utilities
+- [x] 2.3 Create FFmpeg format conversion utilities
   - **Do**:
     1. Create ffmpeg-convert.ts
     2. Function to convert buffer from FLAC to target format
