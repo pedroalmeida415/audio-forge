@@ -97,6 +97,7 @@ export const clippingSessionRouter = createTRPCRouter({
         speakerId: s.speakerId,
         startTime: s.startTime,
         endTime: s.endTime,
+        transcription: null,
         createdAt: new Date(s.createdAt),
         updatedAt: new Date(s.createdAt),
         source: "local" as const,

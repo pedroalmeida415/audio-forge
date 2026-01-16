@@ -473,13 +473,13 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-4_
   - _Design: Speaker Page Route_
 
-- [ ] 1.40 [VERIFY] Quality checkpoint: full POC
+- [x] 1.40 [VERIFY] Quality checkpoint: full POC
   - **Do**: Run lint check on all speaker feature files
   - **Verify**: `bun run biome:check -- "src/features/speaker" && bun run biome:check -- "src/app/(app)/app/project/[projectId]/speaker"` exits 0
   - **Done when**: No lint errors, no type errors
   - **Commit**: `chore(speaker): pass quality checkpoint` (only if fixes needed)
 
-- [ ] 1.41 POC Checkpoint
+- [x] 1.41 POC Checkpoint
   - **Do**: Verify feature works end-to-end:
     1. Navigate to speaker page from project
     2. See list of segments with audio players
