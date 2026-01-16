@@ -24,9 +24,11 @@ export default function SpeakerLoading() {
           </div>
           {/* Segment Cards */}
           <div className="space-y-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton className="h-32 rounded-lg" key={i} />
-            ))}
+            <Skeleton className="h-32 rounded-lg" />
+            <Skeleton className="h-32 rounded-lg" />
+            <Skeleton className="h-32 rounded-lg" />
+            <Skeleton className="h-32 rounded-lg" />
+            <Skeleton className="h-32 rounded-lg" />
           </div>
         </div>
 
