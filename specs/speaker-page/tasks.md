@@ -22,7 +22,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-1_
   - _Design: Database Schema Changes_
 
-- [ ] 1.2 Create clips table with enum and relations
+- [x] 1.2 Create clips table with enum and relations
   - **Do**:
     1. Add `clipStatus` pgEnum with values: pending, processing, completed, failed
     2. Create `clips` table with: id, segmentId (unique constraint), storageKey, duration, status, errorMessage, mosScore, isDenoised, hasOverlapRemoved, timestamps

@@ -192,6 +192,13 @@ export const waveformStatus = pgEnum("waveform_status", [
   "failed",
 ]);
 
+export const clipStatus = pgEnum("clip_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+
 /**
  * Files - Pure storage reference for audio files
  */
@@ -317,6 +324,50 @@ export const clippingSessions = pgTable(
   ],
 );
 
+/**
+ * Clips - Processed audio segments with 1:1 segment relationship
+ *
+ * Each clip represents a processed version of a segment, stored as FLAC.
+ * Processing flags track which operations have been applied.
+ */
+export const clips = pgTable(
+  "clip",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    segmentId: uuid("segment_id")
+      .notNull()
+      .references(() => segments.id, { onDelete: "cascade" })
+      .unique(), // 1:1 relationship enforced
+
+    // Storage
+    storageKey: varchar("storage_key", { length: 1024 }),
+    duration: doublePrecision("duration"),
+
+    // Processing state
+    status: clipStatus("status").default("pending"),
+    errorMessage: text("error_message"),
+
+    // Quality (manual annotation)
+    mosScore: doublePrecision("mos_score"),
+
+    // Processing flags
+    isDenoised: boolean("is_denoised").default(false),
+    hasOverlapRemoved: boolean("has_overlap_removed").default(false),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("clip_segment_id_idx").on(table.segmentId),
+    index("clip_status_idx").on(table.status),
+  ],
+);
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
@@ -361,6 +412,14 @@ export const segmentRelations = relations(segments, ({ one }) => ({
     fields: [segments.speakerId],
     references: [speakers.id],
   }),
+  clip: one(clips),
+}));
+
+export const clipRelations = relations(clips, ({ one }) => ({
+  segment: one(segments, {
+    fields: [clips.segmentId],
+    references: [segments.id],
+  }),
 }));
 
 export const clippingSessionRelations = relations(
@@ -400,6 +459,7 @@ export type File = typeof files.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Speaker = typeof speakers.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
+export type Clip = typeof clips.$inferSelect;
 
 /**
  * Speaker with source discrimination for unified API responses.
