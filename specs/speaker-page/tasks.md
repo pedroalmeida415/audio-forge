@@ -37,7 +37,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-2_
   - _Design: Database Schema Changes - clips table_
 
-- [ ] 1.3 [VERIFY] Quality checkpoint: database schema
+- [x] 1.3 [VERIFY] Quality checkpoint: database schema
   - **Do**: Run lint check and verify types via MCP getDiagnostics on schema.ts
   - **Verify**: `bun run biome:check -- "src/server/db/schema.ts"` exits 0, no type errors
   - **Done when**: No lint errors, no type errors
@@ -45,7 +45,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 ### Service Layer (Effect.js)
 
-- [ ] 1.4 Create TranscriptionService interface with mock implementation
+- [x] 1.4 Create TranscriptionService interface with mock implementation
   - **Do**:
     1. Create service file with TranscribeParams, TranscribeResult interfaces
     2. Define TranscriptionService using Context.Tag pattern
