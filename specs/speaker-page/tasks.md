@@ -277,7 +277,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-4, AC-10.1_
   - _Design: Speaker Page Route_
 
-- [ ] 1.25 Create loading and not-found pages
+- [x] 1.25 Create loading and not-found pages
   - **Do**:
     1. Create loading.tsx with spinner/skeleton
     2. Create not-found.tsx with message and back link
