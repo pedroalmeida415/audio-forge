@@ -84,7 +84,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-10_
   - _Design: Service Interfaces - DenoiseService_
 
-- [ ] 1.7 Create OverlapRemovalService interface with mock implementation
+- [x] 1.7 Create OverlapRemovalService interface with mock implementation
   - **Do**:
     1. Create service file with OverlapRemovalParams, OverlapRemovalResult interfaces
     2. Define OverlapRemovalService using Context.Tag pattern
