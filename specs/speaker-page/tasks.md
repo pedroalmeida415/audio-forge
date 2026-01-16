@@ -205,7 +205,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(api): add getClipPresignedUrl query`
   - _Design: tRPC Router - getClipPresignedUrl_
 
-- [ ] 1.18 Register speaker router in root router
+- [x] 1.18 Register speaker router in root router
   - **Do**: Import speakerRouter and add to appRouter
   - **Files**: `src/server/api/root.ts`
   - **Done when**: Speaker router accessible via api.speaker
@@ -213,7 +213,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - **Commit**: `feat(api): register speaker router`
   - _Design: File Structure - root.ts modify_
 
-- [ ] 1.19 [VERIFY] Quality checkpoint: tRPC router
+- [x] 1.19 [VERIFY] Quality checkpoint: tRPC router
   - **Do**: Run lint check on router files
   - **Verify**: `bun run biome:check -- "src/server/api/routers/speaker.ts" && bun run biome:check -- "src/server/api/root.ts"` exits 0
   - **Done when**: No lint errors, no type errors
@@ -221,7 +221,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
 
 ### Speaker Page UI - Core Structure
 
-- [ ] 1.20 Create speaker page store with Legend-State
+- [x] 1.20 Create speaker page store with Legend-State
   - **Do**:
     1. Define SpeakerPageStoreState interface with: speakerId, projectId, speaker, segments, filters, selectedSegmentIds
     2. Define filter types and default values
