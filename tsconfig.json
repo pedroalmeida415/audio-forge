@@ -37,8 +37,12 @@
     "**/*.cjs",
     "**/*.js",
     ".next/types/**/*.ts",
-    ".storybook/static/mockServiceWorker.js",
     ".storybook/preview.tsx"
   ],
-  "exclude": ["node_modules", "generated"]
+  "exclude": [
+    "node_modules",
+    "generated",
+    ".storybook/static/mockServiceWorker.js",
+    "storybook-static"
+  ]
 }

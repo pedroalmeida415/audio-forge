@@ -4,7 +4,7 @@
  * @returns Formatted timestamp string
  */
 export function formatTimestamp(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "0:00";
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -23,7 +23,7 @@ export function formatTimestamp(seconds: number): string {
  * @returns Formatted timestamp string with milliseconds
  */
 export function formatTimestampWithMs(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "00:00.000";
+  if (!Number.isFinite(seconds) || seconds < 0) return "00:00.000";
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -45,7 +45,7 @@ export function formatTimestampWithMs(seconds: number): string {
  * @returns Formatted duration string
  */
 export function formatDuration(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "0s";
+  if (!Number.isFinite(seconds) || seconds < 0) return "0s";
 
   if (seconds < 60) {
     return `${seconds.toFixed(1)}s`;
@@ -87,20 +87,28 @@ export function parseTimestamp(timestamp: string): number | null {
   // Validate ranges (minutes and seconds should be < 60 except for pure seconds)
   if (parts.length === 1) {
     // Pure seconds
-    return parsedParts[0];
+    return parsedParts[0] ?? null;
   }
 
   if (parts.length === 2) {
     // M:SS or MM:SS
     const [minutes, seconds] = parsedParts;
-    if (seconds >= 60) return null;
+    if (minutes === undefined || seconds === undefined || seconds >= 60)
+      return null;
     return minutes * 60 + seconds;
   }
 
   if (parts.length === 3) {
     // H:MM:SS
     const [hours, minutes, seconds] = parsedParts;
-    if (minutes >= 60 || seconds >= 60) return null;
+    if (
+      hours === undefined ||
+      minutes === undefined ||
+      seconds === undefined ||
+      minutes >= 60 ||
+      seconds >= 60
+    )
+      return null;
     return hours * 3600 + minutes * 60 + seconds;
   }
 

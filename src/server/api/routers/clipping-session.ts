@@ -1,5 +1,5 @@
-import { TRPCError } from "@trpc/server";
 import { on } from "node:events";
+import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
@@ -9,20 +9,16 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
   clippingSessions,
   type DiarizationInfo,
-  segments,
   type SegmentWithSource,
-  speakers,
   type SpeakerWithSource,
+  segments,
+  speakers,
 } from "~/server/db/schema";
 import {
-  diarizationEvents,
   type DiarizationEvent,
+  diarizationEvents,
 } from "~/server/events/diarization-events";
-import {
-  DiarizationService,
-  ServicesLive,
-  StorageService,
-} from "~/services";
+import { DiarizationService, ServicesLive, StorageService } from "~/services";
 
 // Helper to run Effect with services
 const runEffect = <A, E>(
@@ -532,6 +528,13 @@ export const clippingSessionRouter = createTRPCRouter({
           endTime: segment.endTime,
         })
         .returning();
+
+      if (!secondSegment) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create second segment",
+        });
+      }
 
       return {
         success: true,

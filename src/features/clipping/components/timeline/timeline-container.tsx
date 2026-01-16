@@ -55,7 +55,7 @@ export function TimelineContainer() {
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        ref={scrollContainerRef}
+        ref={scrollContainerRef as React.RefObject<HTMLDivElement>}
         role="region"
       >
         {/* Scrubber (playhead) - subscribes to store internally */}

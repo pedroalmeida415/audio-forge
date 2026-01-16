@@ -70,10 +70,11 @@ export function useWaveformData({
     if (!data.url) return;
 
     let cancelled = false;
+    const waveformUrl = data.url;
 
     async function loadWaveform() {
       try {
-        const response = await fetch(data.url!);
+        const response = await fetch(waveformUrl);
         if (!response.ok) {
           throw new Error(`Failed to fetch waveform: ${response.status}`);
         }

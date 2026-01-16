@@ -46,7 +46,9 @@ export class VideoExtractionError extends Data.TaggedError(
 /**
  * Video extraction service interface
  */
-export class VideoExtractionService extends Context.Tag("VideoExtractionService")<
+export class VideoExtractionService extends Context.Tag(
+  "VideoExtractionService",
+)<
   VideoExtractionService,
   {
     /**
@@ -83,8 +85,16 @@ function probeVideoFile(inputPath: string): Promise<VideoProbeResult> {
           .map((s) => ({
             codec: s.codec_name ?? "unknown",
             channels: s.channels ?? 0,
-            sampleRate: s.sample_rate ? Number.parseInt(s.sample_rate, 10) : 0,
-            bitrate: s.bit_rate ? Number.parseInt(s.bit_rate, 10) : undefined,
+            sampleRate: s.sample_rate
+              ? typeof s.sample_rate === "number"
+                ? s.sample_rate
+                : Number.parseInt(s.sample_rate, 10)
+              : 0,
+            bitrate: s.bit_rate
+              ? typeof s.bit_rate === "number"
+                ? s.bit_rate
+                : Number.parseInt(s.bit_rate, 10)
+              : undefined,
           })) ?? [];
 
       resolve({

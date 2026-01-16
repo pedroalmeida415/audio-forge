@@ -188,17 +188,17 @@ export function setupMutationDefaults(
       return { tempId, insertIndex };
     },
     onSuccess: (result, _variables, context) => {
-      if (!context?.tempId) return;
+      if (!context?.tempId || !result.segment) return;
 
       // Replace temp ID with real ID from server
       const segments = $store.segments.peek();
       const index = segments.findIndex((s) => s.id === context.tempId);
       if (index !== -1) {
-        $store.segments[index]?.id.set(result.segmentId);
+        $store.segments[index]?.id.set(result.segment.id);
 
         // Update active segment to real ID
         if ($store.activeSegmentId.peek() === context.tempId) {
-          $store.activeSegmentId.set(result.segmentId);
+          $store.activeSegmentId.set(result.segment.id);
         }
       }
     },
