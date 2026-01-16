@@ -513,7 +513,7 @@ After POC validated, clean up code and add missing features.
   - _Requirements: FR-14, FR-15, AC-9.1, AC-9.2, AC-9.3, AC-9.4, AC-9.5, AC-9.6_
   - _Design: Export Modal_
 
-- [ ] 2.2 Create streaming ZIP export utilities
+- [x] 2.2 Create streaming ZIP export utilities
   - **Do**:
     1. Create stream-zip.ts with createZipStream function
     2. Use archiver library for ZIP creation
