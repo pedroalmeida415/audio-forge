@@ -6,6 +6,8 @@ import {
   QueueEnqueueError,
   QueueService,
   QueueStatusError,
+  type ClipProcessingJobPayload,
+  type TranscriptionJobPayload,
   type WaveformJobPayload,
 } from "./queue-service";
 
@@ -16,6 +18,35 @@ const connection = new IORedis(REDIS_URL, {
 });
 
 const waveformQueue = new Queue<WaveformJobPayload>("waveform-generation", {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 5000,
+    },
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 500 },
+  },
+});
+
+const clipProcessingQueue = new Queue<ClipProcessingJobPayload>(
+  "clip-processing",
+  {
+    connection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5000,
+      },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 500 },
+    },
+  },
+);
+
+const transcriptionQueue = new Queue<TranscriptionJobPayload>("transcription", {
   connection,
   defaultJobOptions: {
     attempts: 3,
@@ -71,6 +102,86 @@ export const BullMQQueueServiceLive = Layer.succeed(
           new QueueStatusError({
             message: "Failed to get waveform position",
             fileId,
+            cause: error,
+          }),
+      }),
+
+    enqueueClipProcessing: (payload) =>
+      Effect.tryPromise({
+        try: async () => {
+          const jobId = `clip-${payload.segmentId}-${Date.now()}`;
+          await clipProcessingQueue.add("process-clip", payload, {
+            jobId,
+          });
+
+          const waiting = await clipProcessingQueue.getWaitingCount();
+
+          return {
+            segmentId: payload.segmentId,
+            jobId,
+            position: waiting,
+          };
+        },
+        catch: (error) =>
+          new QueueEnqueueError({
+            message: "Failed to enqueue clip processing job",
+            cause: error,
+          }),
+      }),
+
+    enqueueTranscription: (payload) =>
+      Effect.tryPromise({
+        try: async () => {
+          const jobId = `transcribe-${payload.segmentId}-${Date.now()}`;
+          await transcriptionQueue.add("transcribe", payload, {
+            jobId,
+          });
+
+          const waiting = await transcriptionQueue.getWaitingCount();
+
+          return {
+            segmentId: payload.segmentId,
+            jobId,
+            position: waiting,
+          };
+        },
+        catch: (error) =>
+          new QueueEnqueueError({
+            message: "Failed to enqueue transcription job",
+            cause: error,
+          }),
+      }),
+
+    getProcessingQueueStatus: () =>
+      Effect.tryPromise({
+        try: async () => {
+          const [
+            clipWaiting,
+            clipActive,
+            transcriptionWaiting,
+            transcriptionActive,
+          ] = await Promise.all([
+            clipProcessingQueue.getWaitingCount(),
+            clipProcessingQueue.getActiveCount(),
+            transcriptionQueue.getWaitingCount(),
+            transcriptionQueue.getActiveCount(),
+          ]);
+
+          return {
+            clipProcessing: {
+              waiting: clipWaiting,
+              active: clipActive,
+            },
+            transcription: {
+              waiting: transcriptionWaiting,
+              active: transcriptionActive,
+            },
+          };
+        },
+        catch: (error) =>
+          new QueueStatusError({
+            message: "Failed to get processing queue status",
+            fileId: "",
             cause: error,
           }),
       }),

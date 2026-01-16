@@ -115,7 +115,7 @@ Focus: Validate the idea works end-to-end. Skip tests, accept hardcoded values, 
   - _Requirements: FR-13_
   - _Design: Queue Job Types_
 
-- [ ] 1.10 Implement BullMQ queues for clip processing and transcription
+- [x] 1.10 Implement BullMQ queues for clip processing and transcription
   - **Do**:
     1. Create clip-processing Queue with same config pattern as waveform
     2. Create transcription Queue with same config pattern as waveform
