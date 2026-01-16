@@ -586,7 +586,7 @@ After POC validated, clean up code and add missing features.
   - _Requirements: AC-6.6_
   - _Design: Workers - transcription-worker.ts_
 
-- [ ] 2.8 Add delete clip confirmation dialog
+- [x] 2.8 Add delete clip confirmation dialog
   - **Do**:
     1. Add confirmation dialog to segment unit card
     2. Show warning that clip will be deleted, transcription preserved

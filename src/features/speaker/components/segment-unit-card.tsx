@@ -1,8 +1,17 @@
 "use client";
 
 import { FileAudio2, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import type { SegmentWithClip } from "../store/speaker-store";
 import { ClipAudioPlayer } from "./clip-audio-player";
 import { SegmentAudioPlayer } from "./segment-audio-player";
@@ -41,8 +50,16 @@ export function SegmentUnitCard({
   onDeleteClip,
   onTranscriptionChange: _onTranscriptionChange,
 }: SegmentUnitCardProps) {
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const durationMs = (segment.endTime - segment.startTime) * 1000;
   const hasClip = segment.clip !== null;
+
+  const handleDeleteConfirm = () => {
+    if (segment.clip) {
+      onDeleteClip(segment.clip.id);
+    }
+    setIsDeleteDialogOpen(false);
+  };
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 transition-colors hover:border-border/80">
@@ -107,11 +124,7 @@ export function SegmentUnitCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            onClick={() => {
-              if (segment.clip) {
-                onDeleteClip(segment.clip.id);
-              }
-            }}
+            onClick={() => setIsDeleteDialogOpen(true)}
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
             aria-label="Delete clip"
           >
@@ -119,6 +132,31 @@ export function SegmentUnitCard({
           </Button>
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete Clip</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this clip? The transcription will
+              be preserved, but the processed audio clip will be permanently
+              removed. You can reprocess the segment to create a new clip.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete Clip
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Transcription row */}
       <div className="mt-3 border-border border-t pt-3">
