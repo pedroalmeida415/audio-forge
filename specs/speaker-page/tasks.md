@@ -676,7 +676,7 @@ After POC validated, clean up code and add missing features.
   - **Done when**: CI pipeline passes
   - **Commit**: None
 
-- [ ] 4.3 [VERIFY] AC checklist
+- [x] 4.3 [VERIFY] AC checklist
   - **Do**: Read requirements.md, verify each AC-* is satisfied:
     - US-1: View segments (AC-1.1 to AC-1.5)
     - US-2: View clips (AC-2.1 to AC-2.5)
