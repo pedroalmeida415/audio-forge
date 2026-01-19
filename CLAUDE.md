@@ -9,6 +9,7 @@ Audio Forge is a webapp designed to streamline the process of creating high-qual
 ## Important
 
 - **Package Manager**: Use BUN exclusively. NEVER use npm or pnpm.
+- **No Barrel Files**: Do NOT create `index.ts` files that re-export from other modules. Import directly from specific files instead.
 
 ## Commands
 
@@ -75,11 +76,12 @@ src/
 │   │   └── schema.ts       # Drizzle schema (single source of truth)
 │   └── better-auth/        # Auth configuration
 ├── services/               # Effect-TS service layer
-│   ├── index.ts            # Combined ServicesLive layer
-│   ├── storage/            # R2 storage service
-│   ├── diarization/        # Pyannote diarization service
-│   ├── queue/              # BullMQ queue service
-│   └── waveform/           # Waveform generation
+│   ├── index.ts            # ServicesLive composition
+│   ├── infra/              # Infrastructure (S3ClientService, RedisService)
+│   ├── storage/            # StorageService (presigned URLs, object ops)
+│   ├── queue/              # QueueService (generic BullMQ operations)
+│   ├── diarization/        # PyannoteService (speaker diarization API)
+│   └── audio/              # AudioProcessingService (ffmpeg, waveforms)
 ├── components/ui/          # Shared UI components (shadcn/ui style)
 ├── trpc/                   # tRPC client setup
 └── lib/                    # Utility functions
@@ -88,13 +90,50 @@ workers/                    # BullMQ worker processes (run with bun)
 
 ### Key Patterns
 
-**Effect-TS Services**: Backend services use Effect for DI. Services are defined as Effect Tags with Live implementations:
+**Effect-TS Services**: Backend services use `Effect.Service` API. Key conventions:
+
 ```typescript
-// Define service interface as Effect.Tag
-export class StorageService extends Effect.Tag("StorageService")<...>() {}
-// Provide via Layer composition
-export const ServicesLive = Layer.mergeAll(R2StorageServiceLive, ...)
+// Infrastructure services with lifecycle (scoped) - for clients/connections
+class S3ClientService extends Effect.Service<S3ClientService>()("S3ClientService", {
+  scoped: Effect.acquireRelease(
+    Effect.sync(() => new S3Client({ ... })),
+    (client) => Effect.sync(() => client.destroy()),
+  ),
+}) {}
+
+// Domain services with dependencies - use `effect` + `dependencies`
+class StorageService extends Effect.Service<StorageService>()("StorageService", {
+  effect: Effect.gen(function* () {
+    const client = yield* S3ClientService;
+    return {
+      // Don't annotate return types - let TypeScript infer from implementation
+      upload: (params: { key: string; data: Buffer }) =>
+        Effect.tryPromise({
+          try: async () => { ... },
+          catch: (error) => new StorageError({ operation: "upload", message: "...", cause: error }),
+        }),
+    };
+  }),
+  dependencies: [S3ClientService.Default],
+  accessors: true, // Enables StorageService.upload() instead of needing to yield* first
+}) {}
+
+// Stateless services - use `succeed`
+class AudioProcessingService extends Effect.Service<AudioProcessingService>()("AudioProcessingService", {
+  succeed: {
+    probe: (params: { inputPath: string }) => probeFile(params.inputPath),
+  },
+  accessors: true,
+}) {}
 ```
+
+**Effect Service Conventions**:
+- One error type per service with `operation` discriminator: `StorageError`, `QueueError`, etc.
+- Don't manually annotate Effect return types - let TypeScript infer them
+- Use `Effect.async<A, E>((resume) => ...)` for callback-based APIs (ffmpeg, child_process)
+- Use `Effect.tryPromise({ try, catch })` for Promise-based APIs
+- Use `accessors: true` to enable direct method calls via the service tag
+- Provide services via `.Default` layer which includes all dependencies
 
 **Legend-State Stores**: Client state uses observable stores with slices:
 ```typescript

@@ -6,8 +6,8 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "~/env";
 
@@ -26,7 +26,11 @@ interface SourceCacheConfig {
 
 const DEFAULT_CONFIG: SourceCacheConfig = {
   cacheDir: process.env.MEDIA_PROXY_CACHE_DIR ?? "/tmp/audio-forge-cache",
-  maxSizeBytes: (Number(process.env.MEDIA_PROXY_CACHE_MAX_SIZE_GB) || 5) * 1024 * 1024 * 1024,
+  maxSizeBytes:
+    (Number(process.env.MEDIA_PROXY_CACHE_MAX_SIZE_GB) || 5) *
+    1024 *
+    1024 *
+    1024,
   maxAgeMs: 24 * 60 * 60 * 1000, // 24 hours
 };
 
@@ -127,10 +131,7 @@ class SourceCacheService {
     }
 
     // Stream to disk
-    await pipeline(
-      response.Body as Readable,
-      createWriteStream(localPath)
-    );
+    await pipeline(response.Body as Readable, createWriteStream(localPath));
 
     // Get file size
     const stats = statSync(localPath);
@@ -174,8 +175,9 @@ class SourceCacheService {
     if (this.totalSize <= this.config.maxSizeBytes) return;
 
     // Sort by last accessed (oldest first)
-    const sorted = Array.from(this.entries.entries())
-      .sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
+    const sorted = Array.from(this.entries.entries()).sort(
+      (a, b) => a[1].lastAccessed - b[1].lastAccessed,
+    );
 
     // Remove oldest until under limit
     for (const [key] of sorted) {
