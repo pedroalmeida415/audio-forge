@@ -1,3 +1,6 @@
+import { createReadStream, createWriteStream, statSync } from "node:fs";
+import type { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -123,6 +126,54 @@ export class StorageService extends Effect.Service<StorageService>()(
               new StorageError({
                 operation: "delete",
                 message: "Failed to delete object",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        uploadFromPath: (params: {
+          localPath: string;
+          key: string;
+          contentType: string;
+        }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const stats = statSync(params.localPath);
+              const fileStream = createReadStream(params.localPath);
+              const command = new PutObjectCommand({
+                Bucket: bucket,
+                Key: params.key,
+                Body: fileStream,
+                ContentType: params.contentType,
+                ContentLength: stats.size,
+              });
+              await client.send(command);
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "upload",
+                message: "Failed to upload file from path",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        downloadToPath: (params: { key: string; localPath: string }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const command = new GetObjectCommand({
+                Bucket: bucket,
+                Key: params.key,
+              });
+              const response = await client.send(command);
+              const stream = response.Body as Readable;
+              const writeStream = createWriteStream(params.localPath);
+              await pipeline(stream, writeStream);
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "download",
+                message: "Failed to download file to path",
                 key: params.key,
                 cause: error,
               }),
