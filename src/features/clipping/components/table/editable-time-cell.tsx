@@ -30,8 +30,7 @@ export function EditableTimeCell({
   const $store = useClippingStore();
   const sessionId = useSelector(() => $store.sessionId.get());
 
-  const updateSegmentsMutation =
-    api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();

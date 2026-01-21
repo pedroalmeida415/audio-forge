@@ -37,7 +37,7 @@ export function CreateSpeakerDialog({
   const [name, setName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation({
+  const createSpeakerMutation = api.speaker.createSpeaker.useMutation({
     onSuccess: (result) => {
       if (result.speaker) {
         onSpeakerCreated?.(result.speaker.id);

@@ -64,8 +64,8 @@ export function InlineSelectionControls() {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
-  const createSegmentMutation = api.clippingSession.createSegment.useMutation();
-  const createSpeakerMutation = api.clippingSession.createSpeaker.useMutation();
+  const createSegmentMutation = api.segment.createSegment.useMutation();
+  const createSpeakerMutation = api.speaker.createSpeaker.useMutation();
 
   // Don't render if not in active selection mode
   if (mode !== "active" || !range) return null;

@@ -24,8 +24,7 @@ interface HandlePosition {
 export function SegmentResizeHandles() {
   const $store = useClippingStore();
   const sessionId = useSelector(() => $store.sessionId.get());
-  const updateSegmentsMutation =
-    api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
   const [mounted, setMounted] = useState(false);

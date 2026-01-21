@@ -24,8 +24,7 @@ export function SegmentActions() {
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
   const hasSelection = selectedSegmentIds.size > 0;
 
-  const deleteSegmentsMutation =
-    api.clippingSession.deleteSegments.useMutation();
+  const deleteSegmentsMutation = api.segment.deleteSegments.useMutation();
 
   const [changeSpeakerOpen, setChangeSpeakerOpen] = useState(false);
 

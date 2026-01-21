@@ -43,11 +43,11 @@ export function TableView() {
   const projectSpeakers = speakers.filter((s) => s.source === "project");
   const localSpeakers = speakers.filter((s) => s.source === "local");
 
-  const updateSpeakerMutation = api.clippingSession.updateSpeaker.useMutation();
+  const updateSpeakerMutation = api.speaker.updateSpeaker.useMutation();
   const updateLocalSpeakerMutation =
-    api.clippingSession.updateLocalSpeaker.useMutation();
+    api.speaker.updateLocalSpeaker.useMutation();
   const deleteSpeakerMutation =
-    api.clippingSession.deleteSpeakerFromSession.useMutation();
+    api.speaker.deleteSpeakerFromSession.useMutation();
 
   // Auto-select first speaker on mount if none selected
   useEffect(() => {

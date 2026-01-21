@@ -32,7 +32,7 @@ export const diarizationSubscriptionHandler = trpcSubscription(
  * Handler for updateSegments mutation - batch segment updates.
  */
 export const updateSegmentsHandler = trpcMutation(
-  "clippingSession.updateSegments",
+  "segment.updateSegments",
   () => ({ success: true }),
 );
 
@@ -40,27 +40,24 @@ export const updateSegmentsHandler = trpcMutation(
  * Handler for deleteSegments mutation.
  */
 export const deleteSegmentsHandler = trpcMutation(
-  "clippingSession.deleteSegments",
+  "segment.deleteSegments",
   () => ({ success: true }),
 );
 
 /**
  * Handler for splitSegment mutation.
  */
-export const splitSegmentHandler = trpcMutation(
-  "clippingSession.splitSegment",
-  () => ({
-    success: true,
-    firstSegmentId: crypto.randomUUID(),
-    secondSegmentId: crypto.randomUUID(),
-  }),
-);
+export const splitSegmentHandler = trpcMutation("segment.splitSegment", () => ({
+  success: true,
+  firstSegmentId: crypto.randomUUID(),
+  secondSegmentId: crypto.randomUUID(),
+}));
 
 /**
  * Handler for createSegment mutation.
  */
 export const createSegmentHandler = trpcMutation(
-  "clippingSession.createSegment",
+  "segment.createSegment",
   () => ({
     success: true,
     segment: {
@@ -78,15 +75,18 @@ export const createSegmentHandler = trpcMutation(
 /**
  * Handler for createSpeaker mutation.
  */
-export const createSpeakerHandler = trpcMutation("speaker.create", () => ({
-  id: crypto.randomUUID(),
-  projectId: "mock-project",
-  userId: "mock-user",
-  name: "NEW_SPEAKER",
-  color: "hsl(0, 70%, 50%)",
-  createdAt: new Date(),
-  updatedAt: new Date(),
-}));
+export const createSpeakerHandler = trpcMutation(
+  "speaker.createSpeaker",
+  () => ({
+    id: crypto.randomUUID(),
+    projectId: "mock-project",
+    userId: "mock-user",
+    name: "NEW_SPEAKER",
+    color: "hsl(0, 70%, 50%)",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }),
+);
 
 /**
  * Default handlers for timeline stories.

@@ -33,10 +33,9 @@ export function ChangeSpeakerDialog({
 
   const [isCreateSpeakerOpen, setIsCreateSpeakerOpen] = useState(false);
 
-  const updateSegmentsMutation =
-    api.clippingSession.updateSegments.useMutation();
+  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
   const promoteLocalSegmentsMutation =
-    api.clippingSession.promoteLocalSegments.useMutation();
+    api.segment.promoteLocalSegments.useMutation();
 
   // Check if current speaker is local - all selected segments belong to this speaker
   const currentSpeaker = speakers.find((s) => s.id === selectedSpeakerId);

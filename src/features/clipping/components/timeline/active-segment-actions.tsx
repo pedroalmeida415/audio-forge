@@ -37,13 +37,11 @@ export function ActiveSegmentActions() {
   const sessionId = useValue($store.sessionId);
   const speakers = useValue($store.speakers);
 
-  const splitSegmentMutation = api.clippingSession.splitSegment.useMutation();
-  const updateSegmentsMutation =
-    api.clippingSession.updateSegments.useMutation();
+  const splitSegmentMutation = api.segment.splitSegment.useMutation();
+  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
   const promoteLocalSegmentsMutation =
-    api.clippingSession.promoteLocalSegments.useMutation();
-  const deleteSegmentsMutation =
-    api.clippingSession.deleteSegments.useMutation();
+    api.segment.promoteLocalSegments.useMutation();
+  const deleteSegmentsMutation = api.segment.deleteSegments.useMutation();
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
