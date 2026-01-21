@@ -1,83 +1,19 @@
-import { createReadStream, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { TRPCError } from "@trpc/server";
 import { octetInputParser } from "@trpc/server/http";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
-import { env } from "~/env";
 import { isVideoMimeType } from "~/lib/video-types";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { clippingSessions, files } from "~/server/db/schema";
-import {
-  QueueService,
-  ServicesLive,
-  StorageService,
-  VideoExtractionService,
-} from "~/services";
-
-// Helper to run Effect with services
-const runEffect = <A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    StorageService | VideoExtractionService | QueueService
-  >,
-) => Effect.runPromise(Effect.provide(effect, ServicesLive));
-
-// S3 client for direct uploads
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: env.CLOUDFLARE_R2_ENDPOINT,
-  credentials: {
-    accessKeyId: env.CLOUDFLARE_R2_ACCESS_KEY_ID,
-    secretAccessKey: env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-  },
-});
-
-// Helper: Stream ReadableStream to file
-async function streamToFile(
-  stream: ReadableStream<Uint8Array>,
-  filePath: string,
-): Promise<void> {
-  const fileHandle = await import("node:fs/promises").then((fs) =>
-    fs.open(filePath, "w"),
-  );
-
-  try {
-    const reader = stream.getReader();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      await fileHandle.write(value);
-    }
-  } finally {
-    await fileHandle.close();
-  }
-}
-
-// Helper: Upload file to R2
-async function uploadToR2(
-  localPath: string,
-  key: string,
-  contentType: string,
-): Promise<void> {
-  const stats = statSync(localPath);
-  const fileStream = createReadStream(localPath);
-
-  const command = new PutObjectCommand({
-    Bucket: env.CLOUDFLARE_R2_BUCKET,
-    Key: key,
-    Body: fileStream,
-    ContentType: contentType,
-    ContentLength: stats.size,
-  });
-
-  await s3Client.send(command);
-}
+import { AudioProcessingService } from "~/services/audio/audio-processing-service";
+import { Database } from "~/services/infra/database";
+import { QueueService, Queues } from "~/services/queue/queue-service";
+import { StorageService } from "~/services/storage/storage-service";
 
 export const fileRouter = createTRPCRouter({
   // Get presigned URL for uploading audio to R2
@@ -88,19 +24,16 @@ export const fileRouter = createTRPCRouter({
         contentType: z.string().regex(/^audio\//),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      const result = await runEffect(
-        Effect.flatMap(StorageService, (storage) =>
-          storage.generatePresignedUploadUrl({
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          StorageService.generatePresignedUploadUrl({
             fileName: input.fileName,
             contentType: input.contentType,
             userId: ctx.session.user.id,
           }),
         ),
-      );
-
-      return result;
-    }),
+    ),
 
   // Create file record and clipping session after upload
   create: protectedProcedure
@@ -112,152 +45,171 @@ export const fileRouter = createTRPCRouter({
         duration: z.number().positive().optional(),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      // Extract filename from storage key if not provided
-      const fileName =
-        input.name ?? input.storageKey.split("/").pop() ?? "Untitled";
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const fileName =
+              input.name ?? input.storageKey.split("/").pop() ?? "Untitled";
 
-      // Create file record
-      const [file] = await ctx.db
-        .insert(files)
-        .values({
-          userId: ctx.session.user.id,
-          projectId: input.projectId,
-          storageKey: input.storageKey,
-          name: fileName,
-          duration: input.duration,
-        })
-        .returning();
+            // Create file record
+            const [file] = yield* db
+              .insert(files)
+              .values({
+                userId: ctx.session.user.id,
+                projectId: input.projectId,
+                storageKey: input.storageKey,
+                name: fileName,
+                duration: input.duration,
+              })
+              .returning();
 
-      if (!file) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create file record",
-        });
-      }
+            if (!file) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: "Failed to create file record",
+                }),
+              );
+            }
 
-      // Create clipping session for this file (name defaults to file name)
-      const [session] = await ctx.db
-        .insert(clippingSessions)
-        .values({
-          fileId: file.id,
-          projectId: input.projectId,
-          userId: ctx.session.user.id,
-          name: fileName,
-        })
-        .returning();
+            // Create clipping session
+            const [session] = yield* db
+              .insert(clippingSessions)
+              .values({
+                fileId: file.id,
+                projectId: input.projectId,
+                userId: ctx.session.user.id,
+                name: fileName,
+              })
+              .returning();
 
-      if (!session) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create clipping session",
-        });
-      }
+            if (!session) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: "Failed to create clipping session",
+                }),
+              );
+            }
 
-      // Enqueue waveform generation (fire and forget)
-      runEffect(
-        Effect.flatMap(QueueService, (queue) =>
-          queue.enqueueWaveformGeneration({
-            fileId: file.id,
-            audioStorageKey: input.storageKey,
+            // Enqueue waveform generation (fire and forget)
+            yield* QueueService.enqueue(Queues.WaveformGeneration, {
+              fileId: file.id,
+              audioStorageKey: input.storageKey,
+            }).pipe(
+              Effect.catchAll((error) =>
+                Effect.sync(() =>
+                  console.error(
+                    "[file.create] Failed to enqueue waveform job:",
+                    error,
+                  ),
+                ),
+              ),
+              Effect.fork,
+            );
+
+            return { file, session };
           }),
         ),
-      ).catch((error) => {
-        console.error("[file.create] Failed to enqueue waveform job:", error);
-      });
-
-      return {
-        file,
-        session,
-      };
-    }),
+    ),
 
   // Get presigned URL for audio playback
   getAudioUrl: protectedProcedure
     .input(z.object({ fileId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const file = await ctx.db.query.files.findFirst({
-        where: and(
-          eq(files.id, input.fileId),
-          eq(files.userId, ctx.session.user.id),
-        ),
-      });
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const file = yield* db.query.files.findFirst({
+              where: and(
+                eq(files.id, input.fileId),
+                eq(files.userId, ctx.session.user.id),
+              ),
+            });
 
-      if (!file) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "File not found",
-        });
-      }
+            if (!file) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "File not found",
+                }),
+              );
+            }
 
-      const storageKey = file.storageKey;
-      if (!storageKey) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Audio file not found in storage",
-        });
-      }
+            const storageKey = file.storageKey;
+            if (!storageKey) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Audio file not found in storage",
+                }),
+              );
+            }
 
-      const audioUrl = await runEffect(
-        Effect.flatMap(StorageService, (storage) =>
-          storage.generatePresignedDownloadUrl({
-            key: storageKey,
-            expiresIn: 3600, // 1 hour
+            return yield* StorageService.generatePresignedDownloadUrl({
+              key: storageKey,
+              expiresIn: 3600,
+            });
           }),
         ),
-      );
-
-      return audioUrl;
-    }),
+    ),
 
   // Delete a file (cascade will handle session and segments)
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const file = await ctx.db.query.files.findFirst({
-        where: and(
-          eq(files.id, input.id),
-          eq(files.userId, ctx.session.user.id),
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const file = yield* db.query.files.findFirst({
+              where: and(
+                eq(files.id, input.id),
+                eq(files.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!file) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "File not found",
+                }),
+              );
+            }
+
+            // Delete from storage if file exists (ignore errors)
+            const storageKey = file.storageKey;
+            if (storageKey) {
+              yield* StorageService.deleteObject({ key: storageKey }).pipe(
+                Effect.catchAll(() =>
+                  Effect.sync(() =>
+                    console.error("Failed to delete file from storage"),
+                  ),
+                ),
+              );
+            }
+
+            // Delete file record (cascade handles related records)
+            yield* db.delete(files).where(eq(files.id, input.id));
+
+            return { success: true };
+          }),
         ),
-      });
-
-      if (!file) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "File not found",
-        });
-      }
-
-      // Delete from storage if file exists
-      const storageKey = file.storageKey;
-      if (storageKey) {
-        await runEffect(
-          Effect.flatMap(StorageService, (storage) =>
-            storage.deleteObject({ key: storageKey }),
-          ),
-        ).catch(() => {
-          // Log but don't fail if storage deletion fails
-          console.error("Failed to delete file from storage");
-        });
-      }
-
-      // Delete file (cascade will handle related records)
-      await ctx.db.delete(files).where(eq(files.id, input.id));
-
-      return { success: true };
-    }),
+    ),
 
   // Upload video, extract audio to FLAC, and create file/session
   uploadVideo: protectedProcedure
     .input(octetInputParser)
     .mutation(async ({ ctx, input }) => {
-      // Get metadata from headers
-      // Content-Type is application/octet-stream for tRPC, actual type in x-content-type
+      // Validate headers before entering Effect pipeline
       const contentType = ctx.headers.get("x-content-type");
       const projectId = ctx.headers.get("x-project-id");
       const filename = ctx.headers.get("x-filename") ?? "video";
 
-      // Validate content type
       if (!contentType || !isVideoMimeType(contentType)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -265,7 +217,6 @@ export const fileRouter = createTRPCRouter({
         });
       }
 
-      // Validate projectId
       if (!projectId || !z.string().uuid().safeParse(projectId).success) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -273,162 +224,212 @@ export const fileRouter = createTRPCRouter({
         });
       }
 
-      // Create temp directory for processing
-      const tempDir = mkdtempSync(join(tmpdir(), "video-extract-"));
-      const videoPath = join(tempDir, "input.video");
-      const audioPath = join(tempDir, "output.flac");
+      // projectId is validated above, safe to use
+      const validProjectId = projectId;
+      const baseFilename = filename.replace(/\.[^/.]+$/, "");
 
-      try {
-        // 1. Stream video to temp file
-        await streamToFile(input, videoPath);
+      // Run the entire upload pipeline as an Effect with resource management
+      return await ctx.runtime.runPromise(
+        Effect.acquireUseRelease(
+          // Acquire: Create temp directory
+          Effect.sync(() => mkdtempSync(join(tmpdir(), "video-extract-"))),
 
-        // 2. Extract audio using VideoExtractionService
-        const extractionResult = await runEffect(
-          Effect.flatMap(VideoExtractionService, (service) =>
-            service.extractAudio({
-              inputPath: videoPath,
-              outputPath: audioPath,
+          // Use: Process the video
+          (tempDir) =>
+            Effect.gen(function* () {
+              const db = yield* Database;
+              const videoPath = join(tempDir, "input.video");
+              const audioPath = join(tempDir, "output.flac");
+
+              // 1. Stream video to temp file
+              yield* Effect.tryPromise({
+                try: async () => {
+                  const fileHandle = await open(videoPath, "w");
+                  try {
+                    const reader = input.getReader();
+                    while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) break;
+                      await fileHandle.write(value);
+                    }
+                  } finally {
+                    await fileHandle.close();
+                  }
+                },
+                catch: (error) =>
+                  new TRPCError({
+                    code: "INTERNAL_SERVER_ERROR",
+                    message: "Failed to write uploaded file to disk",
+                    cause: error,
+                  }),
+              });
+
+              // 2. Extract audio from video
+              const extractionResult =
+                yield* AudioProcessingService.extractFromVideo({
+                  inputPath: videoPath,
+                  outputPath: audioPath,
+                }).pipe(
+                  Effect.catchTag("AudioProcessingError", (error) =>
+                    Effect.fail(
+                      new TRPCError({
+                        code:
+                          error.code === "NO_AUDIO" ||
+                          error.code === "CORRUPT_FILE"
+                            ? "UNPROCESSABLE_CONTENT"
+                            : "INTERNAL_SERVER_ERROR",
+                        message: error.message,
+                      }),
+                    ),
+                  ),
+                );
+
+              // 3. Upload FLAC to R2
+              const storageKey = `diarization/${ctx.session.user.id}/${Date.now()}-${baseFilename}.flac`;
+              yield* StorageService.uploadFromPath({
+                localPath: audioPath,
+                key: storageKey,
+                contentType: "audio/flac",
+              }).pipe(
+                Effect.catchTag("StorageError", (error) =>
+                  Effect.fail(
+                    new TRPCError({
+                      code: "INTERNAL_SERVER_ERROR",
+                      message: error.message,
+                    }),
+                  ),
+                ),
+              );
+
+              // 4. Create file record
+              const [file] = yield* db
+                .insert(files)
+                .values({
+                  userId: ctx.session.user.id,
+                  projectId: validProjectId,
+                  storageKey,
+                  name: `${baseFilename}.flac`,
+                  duration: extractionResult.durationSeconds || null,
+                })
+                .returning();
+
+              if (!file) {
+                return yield* Effect.fail(
+                  new TRPCError({
+                    code: "INTERNAL_SERVER_ERROR",
+                    message: "Failed to create file record",
+                  }),
+                );
+              }
+
+              // 5. Create clipping session
+              const [session] = yield* db
+                .insert(clippingSessions)
+                .values({
+                  fileId: file.id,
+                  projectId: validProjectId,
+                  userId: ctx.session.user.id,
+                  name: `${baseFilename}.flac`,
+                })
+                .returning();
+
+              if (!session) {
+                return yield* Effect.fail(
+                  new TRPCError({
+                    code: "INTERNAL_SERVER_ERROR",
+                    message: "Failed to create clipping session",
+                  }),
+                );
+              }
+
+              // 6. Enqueue waveform generation (fire and forget)
+              yield* QueueService.enqueue(Queues.WaveformGeneration, {
+                fileId: file.id,
+                audioStorageKey: storageKey,
+              }).pipe(
+                Effect.catchAll((error) =>
+                  Effect.sync(() =>
+                    console.error(
+                      "[uploadVideo] Failed to enqueue waveform job:",
+                      error,
+                    ),
+                  ),
+                ),
+                Effect.fork,
+              );
+
+              return { file, session };
             }),
-          ),
-        ).catch((error) => {
-          // Map Effect errors to TRPCError
-          if (error._tag === "VideoExtractionError") {
-            const code =
-              error.code === "NO_AUDIO"
-                ? "UNPROCESSABLE_CONTENT"
-                : error.code === "CORRUPT_FILE"
-                  ? "UNPROCESSABLE_CONTENT"
-                  : "INTERNAL_SERVER_ERROR";
-            throw new TRPCError({
-              code,
-              message: error.message,
-            });
-          }
-          throw error;
-        });
 
-        // 3. Upload FLAC to R2
-        // Generate storage key with timestamp and .flac extension
-        const baseFilename = filename.replace(/\.[^/.]+$/, ""); // Remove extension
-        const storageKey = `diarization/${ctx.session.user.id}/${Date.now()}-${baseFilename}.flac`;
-
-        await uploadToR2(audioPath, storageKey, "audio/flac");
-
-        // 4. Create file record
-        const [file] = await ctx.db
-          .insert(files)
-          .values({
-            userId: ctx.session.user.id,
-            projectId,
-            storageKey,
-            name: `${baseFilename}.flac`,
-            duration: extractionResult.durationSeconds || null,
-          })
-          .returning();
-
-        if (!file) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to create file record",
-          });
-        }
-
-        // 5. Create clipping session
-        const [session] = await ctx.db
-          .insert(clippingSessions)
-          .values({
-            fileId: file.id,
-            projectId,
-            userId: ctx.session.user.id,
-            name: `${baseFilename}.flac`,
-          })
-          .returning();
-
-        if (!session) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to create clipping session",
-          });
-        }
-
-        // 6. Enqueue waveform generation (fire and forget)
-        runEffect(
-          Effect.flatMap(QueueService, (queue) =>
-            queue.enqueueWaveformGeneration({
-              fileId: file.id,
-              audioStorageKey: storageKey,
+          // Release: Always cleanup temp directory
+          (tempDir) =>
+            Effect.sync(() => {
+              try {
+                rmSync(tempDir, { recursive: true, force: true });
+              } catch {
+                console.error(
+                  "[uploadVideo] Failed to cleanup temp directory:",
+                  tempDir,
+                );
+              }
             }),
-          ),
-        ).catch((error) => {
-          console.error(
-            "[uploadVideo] Failed to enqueue waveform job:",
-            error,
-          );
-        });
-
-        return {
-          file,
-          session,
-        };
-      } finally {
-        // Always cleanup temp files
-        try {
-          rmSync(tempDir, { recursive: true, force: true });
-        } catch {
-          console.error(
-            "[uploadVideo] Failed to cleanup temp directory:",
-            tempDir,
-          );
-        }
-      }
+        ),
+      );
     }),
 
   // Get waveform status and URL
   getWaveformUrl: protectedProcedure
     .input(z.object({ fileId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const file = await ctx.db.query.files.findFirst({
-        where: and(
-          eq(files.id, input.fileId),
-          eq(files.userId, ctx.session.user.id),
-        ),
-        columns: {
-          waveformStatus: true,
-          waveformStorageKey: true,
-          waveformError: true,
-        },
-      });
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const file = yield* db.query.files.findFirst({
+              where: and(
+                eq(files.id, input.fileId),
+                eq(files.userId, ctx.session.user.id),
+              ),
+              columns: {
+                waveformStatus: true,
+                waveformStorageKey: true,
+                waveformError: true,
+              },
+            });
 
-      if (!file) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "File not found",
-        });
-      }
+            if (!file) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "File not found",
+                }),
+              );
+            }
 
-      // Return status info
-      if (file.waveformStatus !== "completed" || !file.waveformStorageKey) {
-        return {
-          status: file.waveformStatus ?? "pending",
-          url: null,
-          error: file.waveformError,
-        };
-      }
+            // Return status info if not completed
+            if (
+              file.waveformStatus !== "completed" ||
+              !file.waveformStorageKey
+            ) {
+              return {
+                status: file.waveformStatus ?? "pending",
+                url: null,
+                error: file.waveformError,
+              };
+            }
 
-      // Generate presigned URL for waveform
-      const url = await runEffect(
-        Effect.flatMap(StorageService, (storage) =>
-          storage.generatePresignedDownloadUrl({
-            key: file.waveformStorageKey!,
-            expiresIn: 3600, // 1 hour
+            // Generate presigned URL for completed waveform
+            const url = yield* StorageService.generatePresignedDownloadUrl({
+              key: file.waveformStorageKey,
+              expiresIn: 3600,
+            });
+
+            return {
+              status: "completed" as const,
+              url,
+              error: null,
+            };
           }),
         ),
-      );
-
-      return {
-        status: "completed" as const,
-        url,
-        error: null,
-      };
-    }),
+    ),
 });

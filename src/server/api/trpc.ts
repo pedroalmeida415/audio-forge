@@ -11,7 +11,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
-import { db } from "~/server/db";
+import { AppRuntime } from "~/services";
 import { getSession } from "../better-auth/server";
 
 /**
@@ -30,7 +30,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   const session = await getSession();
 
   return {
-    db,
+    runtime: AppRuntime,
     session,
     ...opts,
   };

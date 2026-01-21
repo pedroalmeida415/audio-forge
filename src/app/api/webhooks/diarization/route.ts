@@ -1,9 +1,9 @@
 import { eq, sql } from "drizzle-orm";
+import { Cause, Data, Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { DEFAULT_LOCAL_SPEAKER_COLOR } from "~/lib/speaker-colors";
-import { db } from "~/server/db";
 import {
   clippingSessions,
   type DiarizationInfo,
@@ -11,6 +11,25 @@ import {
   type LocalSpeaker,
 } from "~/server/db/schema";
 import { diarizationEvents } from "~/server/events/diarization-events";
+import { AppRuntime } from "~/services";
+import { Database } from "~/services/infra/database";
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+class JsonParseError extends Data.TaggedError("JsonParseError")<{
+  cause: unknown;
+}> {}
+
+class ValidationError extends Data.TaggedError("ValidationError")<{
+  message: string;
+  cause: unknown;
+}> {}
+
+class SessionNotFoundError extends Data.TaggedError("SessionNotFoundError")<{
+  jobId: string;
+}> {}
 
 // Pyannote webhook payload schema
 const webhookPayloadSchema = z.object({
@@ -37,21 +56,36 @@ const webhookPayloadSchema = z.object({
     .optional(),
 });
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const payload = webhookPayloadSchema.parse(body);
+const handleWebhook = (request: NextRequest) =>
+  Effect.gen(function* () {
+    const db = yield* Database;
+
+    // Parse JSON body
+    const body = yield* Effect.tryPromise({
+      try: () => request.json(),
+      catch: (cause) => new JsonParseError({ cause }),
+    });
+
+    // Validate payload
+    const parseResult = webhookPayloadSchema.safeParse(body);
+    if (!parseResult.success) {
+      return yield* Effect.fail(
+        new ValidationError({
+          message: parseResult.error.message,
+          cause: parseResult.error,
+        }),
+      );
+    }
+    const payload = parseResult.data;
 
     // Find the clipping session by diarization job ID
-    const session = await db.query.clippingSessions.findFirst({
+    const session = yield* db.query.clippingSessions.findFirst({
       where: sql`${clippingSessions.diarization}->>'jobId' = ${payload.jobId}`,
     });
 
     if (!session) {
-      console.error(`Clipping session not found for job: ${payload.jobId}`);
-      return NextResponse.json(
-        { error: "Clipping session not found" },
-        { status: 404 },
+      return yield* Effect.fail(
+        new SessionNotFoundError({ jobId: payload.jobId }),
       );
     }
 
@@ -102,11 +136,9 @@ export async function POST(request: NextRequest) {
         segments: localSegments,
       };
 
-      await db
+      yield* db
         .update(clippingSessions)
-        .set({
-          diarization: diarizationInfo,
-        })
+        .set({ diarization: diarizationInfo })
         .where(eq(clippingSessions.id, session.id));
 
       // Emit completion event for SSE subscribers
@@ -132,11 +164,9 @@ export async function POST(request: NextRequest) {
             : "Diarization failed",
       };
 
-      await db
+      yield* db
         .update(clippingSessions)
-        .set({
-          diarization: diarizationInfo,
-        })
+        .set({ diarization: diarizationInfo })
         .where(eq(clippingSessions.id, session.id));
 
       // Emit failure event for SSE subscribers
@@ -153,22 +183,62 @@ export async function POST(request: NextRequest) {
         status: "running",
       };
 
-      await db
+      yield* db
         .update(clippingSessions)
-        .set({
-          diarization: diarizationInfo,
-        })
+        .set({ diarization: diarizationInfo })
         .where(eq(clippingSessions.id, session.id));
     }
 
     return NextResponse.json({ received: true });
-  } catch (error) {
-    console.error("Webhook error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
-  }
+  });
+
+export async function POST(request: NextRequest) {
+  return await AppRuntime.runPromise(
+    handleWebhook(request).pipe(
+      Effect.catchTags({
+        JsonParseError: (error) => {
+          console.error("[Diarization Webhook] JSON parse error:", error.cause);
+          return Effect.succeed(
+            NextResponse.json({ error: "Invalid JSON" }, { status: 400 }),
+          );
+        },
+        ValidationError: (error) => {
+          console.error(
+            "[Diarization Webhook] Validation error:",
+            error.message,
+          );
+          return Effect.succeed(
+            NextResponse.json(
+              { error: "Invalid payload", details: error.message },
+              { status: 400 },
+            ),
+          );
+        },
+        SessionNotFoundError: (error) => {
+          console.error(
+            `[Diarization Webhook] Session not found for job: ${error.jobId}`,
+          );
+          return Effect.succeed(
+            NextResponse.json(
+              { error: "Clipping session not found" },
+              { status: 404 },
+            ),
+          );
+        },
+      }),
+      // At the HTTP boundary, catch all defects (unexpected errors like DB failures)
+      // to return a proper HTTP response instead of crashing
+      Effect.catchAllCause((cause) => {
+        console.error("[Diarization Webhook] Defect:", Cause.pretty(cause));
+        return Effect.succeed(
+          NextResponse.json(
+            { error: "Internal server error" },
+            { status: 500 },
+          ),
+        );
+      }),
+    ),
+  );
 }
 
 // Allow Pyannote to verify the endpoint
