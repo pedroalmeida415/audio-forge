@@ -1,12 +1,221 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clippingSessions, segments, speakers } from "~/server/db/schema";
+import {
+  clips,
+  clippingSessions,
+  files,
+  segments,
+  speakers,
+} from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
 
 export const segmentRouter = createTRPCRouter({
+  // Get paginated segments for a speaker with clips and session info
+  getBySpeaker: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+        limit: z.number().min(1).max(100).default(50),
+        cursor: z.string().uuid().optional(), // Cursor-based pagination using segment ID
+      }),
+    )
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Verify speaker exists and belongs to user
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            // Get total count for this speaker
+            const totalResult = yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .select({ total: count(segments.id) })
+                  .from(segments)
+                  .where(eq(segments.speakerId, input.speakerId)),
+              catch: (error) =>
+                new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: "Failed to count segments",
+                  cause: error,
+                }),
+            });
+
+            const total = totalResult[0]?.total ?? 0;
+
+            // Get segments with clips and session info
+            const segmentResults = yield* db.query.segments.findMany({
+              where: eq(segments.speakerId, input.speakerId),
+              with: {
+                clip: {
+                  with: {
+                    file: true,
+                  },
+                },
+                session: {
+                  with: {
+                    file: true,
+                  },
+                },
+              },
+              orderBy: [asc(segments.startTime)],
+              limit: input.limit + 1, // Get one extra to determine if there's more
+              ...(input.cursor && {
+                // For cursor pagination, we'd need to filter by startTime > cursor's startTime
+                // For simplicity, we'll use offset-based pagination via cursor index
+              }),
+            });
+
+            const hasMore = segmentResults.length > input.limit;
+            const items = hasMore
+              ? segmentResults.slice(0, input.limit)
+              : segmentResults;
+            const nextCursor = hasMore
+              ? items[items.length - 1]?.id
+              : undefined;
+
+            return {
+              items,
+              nextCursor,
+              total,
+            };
+          }),
+        ),
+    ),
+
+  // Update segment transcription
+  updateTranscription: protectedProcedure
+    .input(
+      z.object({
+        segmentId: z.string().uuid(),
+        transcription: z.string().nullable(),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Get segment with speaker to verify ownership
+            const segment = yield* db.query.segments.findFirst({
+              where: eq(segments.id, input.segmentId),
+              with: {
+                speaker: true,
+              },
+            });
+
+            if (!segment) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Segment not found",
+                }),
+              );
+            }
+
+            if (segment.speaker.userId !== ctx.session.user.id) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to this segment",
+                }),
+              );
+            }
+
+            // Update transcription
+            yield* db
+              .update(segments)
+              .set({ transcription: input.transcription })
+              .where(eq(segments.id, input.segmentId));
+
+            return { success: true };
+          }),
+        ),
+    ),
+
+  // Queue processing for segments (stub implementation)
+  queueProcessing: protectedProcedure
+    .input(
+      z.object({
+        segmentIds: z.array(z.string().uuid()).min(1),
+        operations: z.array(
+          z.enum(["denoise", "remove_overlap", "transcribe"]),
+        ),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Verify all segments belong to user
+            const segmentResults = yield* db.query.segments.findMany({
+              where: inArray(segments.id, input.segmentIds),
+              with: {
+                speaker: true,
+              },
+            });
+
+            const unauthorizedSegments = segmentResults.filter(
+              (s) => s.speaker.userId !== ctx.session.user.id,
+            );
+
+            if (unauthorizedSegments.length > 0) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to some segments",
+                }),
+              );
+            }
+
+            if (segmentResults.length !== input.segmentIds.length) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Some segments were not found",
+                }),
+              );
+            }
+
+            // Stub: Return mock job IDs for each operation
+            const jobs = input.operations.map((operation) => ({
+              jobId: crypto.randomUUID(),
+              operation,
+              segmentCount: input.segmentIds.length,
+              status: "queued" as const,
+            }));
+
+            return {
+              success: true,
+              jobs,
+              message: `Queued ${input.operations.join(", ")} for ${input.segmentIds.length} segments`,
+            };
+          }),
+        ),
+    ),
+
   // Create a new segment
   createSegment: protectedProcedure
     .input(

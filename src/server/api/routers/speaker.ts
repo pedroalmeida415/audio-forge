@@ -1,13 +1,102 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, isNotNull, sql, sum } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clippingSessions, speakers } from "~/server/db/schema";
+import { clips, clippingSessions, segments, speakers } from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
 
 export const speakerRouter = createTRPCRouter({
+  // Get speaker by ID with aggregate stats
+  getById: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+      }),
+    )
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Get speaker details
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            // Get aggregate stats for the speaker
+            const statsResult = yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .select({
+                    totalSegments: count(segments.id),
+                    totalDuration: sum(
+                      sql<number>`${segments.endTime} - ${segments.startTime}`,
+                    ),
+                    transcribedCount: count(
+                      sql`CASE WHEN ${segments.transcription} IS NOT NULL THEN 1 END`,
+                    ),
+                  })
+                  .from(segments)
+                  .where(eq(segments.speakerId, input.speakerId)),
+              catch: (error) =>
+                new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: "Failed to fetch segment stats",
+                  cause: error,
+                }),
+            });
+
+            // Get clips count for this speaker's segments
+            const clipsCountResult = yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .select({ clipsCount: count(clips.id) })
+                  .from(clips)
+                  .innerJoin(segments, eq(clips.segmentId, segments.id))
+                  .where(eq(segments.speakerId, input.speakerId)),
+              catch: (error) =>
+                new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: "Failed to fetch clips count",
+                  cause: error,
+                }),
+            });
+
+            const stats = statsResult[0] ?? {
+              totalSegments: 0,
+              totalDuration: 0,
+              transcribedCount: 0,
+            };
+            const clipsCount = clipsCountResult[0]?.clipsCount ?? 0;
+
+            return {
+              speaker,
+              stats: {
+                totalSegments: Number(stats.totalSegments),
+                totalDuration: Number(stats.totalDuration ?? 0),
+                clipsCount: Number(clipsCount),
+                transcribedCount: Number(stats.transcribedCount),
+              },
+            };
+          }),
+        ),
+    ),
+
   // Create a new speaker (project-level)
   createSpeaker: protectedProcedure
     .input(

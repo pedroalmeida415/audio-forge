@@ -91,7 +91,7 @@ export const verification = pgTable("verification", {
 export const projects = pgTable(
   "project",
   {
-    id: uuid("id").defaultRandom().defaultRandom().primaryKey(),
+    id: uuid("id").defaultRandom().primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     userId: uuid("user_id")
@@ -166,6 +166,9 @@ export const segments = pgTable(
 
     startTime: doublePrecision("start_time").notNull(),
     endTime: doublePrecision("end_time").notNull(),
+
+    // User-provided transcription (nullable)
+    transcription: text("transcription"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -314,6 +317,31 @@ export const clippingSessions = pgTable(
   ],
 );
 
+/**
+ * Clips - Processed audio files for segments
+ *
+ * 1:1 relationship with segments. Each clip references a file record
+ * which holds the storage key and duration.
+ */
+export const clips = pgTable(
+  "clip",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    segmentId: uuid("segment_id")
+      .notNull()
+      .references(() => segments.id, { onDelete: "cascade" })
+      .unique(), // 1:1 relationship
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("clip_segment_id_idx").on(table.segmentId)],
+);
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
@@ -358,6 +386,7 @@ export const segmentRelations = relations(segments, ({ one }) => ({
     fields: [segments.speakerId],
     references: [speakers.id],
   }),
+  clip: one(clips),
 }));
 
 export const clippingSessionRelations = relations(
@@ -386,6 +415,18 @@ export const fileRelations = relations(files, ({ one }) => ({
     references: [projects.id],
   }),
   clippingSession: one(clippingSessions),
+  clip: one(clips),
+}));
+
+export const clipRelations = relations(clips, ({ one }) => ({
+  segment: one(segments, {
+    fields: [clips.segmentId],
+    references: [segments.id],
+  }),
+  file: one(files, {
+    fields: [clips.fileId],
+    references: [files.id],
+  }),
 }));
 
 // ============================================================================
@@ -397,6 +438,7 @@ export type File = typeof files.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Speaker = typeof speakers.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
+export type Clip = typeof clips.$inferSelect;
 
 /**
  * Speaker with source discrimination for unified API responses.
