@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import { env } from "~/env";
-import { api } from "~/trpc/react";
 
 type AudioState = "idle" | "loading" | "ready" | "error";
 
@@ -8,7 +7,7 @@ interface UseSegmentAudioOptions {
   sessionFileStorageKey: string;
   startTime: number;
   endTime: number;
-  clipId?: string | null;
+  clipStorageKey?: string | null;
 }
 
 interface UseSegmentAudioReturn {
@@ -30,14 +29,14 @@ interface UseSegmentAudioReturn {
  * Both source (segment from original file) and clip (processed audio) are
  * loaded on-demand when play is clicked.
  *
- * - Source: fetched via media-proxy with time range
- * - Clip: fetched via clip.getDownloadUrl for presigned R2 URL
+ * - Source: fetched via media server with time range (fMP4 for browser)
+ * - Clip: fetched via media server (full file, no time range)
  */
 export function useSegmentAudio({
   sessionFileStorageKey,
   startTime,
   endTime,
-  clipId,
+  clipStorageKey,
 }: UseSegmentAudioOptions): UseSegmentAudioReturn {
   // Source audio state
   const [sourceState, setSourceState] = useState<AudioState>("idle");
@@ -46,11 +45,6 @@ export function useSegmentAudio({
   // Clip audio state
   const [clipState, setClipState] = useState<AudioState>("idle");
   const [clipUrl, setClipUrl] = useState<string | null>(null);
-
-  const clipQuery = api.clip.getDownloadUrl.useQuery(
-    { clipId: clipId ?? "" },
-    { enabled: false }, // Manual fetch only
-  );
 
   /**
    * Load source audio via media server.
@@ -93,28 +87,41 @@ export function useSegmentAudio({
   }, [sourceState, sessionFileStorageKey, startTime, endTime]);
 
   /**
-   * Load clip audio via presigned R2 URL.
-   * Only available if the segment has a processed clip.
+   * Load clip audio via media server.
+   * Clips are full files, so no time range params needed.
    */
   const loadClip = useCallback(async () => {
-    if (!clipId) return;
+    if (!clipStorageKey) return;
     if (clipState === "ready" || clipState === "loading") return;
 
     setClipState("loading");
 
     try {
-      const result = await clipQuery.refetch();
-      if (result.data?.url) {
-        setClipUrl(result.data.url);
-        setClipState("ready");
-      } else {
-        throw new Error("Failed to get clip URL");
+      const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
+      if (!mediaServerUrl) {
+        throw new Error("NEXT_PUBLIC_MEDIA_SERVER_URL is not configured");
       }
+
+      // Fetch full clip file (no time range = streams entire file)
+      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(clipStorageKey)}`;
+
+      const response = await fetch(url, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch clip audio: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      setClipUrl(objectUrl);
+      setClipState("ready");
     } catch (error) {
       console.error("Failed to load clip audio:", error);
       setClipState("error");
     }
-  }, [clipId, clipState, clipQuery]);
+  }, [clipStorageKey, clipState]);
 
   return {
     sourceState,
@@ -123,6 +130,6 @@ export function useSegmentAudio({
     clipState,
     clipUrl,
     loadClip,
-    hasClip: !!clipId,
+    hasClip: !!clipStorageKey,
   };
 }

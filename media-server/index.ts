@@ -110,7 +110,7 @@ app.get("/audio", authMiddleware, async (c) => {
     const localPath = await cache.getOrDownload(storageKey);
 
     // If time range provided, return slice
-    if (startMsParam !== null && endMsParam !== null) {
+    if (startMsParam && endMsParam) {
       const startMs = Number(startMsParam);
       const endMs = Number(endMsParam);
 

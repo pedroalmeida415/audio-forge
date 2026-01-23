@@ -35,7 +35,7 @@ export function SegmentRow({ segment }: SegmentRowProps) {
     sessionFileStorageKey: storageKey,
     startTime: segment.startTime,
     endTime: segment.endTime,
-    clipId: segment.clip?.id ?? null,
+    clipStorageKey: segment.clip?.file.storageKey ?? null,
   });
 
   const duration = segment.endTime - segment.startTime;
