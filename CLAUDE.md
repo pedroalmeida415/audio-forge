@@ -16,7 +16,7 @@ Audio Forge is a webapp designed to streamline the process of creating high-qual
 ```bash
 # Development
 bun dev                    # Start Next.js dev server with Turbopack
-bun worker:dev             # Start BullMQ clip worker (separate terminal)
+bun worker:dev             # Start audio processing worker (separate terminal)
 bun worker:admin           # Start BullMQ admin UI
 
 # Database

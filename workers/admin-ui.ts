@@ -15,14 +15,14 @@ const connection = new IORedis(REDIS_URL, {
 });
 
 // Queue instance (read-only for admin UI)
-const clipQueue = new Queue("clip-generation", { connection });
+const audioProcessingQueue = new Queue("audio-processing", { connection });
 
 // Set up Bull Board
 const serverAdapter = new HonoAdapter(serveStatic);
 serverAdapter.setBasePath("/");
 
 createBullBoard({
-  queues: [new BullMQAdapter(clipQueue)],
+  queues: [new BullMQAdapter(audioProcessingQueue)],
   serverAdapter,
 });
 

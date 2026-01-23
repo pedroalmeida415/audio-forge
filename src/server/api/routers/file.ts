@@ -12,7 +12,11 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { clippingSessions, files } from "~/server/db/schema";
 import { AudioProcessingService } from "~/services/audio/audio-processing-service";
 import { Database } from "~/services/infra/database";
-import { QueueService, Queues } from "~/services/queue/queue-service";
+import {
+  AudioJobs,
+  QueueService,
+  Queues,
+} from "~/services/queue/queue-service";
 import { StorageService } from "~/services/storage/storage-service";
 
 export const fileRouter = createTRPCRouter({
@@ -95,10 +99,11 @@ export const fileRouter = createTRPCRouter({
             }
 
             // Enqueue waveform generation (fire and forget)
-            yield* QueueService.enqueue(Queues.WaveformGeneration, {
-              fileId: file.id,
-              audioStorageKey: input.storageKey,
-            }).pipe(
+            yield* QueueService.enqueueJob(
+              Queues.AudioProcessing,
+              AudioJobs.GenerateWaveform,
+              { entryId: file.id },
+            ).pipe(
               Effect.catchAll((error) =>
                 Effect.sync(() =>
                   console.error(
@@ -343,10 +348,11 @@ export const fileRouter = createTRPCRouter({
               }
 
               // 6. Enqueue waveform generation (fire and forget)
-              yield* QueueService.enqueue(Queues.WaveformGeneration, {
-                fileId: file.id,
-                audioStorageKey: storageKey,
-              }).pipe(
+              yield* QueueService.enqueueJob(
+                Queues.AudioProcessing,
+                AudioJobs.GenerateWaveform,
+                { entryId: file.id },
+              ).pipe(
                 Effect.catchAll((error) =>
                   Effect.sync(() =>
                     console.error(

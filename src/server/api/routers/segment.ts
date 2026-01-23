@@ -4,13 +4,17 @@ import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
-  clips,
   clippingSessions,
-  files,
   segments,
   speakers,
 } from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
+import {
+  AudioJobs,
+  type AudioJobPayload,
+  QueueService,
+  Queues,
+} from "~/services/queue/queue-service";
 
 export const segmentRouter = createTRPCRouter({
   // Get paginated segments for a speaker with clips and session info
@@ -79,10 +83,11 @@ export const segmentRouter = createTRPCRouter({
               },
               orderBy: [asc(segments.startTime)],
               limit: input.limit + 1, // Get one extra to determine if there's more
-              ...(input.cursor && {
-                // For cursor pagination, we'd need to filter by startTime > cursor's startTime
-                // For simplicity, we'll use offset-based pagination via cursor index
-              }),
+              ...(input.cursor &&
+                {
+                  // For cursor pagination, we'd need to filter by startTime > cursor's startTime
+                  // For simplicity, we'll use offset-based pagination via cursor index
+                }),
             });
 
             const hasMore = segmentResults.length > input.limit;
@@ -153,14 +158,12 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Queue processing for segments (stub implementation)
+  // Queue a processing operation for segments
   queueProcessing: protectedProcedure
     .input(
       z.object({
         segmentIds: z.array(z.string().uuid()).min(1),
-        operations: z.array(
-          z.enum(["denoise", "remove_overlap", "transcribe"]),
-        ),
+        operation: z.enum(["denoise", "remove_overlap", "transcribe"]),
       }),
     )
     .mutation(
@@ -169,14 +172,21 @@ export const segmentRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify all segments belong to user
+            // Fetch segments with session/file info for building job payloads
             const segmentResults = yield* db.query.segments.findMany({
               where: inArray(segments.id, input.segmentIds),
               with: {
                 speaker: true,
+                clip: true,
+                session: {
+                  with: {
+                    file: true,
+                  },
+                },
               },
             });
 
+            // Verify ownership
             const unauthorizedSegments = segmentResults.filter(
               (s) => s.speaker.userId !== ctx.session.user.id,
             );
@@ -199,18 +209,31 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            // Stub: Return mock job IDs for each operation
-            const jobs = input.operations.map((operation) => ({
-              jobId: crypto.randomUUID(),
-              operation,
-              segmentCount: input.segmentIds.length,
-              status: "queued" as const,
+            // Map operation to job name
+            const jobName = {
+              denoise: AudioJobs.Denoise,
+              remove_overlap: AudioJobs.RemoveOverlap,
+              transcribe: AudioJobs.Transcribe,
+            }[input.operation];
+
+            // All clip operations use segmentId as entryId
+            // Worker will ensure clip exists before processing
+            const payloads: AudioJobPayload[] = segmentResults.map((seg) => ({
+              entryId: seg.id,
             }));
+
+            // Enqueue batch
+            const results = yield* QueueService.enqueueJobBatch(
+              Queues.AudioProcessing,
+              jobName,
+              payloads,
+            );
 
             return {
               success: true,
-              jobs,
-              message: `Queued ${input.operations.join(", ")} for ${input.segmentIds.length} segments`,
+              jobIds: results.map((r) => r.jobId),
+              operation: input.operation,
+              segmentCount: input.segmentIds.length,
             };
           }),
         ),

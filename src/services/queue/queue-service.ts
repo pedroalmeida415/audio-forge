@@ -3,32 +3,37 @@ import { Data, Effect } from "effect";
 import { RedisService } from "~/services/infra/redis";
 
 // ============================================================================
-// Queue Registry - Add new queues here
+// Queue Registry
 // ============================================================================
 
 export const Queues = {
-  WaveformGeneration: "waveform-generation",
-  // Add future queues here:
-  // ClipGeneration: "clip-generation",
+  AudioProcessing: "audio-processing",
 } as const;
 
 export type QueueName = (typeof Queues)[keyof typeof Queues];
 
 // ============================================================================
-// Payload Types - Define payload for each queue
+// Audio Processing Job Types
 // ============================================================================
 
-export interface WaveformJobPayload {
-  fileId: string;
-  audioStorageKey: string;
-}
+export const AudioJobs = {
+  GenerateWaveform: "generate_waveform",
+  Denoise: "denoise",
+  RemoveOverlap: "remove_overlap",
+  Transcribe: "transcribe",
+} as const;
 
-// Map queue names to their payload types
-export type QueuePayloads = {
-  [Queues.WaveformGeneration]: WaveformJobPayload;
-  // Add future payload mappings here:
-  // [Queues.ClipGeneration]: ClipJobPayload;
-};
+export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
+
+// Job payload - single generic type for all audio jobs
+// The job name determines how entryId is interpreted:
+// - generate_waveform: entryId is fileId (uploaded source file)
+// - denoise, remove_overlap, transcribe: entryId is segmentId (worker ensures clip exists)
+
+/** Payload for all audio processing jobs */
+export interface AudioJobPayload {
+  entryId: string;
+}
 
 // ============================================================================
 // Result Types
@@ -37,6 +42,7 @@ export type QueuePayloads = {
 export interface EnqueueResult {
   jobId: string;
   queueName: QueueName;
+  jobName: string;
 }
 
 export type JobState =
@@ -87,19 +93,19 @@ const DEFAULT_JOB_OPTIONS: JobsOptions = {
  *
  * @example
  * ```ts
- * const program = Effect.gen(function* () {
- *   // Enqueue a job
- *   const { jobId } = yield* QueueService.enqueue(
- *     Queues.WaveformGeneration,
- *     { fileId: "file-123", audioStorageKey: "path/to/audio.mp3" },
- *     { jobId: "file-123" }
- *   );
+ * // Enqueue a waveform generation job
+ * yield* QueueService.enqueueJob(
+ *   Queues.AudioProcessing,
+ *   AudioJobs.GenerateWaveform,
+ *   { fileId: "file-123", audioStorageKey: "path/to/audio.mp3" }
+ * );
  *
- *   // Check job state
- *   const state = yield* QueueService.getJobState(Queues.WaveformGeneration, jobId);
- * });
- *
- * Effect.runPromise(program.pipe(Effect.provide(QueueService.Default)));
+ * // Enqueue a batch of transcription jobs
+ * yield* QueueService.enqueueJobBatch(
+ *   Queues.AudioProcessing,
+ *   AudioJobs.Transcribe,
+ *   [{ segmentId: "seg-1", ... }, { segmentId: "seg-2", ... }]
+ * );
  * ```
  */
 export class QueueService extends Effect.Service<QueueService>()(
@@ -109,7 +115,7 @@ export class QueueService extends Effect.Service<QueueService>()(
       const redis = yield* RedisService;
       const queues = new Map<QueueName, Queue<unknown>>();
 
-      const getOrCreateQueue = <N extends QueueName>(name: N) =>
+      const getOrCreateQueue = (name: QueueName) =>
         Effect.try({
           try: () => {
             if (!queues.has(name)) {
@@ -121,7 +127,7 @@ export class QueueService extends Effect.Service<QueueService>()(
                 }),
               );
             }
-            return queues.get(name) as Queue<QueuePayloads[N]>;
+            return queues.get(name) as Queue;
           },
           catch: (error) =>
             new QueueError({
@@ -133,35 +139,92 @@ export class QueueService extends Effect.Service<QueueService>()(
         });
 
       return {
-        enqueue: <N extends QueueName>(
+        /**
+         * Enqueue a job to a queue.
+         *
+         * @param queueName - The target queue from the Queues registry
+         * @param jobName - The job type identifier (used by workers to dispatch handlers)
+         * @param payload - Job-specific data
+         * @param options - Optional job configuration
+         * @param options.priority - Lower number = higher priority (default: 0)
+         * @returns The job ID and metadata
+         */
+        enqueueJob: <T>(
           queueName: QueueName,
-          payload: QueuePayloads[N],
-          options?: { jobId?: string },
+          jobName: string,
+          payload: T,
+          options?: { priority?: number },
         ) =>
           Effect.gen(function* () {
             const queue = yield* getOrCreateQueue(queueName);
             const job = yield* Effect.tryPromise({
               try: () =>
-                queue.add(queueName, payload, {
-                  jobId: options?.jobId,
+                queue.add(jobName, payload, {
+                  priority: options?.priority,
                 }),
               catch: (error) =>
                 new QueueError({
                   operation: "enqueue",
-                  message: "Failed to enqueue job",
+                  message: `Failed to enqueue ${jobName} job`,
                   queueName,
-                  jobId: options?.jobId,
                   cause: error,
                 }),
             });
 
             return {
-              jobId: job.id ?? options?.jobId ?? "",
+              jobId: job.id ?? "",
               queueName,
-            };
+              jobName,
+            } satisfies EnqueueResult;
           }),
 
-        getJob: <N extends QueueName>(queueName: N, jobId: string) =>
+        /**
+         * Enqueue multiple jobs in a batch (more efficient for bulk operations).
+         *
+         * @param queueName - The target queue from the Queues registry
+         * @param jobName - The job type identifier (used by workers to dispatch handlers)
+         * @param payloads - Array of job-specific data
+         * @returns Array of job IDs and metadata
+         */
+        enqueueJobBatch: <T>(
+          queueName: QueueName,
+          jobName: string,
+          payloads: T[],
+        ) =>
+          Effect.gen(function* () {
+            const queue = yield* getOrCreateQueue(queueName);
+            const jobs = yield* Effect.tryPromise({
+              try: () =>
+                queue.addBulk(
+                  payloads.map((payload) => ({
+                    name: jobName,
+                    data: payload,
+                  })),
+                ),
+              catch: (error) =>
+                new QueueError({
+                  operation: "enqueue",
+                  message: `Failed to enqueue batch of ${jobName} jobs`,
+                  queueName,
+                  cause: error,
+                }),
+            });
+
+            return jobs.map((job) => ({
+              jobId: job.id ?? "",
+              queueName,
+              jobName,
+            })) satisfies EnqueueResult[];
+          }),
+
+        /**
+         * Get a job by ID.
+         *
+         * @param queueName - The queue to search in
+         * @param jobId - The job ID to retrieve
+         * @returns The job instance or undefined if not found
+         */
+        getJob: (queueName: QueueName, jobId: string) =>
           Effect.gen(function* () {
             const queue = yield* getOrCreateQueue(queueName);
             return yield* Effect.tryPromise({
@@ -177,6 +240,13 @@ export class QueueService extends Effect.Service<QueueService>()(
             });
           }),
 
+        /**
+         * Get the current state of a job.
+         *
+         * @param queueName - The queue containing the job
+         * @param jobId - The job ID to check
+         * @returns The job state or null if job not found
+         */
         getJobState: (queueName: QueueName, jobId: string) =>
           Effect.gen(function* () {
             const queue = yield* getOrCreateQueue(queueName);
@@ -205,6 +275,13 @@ export class QueueService extends Effect.Service<QueueService>()(
             });
           }),
 
+        /**
+         * Get the position of a job in the queue.
+         *
+         * @param queueName - The queue containing the job
+         * @param jobId - The job ID to check
+         * @returns Position (1-indexed) if waiting, 0 if active, null if not found or completed/failed
+         */
         getQueuePosition: (queueName: QueueName, jobId: string) =>
           Effect.gen(function* () {
             const queue = yield* getOrCreateQueue(queueName);
