@@ -77,35 +77,45 @@ export function useSpeakerPageStore(): $SpeakerPageStore {
 function ClipSubscriber() {
   const $store = useSpeakerPageStore();
   const speakerId = useValue($store.speakerId);
-  const trpcUtils = api.useUtils();
 
   api.segment.onClipCreated.useSubscription(
     { speakerId },
     {
-      onData: async (event) => {
+      onData: (event) => {
         // Remove segment from pending state
         $store.markSegmentComplete(event.segmentId);
 
-        if (event.status === "completed") {
-          // Refetch the segment to get updated clip data
-          // We fetch a small batch that includes this segment
-          const result = await trpcUtils.segment.getBySpeaker.fetch({
-            speakerId,
-            limit: 100, // Fetch all to find our segment
-          });
+        if (event.status === "completed" && event.clip) {
+          // Update the segment's clip directly from the event data
+          // Convert ISO string back to Date for the clip
+          const clip = {
+            id: event.clip.id,
+            segmentId: event.clip.segmentId,
+            fileId: event.clip.fileId,
+            createdAt: new Date(event.clip.createdAt),
+            file: {
+              id: event.clip.file.id,
+              // Include all required File fields with defaults for unused ones
+              userId: "",
+              projectId: null,
+              storageKey: event.clip.file.storageKey,
+              duration: event.clip.file.duration,
+              name: null,
+              waveformStatus: "pending" as const,
+              waveformStorageKey: null,
+              waveformError: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          };
 
-          // Find the updated segment and update the store
-          const updatedSegment = result.items.find(
-            (s) => s.id === event.segmentId,
-          );
-          if (updatedSegment?.clip) {
-            $store.updateSegmentClip(event.segmentId, updatedSegment.clip);
-            // Update stats - increment clips count
-            const currentStats = $store.stats.peek();
-            $store.updateStats({
-              clipsCount: currentStats.clipsCount + 1,
-            });
-          }
+          $store.updateSegmentClip(event.segmentId, clip);
+
+          // Update stats - increment clips count
+          const currentStats = $store.stats.peek();
+          $store.updateStats({
+            clipsCount: currentStats.clipsCount + 1,
+          });
         }
 
         if (event.status === "failed") {

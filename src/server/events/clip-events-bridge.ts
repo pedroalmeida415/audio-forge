@@ -4,11 +4,24 @@ import { env } from "~/env";
 import { Queues } from "~/services/queue/queue-service";
 import { clipEvents } from "./clip-events";
 
+/** Clip data from job result */
+interface ClipData {
+  id: string;
+  segmentId: string;
+  fileId: string;
+  createdAt: string;
+  file: {
+    id: string;
+    storageKey: string;
+    duration: number;
+  };
+}
+
 /** Result returned from clip job handlers */
 interface ClipJobResult {
   segmentId: string;
   speakerId: string;
-  clipId: string;
+  clip: ClipData;
 }
 
 /**
@@ -46,7 +59,7 @@ export function initClipEventsBridge() {
       typeof returnvalue === "string" ? JSON.parse(returnvalue) : returnvalue;
 
     // Validate it's a clip job result (has required fields)
-    if (result.segmentId && result.speakerId && result.clipId) {
+    if (result.segmentId && result.speakerId && result.clip) {
       console.log(
         `[ClipEventsBridge] Job ${jobId} completed, emitting event for speaker ${result.speakerId}`,
       );
@@ -54,7 +67,7 @@ export function initClipEventsBridge() {
       clipEvents.emitCompletion({
         segmentId: result.segmentId,
         speakerId: result.speakerId,
-        clipId: result.clipId,
+        clip: result.clip,
         status: "completed",
       });
     }

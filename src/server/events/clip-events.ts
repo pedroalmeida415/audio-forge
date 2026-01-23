@@ -1,9 +1,22 @@
 import { EventEmitter } from "node:events";
 
+/** Clip data included in completion events */
+export interface ClipEventData {
+  id: string;
+  segmentId: string;
+  fileId: string;
+  createdAt: string;
+  file: {
+    id: string;
+    storageKey: string;
+    duration: number;
+  };
+}
+
 export interface ClipEvent {
   segmentId: string;
   speakerId: string;
-  clipId?: string;
+  clip?: ClipEventData;
   status: "completed" | "failed";
   error?: string;
   timestamp: string;
@@ -39,7 +52,7 @@ class ClipEventEmitter extends EventEmitter {
   emitCompletion(params: {
     segmentId: string;
     speakerId: string;
-    clipId?: string;
+    clip?: ClipEventData;
     status: "completed" | "failed";
     error?: string;
   }) {

@@ -107,20 +107,31 @@ type HandlerRegistry = {
   [K in AudioJobName]?: JobHandler;
 };
 
-/** Result of ensureClipExists - the clip's file with its storage key */
-interface ClipFile {
+/** Clip data returned from ensureClipExists for SSE notifications */
+interface ClipData {
+  id: string;
+  segmentId: string;
   fileId: string;
-  storageKey: string;
+  createdAt: string;
+  file: {
+    id: string;
+    storageKey: string;
+    duration: number;
+  };
+}
+
+/** Result of ensureClipExists */
+interface EnsureClipResult {
   segmentId: string;
   speakerId: string;
-  clipId: string;
+  clip: ClipData;
 }
 
 /** Result returned from clip job handlers for SSE notifications */
 export interface ClipJobResult {
   segmentId: string;
   speakerId: string;
-  clipId: string;
+  clip: ClipData;
 }
 
 // ============================================================================
@@ -158,15 +169,23 @@ const ensureClipExists = (segmentId: string) =>
       return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
     }
 
-    // If clip already exists, return its file info
+    // If clip already exists, return its info
     if (segment.clip?.file?.storageKey) {
       return {
-        fileId: segment.clip.fileId,
-        storageKey: segment.clip.file.storageKey,
         segmentId,
         speakerId: segment.speakerId,
-        clipId: segment.clip.id,
-      };
+        clip: {
+          id: segment.clip.id,
+          segmentId,
+          fileId: segment.clip.fileId,
+          createdAt: segment.clip.createdAt.toISOString(),
+          file: {
+            id: segment.clip.file.id,
+            storageKey: segment.clip.file.storageKey,
+            duration: segment.clip.file.duration ?? 0,
+          },
+        },
+      } satisfies EnsureClipResult;
     }
 
     // No clip exists - need to create one
@@ -243,12 +262,20 @@ const ensureClipExists = (segmentId: string) =>
     );
 
     return {
-      fileId: newClipFile.id,
-      storageKey: clipStorageKey,
       segmentId,
       speakerId: segment.speakerId,
-      clipId: newClip.id,
-    } satisfies ClipFile;
+      clip: {
+        id: newClip.id,
+        segmentId,
+        fileId: newClipFile.id,
+        createdAt: newClip.createdAt.toISOString(),
+        file: {
+          id: newClipFile.id,
+          storageKey: clipStorageKey,
+          duration: durationSeconds,
+        },
+      },
+    } satisfies EnsureClipResult;
   });
 
 // ============================================================================
@@ -388,22 +415,18 @@ const handleDenoise: JobHandler = async (job) => {
   return await AppRuntime.runPromise(
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
-      const clipFile = yield* ensureClipExists(segmentId);
-      console.log(`[Denoise] Clip ready: ${clipFile.storageKey}`);
+      const result = yield* ensureClipExists(segmentId);
+      console.log(`[Denoise] Clip ready: ${result.clip.file.storageKey}`);
 
       // TODO: Implement denoising
-      // 1. Download audio from clipFile.storageKey
+      // 1. Download audio from result.clip.file.storageKey
       // 2. Apply denoising filter (ffmpeg or external service)
       // 3. Upload processed audio (update file or create new version)
       console.log(
         `[Denoise] Segment ${segmentId} - processing not yet implemented`,
       );
 
-      return {
-        segmentId: clipFile.segmentId,
-        speakerId: clipFile.speakerId,
-        clipId: clipFile.clipId,
-      } satisfies ClipJobResult;
+      return result satisfies ClipJobResult;
     }),
   );
 };
@@ -421,22 +444,18 @@ const handleRemoveOverlap: JobHandler = async (job) => {
   return await AppRuntime.runPromise(
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
-      const clipFile = yield* ensureClipExists(segmentId);
-      console.log(`[RemoveOverlap] Clip ready: ${clipFile.storageKey}`);
+      const result = yield* ensureClipExists(segmentId);
+      console.log(`[RemoveOverlap] Clip ready: ${result.clip.file.storageKey}`);
 
       // TODO: Implement overlap removal
-      // 1. Download audio from clipFile.storageKey
+      // 1. Download audio from result.clip.file.storageKey
       // 2. Detect and remove overlapping speech regions
       // 3. Upload processed audio (update file or create new version)
       console.log(
         `[RemoveOverlap] Segment ${segmentId} - processing not yet implemented`,
       );
 
-      return {
-        segmentId: clipFile.segmentId,
-        speakerId: clipFile.speakerId,
-        clipId: clipFile.clipId,
-      } satisfies ClipJobResult;
+      return result satisfies ClipJobResult;
     }),
   );
 };
@@ -454,11 +473,11 @@ const handleTranscribe: JobHandler = async (job) => {
   return await AppRuntime.runPromise(
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
-      const clipFile = yield* ensureClipExists(segmentId);
-      console.log(`[Transcribe] Clip ready: ${clipFile.storageKey}`);
+      const result = yield* ensureClipExists(segmentId);
+      console.log(`[Transcribe] Clip ready: ${result.clip.file.storageKey}`);
 
       // TODO: Implement transcription
-      // 1. Download audio from clipFile.storageKey
+      // 1. Download audio from result.clip.file.storageKey
       // 2. Send to transcription API (Whisper, etc.)
       // 3. Update segment.transcription with result:
       //    const db = yield* Database;
@@ -467,11 +486,7 @@ const handleTranscribe: JobHandler = async (job) => {
         `[Transcribe] Segment ${segmentId} - processing not yet implemented`,
       );
 
-      return {
-        segmentId: clipFile.segmentId,
-        speakerId: clipFile.speakerId,
-        clipId: clipFile.clipId,
-      } satisfies ClipJobResult;
+      return result satisfies ClipJobResult;
     }),
   );
 };
