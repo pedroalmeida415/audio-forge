@@ -8,6 +8,8 @@
  * Internally uses milliseconds for precision, converts to seconds only at boundaries.
  */
 
+import { env } from "~/env";
+
 export interface MSEAudioProviderConfig {
   storageKey: string;
   duration: number; // Duration in seconds (from audio metadata)
@@ -228,7 +230,12 @@ export class MSEAudioProvider {
     startMs: number,
     endMs: number,
   ): Promise<ArrayBuffer> {
-    const url = `/api/media-proxy?storageKey=${encodeURIComponent(this.storageKey)}&startMs=${startMs}&endMs=${endMs}`;
+    const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
+    if (!mediaServerUrl) {
+      throw new Error("NEXT_PUBLIC_MEDIA_SERVER_URL is not configured");
+    }
+
+    const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(this.storageKey)}&startMs=${startMs}&endMs=${endMs}`;
 
     const response = await fetch(url, {
       credentials: "include",

@@ -27,6 +27,9 @@ export const env = createEnv({
     PYANNOTE_WEBHOOK_URL: z.string().url(),
     // Redis (for BullMQ)
     REDIS_URL: z.string().url().optional(),
+    // Media Server (for workers)
+    MEDIA_SERVER_URL: z.string().url().default("http://localhost:3002"),
+    MEDIA_SERVER_INTERNAL_TOKEN: z.string().optional(),
   },
 
   /**
@@ -35,7 +38,8 @@ export const env = createEnv({
    * `NEXT_PUBLIC_`.
    */
   client: {
-    // NEXT_PUBLIC_CLIENTVAR: z.string(),
+    // Media Server URL for browser audio streaming (required)
+    NEXT_PUBLIC_MEDIA_SERVER_URL: z.string().url(),
   },
 
   /**
@@ -60,6 +64,10 @@ export const env = createEnv({
     PYANNOTE_WEBHOOK_URL: process.env.PYANNOTE_WEBHOOK_URL,
     // Redis
     REDIS_URL: process.env.REDIS_URL,
+    // Media Server
+    MEDIA_SERVER_URL: process.env.MEDIA_SERVER_URL,
+    MEDIA_SERVER_INTERNAL_TOKEN: process.env.MEDIA_SERVER_INTERNAL_TOKEN,
+    NEXT_PUBLIC_MEDIA_SERVER_URL: process.env.NEXT_PUBLIC_MEDIA_SERVER_URL,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

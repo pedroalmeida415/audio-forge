@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { env } from "~/env";
 import { api } from "~/trpc/react";
 
 type AudioState = "idle" | "loading" | "ready" | "error";
@@ -52,7 +53,7 @@ export function useSegmentAudio({
   );
 
   /**
-   * Load source audio via media-proxy.
+   * Load source audio via media server.
    * Fetches the segment's time range from the original session file.
    */
   const loadSource = useCallback(async () => {
@@ -64,9 +65,16 @@ export function useSegmentAudio({
       const startMs = Math.floor(startTime * 1000);
       const endMs = Math.ceil(endTime * 1000);
 
-      const response = await fetch(
-        `/api/media-proxy?storageKey=${encodeURIComponent(sessionFileStorageKey)}&startMs=${startMs}&endMs=${endMs}`,
-      );
+      const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
+      if (!mediaServerUrl) {
+        throw new Error("NEXT_PUBLIC_MEDIA_SERVER_URL is not configured");
+      }
+
+      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(sessionFileStorageKey)}&startMs=${startMs}&endMs=${endMs}`;
+
+      const response = await fetch(url, {
+        credentials: "include",
+      });
 
       if (!response.ok) {
         throw new Error(
@@ -75,8 +83,8 @@ export function useSegmentAudio({
       }
 
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      setSourceUrl(url);
+      const objectUrl = URL.createObjectURL(blob);
+      setSourceUrl(objectUrl);
       setSourceState("ready");
     } catch (error) {
       console.error("Failed to load source audio:", error);

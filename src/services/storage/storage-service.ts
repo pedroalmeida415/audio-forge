@@ -158,6 +158,31 @@ export class StorageService extends Effect.Service<StorageService>()(
               }),
           }),
 
+        uploadBuffer: (params: {
+          key: string;
+          data: Buffer;
+          contentType: string;
+        }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const command = new PutObjectCommand({
+                Bucket: bucket,
+                Key: params.key,
+                Body: params.data,
+                ContentType: params.contentType,
+                ContentLength: params.data.length,
+              });
+              await client.send(command);
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "upload",
+                message: "Failed to upload buffer",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
         downloadToPath: (params: { key: string; localPath: string }) =>
           Effect.tryPromise({
             try: async () => {

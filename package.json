@@ -17,6 +17,7 @@
     "start": "next start",
     "worker:start": "bun run workers/audio-processing-worker.ts",
     "worker:admin": "bun run workers/admin-ui.ts",
+    "media:start": "bun run media-server/index.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test": "vitest",

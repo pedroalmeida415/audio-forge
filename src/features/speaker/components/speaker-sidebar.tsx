@@ -52,7 +52,7 @@ export function SpeakerSidebar() {
     setProcessingOperation(operation);
     queueMutation.mutate({
       segmentIds: Array.from(selectedIds),
-      operations: [operation],
+      operation,
     });
   };
 
