@@ -1,8 +1,10 @@
 import type { Context, Next } from "hono";
+import postgres from "postgres";
 
 interface AuthConfig {
   internalToken: string;
-  nextAuthUrl: string;
+  databaseUrl: string;
+  authSecret: string;
 }
 
 interface User {
@@ -11,16 +13,24 @@ interface User {
   name: string | null;
 }
 
-interface Session {
-  user: User;
-}
+// Session token cookie name used by better-auth
+// May have __Secure- prefix in production
+const SESSION_COOKIE_NAMES = [
+  "__Secure-better-auth.session_token",
+  "better-auth.session_token",
+];
 
 /**
  * Creates an auth middleware that handles both:
  * - Worker requests with internal token (bypasses session validation)
- * - Browser requests with session cookie (validates via Next.js auth endpoint)
+ * - Browser requests with session cookie (validates via direct DB lookup)
  */
 export function createAuthMiddleware(config: AuthConfig) {
+  const sql = postgres(config.databaseUrl, {
+    max: 5, // Small pool for auth queries only
+    idle_timeout: 30,
+  });
+
   return async function authMiddleware(c: Context, next: Next) {
     const authHeader = c.req.header("Authorization");
     const storageKey = c.req.query("storageKey");
@@ -35,59 +45,142 @@ export function createAuthMiddleware(config: AuthConfig) {
       return next();
     }
 
-    // Browser request - validate session via Next.js auth endpoint
-    const session = await validateSession(c.req.raw, config.nextAuthUrl);
+    // Browser request - validate session via direct DB lookup
+    const user = await validateSession(c.req.raw, sql, config.authSecret);
 
-    if (!session?.user) {
+    if (!user) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
     // Validate ownership - storageKey must contain user ID
     // StorageKey format: diarization/{userId}/... or clips/{userId}/...
-    if (!storageKey.includes(session.user.id)) {
+    if (!storageKey.includes(user.id)) {
       return c.json({ error: "Forbidden" }, 403);
     }
 
     // Attach user to context for downstream handlers
-    c.set("user", session.user);
+    c.set("user", user);
 
     return next();
   };
 }
 
 /**
- * Validate session by calling Next.js better-auth endpoint
- * Forwards cookies from the original request
+ * Parse and verify session token from cookie header
+ *
+ * Cookie format: better-auth.session_token={token}.{signature}
+ * The cookie is URL-encoded, signature is HMAC-SHA256 base64
+ */
+async function parseAndVerifySessionToken(
+  cookieHeader: string | null,
+  secret: string,
+): Promise<string | null> {
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(";").map((c) => c.trim());
+
+  for (const cookie of cookies) {
+    const [name, ...valueParts] = cookie.split("=");
+    if (!name || !SESSION_COOKIE_NAMES.includes(name)) continue;
+
+    // URL decode the cookie value
+    const rawValue = valueParts.join("=");
+    const decoded = decodeURIComponent(rawValue);
+
+    // Format is "token.signature"
+    const dotIndex = decoded.lastIndexOf(".");
+    if (dotIndex === -1) continue;
+
+    const token = decoded.substring(0, dotIndex);
+    const signature = decoded.substring(dotIndex + 1);
+
+    // Verify HMAC-SHA256 signature
+    const isValid = await verifySignature(token, signature, secret);
+    if (isValid) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Verify HMAC-SHA256 signature
+ * better-auth signs: HMAC-SHA256(token, secret) -> base64
+ */
+async function verifySignature(
+  value: string,
+  base64Signature: string,
+  secret: string,
+): Promise<boolean> {
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+
+    // Decode base64 signature to bytes
+    const signatureBytes = Uint8Array.from(atob(base64Signature), (c) =>
+      c.charCodeAt(0),
+    );
+
+    return await crypto.subtle.verify(
+      "HMAC",
+      key,
+      signatureBytes,
+      encoder.encode(value),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate session by querying DB directly
+ * Looks up session token and joins with user table
  */
 async function validateSession(
   request: Request,
-  nextAuthUrl: string,
-): Promise<Session | null> {
+  sql: postgres.Sql,
+  authSecret: string,
+): Promise<User | null> {
   try {
-    // Forward cookies from the original request
-    const cookie = request.headers.get("Cookie");
+    const cookieHeader = request.headers.get("Cookie");
+    const sessionToken = await parseAndVerifySessionToken(
+      cookieHeader,
+      authSecret,
+    );
 
-    const response = await fetch(`${nextAuthUrl}/api/auth/get-session`, {
-      headers: {
-        Cookie: cookie ?? "",
-      },
-    });
-
-    if (!response.ok) {
-      console.error(
-        `[auth] Session validation failed: ${response.status} ${response.statusText}`,
-      );
+    if (!sessionToken) {
       return null;
     }
 
-    const data = await response.json();
+    // Query session + user in one go
+    const result = await sql<
+      { userId: string; email: string; name: string | null }[]
+    >`
+      SELECT u.id as "userId", u.email, u.name
+      FROM session s
+      JOIN "user" u ON s.user_id = u.id
+      WHERE s.token = ${sessionToken}
+        AND s.expires_at > NOW()
+      LIMIT 1
+    `;
 
-    // better-auth returns { session, user } or null
-    if (data?.user?.id) {
-      return { user: data.user };
+    const row = result[0];
+    if (!row) {
+      return null;
     }
 
-    return null;
+    return {
+      id: row.userId,
+      email: row.email,
+      name: row.name,
+    };
   } catch (error) {
     console.error("[auth] Error validating session:", error);
     return null;

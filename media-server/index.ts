@@ -30,7 +30,8 @@ function getEnvNumber(name: string, defaultValue: number): number {
 const config = {
   port: getEnvNumber("MEDIA_SERVER_PORT", 3002),
   internalToken: getEnvOrThrow("MEDIA_SERVER_INTERNAL_TOKEN"),
-  nextAuthUrl: process.env.NEXT_AUTH_URL ?? "http://localhost:3000",
+  databaseUrl: getEnvOrThrow("DATABASE_URL"),
+  authSecret: getEnvOrThrow("BETTER_AUTH_SECRET"),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
   cache: {
     dir: process.env.MEDIA_CACHE_DIR ?? "/tmp/media-cache",
@@ -62,7 +63,8 @@ const cache = new MediaCache({
 
 const authMiddleware = createAuthMiddleware({
   internalToken: config.internalToken,
-  nextAuthUrl: config.nextAuthUrl,
+  databaseUrl: config.databaseUrl,
+  authSecret: config.authSecret,
 });
 
 // ============================================================================
