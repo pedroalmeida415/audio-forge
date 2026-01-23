@@ -35,12 +35,21 @@ export function SpeakerSidebar() {
   );
 
   const queueMutation = api.segment.queueProcessing.useMutation({
-    onSuccess: (data) => {
-      // Show success feedback (could integrate with toast)
-      console.log("Queued:", data.message);
-      setProcessingOperation(null);
+    onMutate: (variables) => {
+      // Optimistically mark segments as pending
+      $store.markSegmentsPending(variables.segmentIds);
     },
-    onError: () => {
+    onSuccess: (data) => {
+      console.log("Queued:", data.jobIds.length, "jobs");
+      setProcessingOperation(null);
+      // Clear selection after queuing
+      $store.clearSelection();
+    },
+    onError: (_error, variables) => {
+      // Remove pending state on error
+      for (const id of variables.segmentIds) {
+        $store.markSegmentComplete(id);
+      }
       setProcessingOperation(null);
     },
   });

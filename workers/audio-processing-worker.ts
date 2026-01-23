@@ -99,7 +99,9 @@ const fetchSliceFromMediaServer = (params: {
 // Types
 // ============================================================================
 
-type JobHandler = (job: Job<AudioJobPayload>) => Promise<void>;
+type JobHandler = (
+  job: Job<AudioJobPayload>,
+) => Promise<ClipJobResult | undefined>;
 
 type HandlerRegistry = {
   [K in AudioJobName]?: JobHandler;
@@ -109,6 +111,16 @@ type HandlerRegistry = {
 interface ClipFile {
   fileId: string;
   storageKey: string;
+  segmentId: string;
+  speakerId: string;
+  clipId: string;
+}
+
+/** Result returned from clip job handlers for SSE notifications */
+export interface ClipJobResult {
+  segmentId: string;
+  speakerId: string;
+  clipId: string;
 }
 
 // ============================================================================
@@ -151,7 +163,10 @@ const ensureClipExists = (segmentId: string) =>
       return {
         fileId: segment.clip.fileId,
         storageKey: segment.clip.file.storageKey,
-      } satisfies ClipFile;
+        segmentId,
+        speakerId: segment.speakerId,
+        clipId: segment.clip.id,
+      };
     }
 
     // No clip exists - need to create one
@@ -209,10 +224,19 @@ const ensureClipExists = (segmentId: string) =>
     }
 
     // Create clip record
-    yield* db.insert(clips).values({
-      segmentId,
-      fileId: newClipFile.id,
-    });
+    const [newClip] = yield* db
+      .insert(clips)
+      .values({
+        segmentId,
+        fileId: newClipFile.id,
+      })
+      .returning();
+
+    if (!newClip) {
+      return yield* Effect.fail(
+        new Error(`Failed to create clip record for segment ${segmentId}`),
+      );
+    }
 
     console.log(
       `[ensureClipExists] Created clip for segment ${segmentId}: ${clipStorageKey}`,
@@ -221,6 +245,9 @@ const ensureClipExists = (segmentId: string) =>
     return {
       fileId: newClipFile.id,
       storageKey: clipStorageKey,
+      segmentId,
+      speakerId: segment.speakerId,
+      clipId: newClip.id,
     } satisfies ClipFile;
   });
 
@@ -343,6 +370,9 @@ const handleGenerateWaveform: JobHandler = async (job) => {
         }),
     ),
   );
+
+  // Waveform jobs don't return clip data (they're for files, not segments)
+  return undefined;
 };
 
 /**
@@ -355,7 +385,7 @@ const handleDenoise: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
   console.log(`[Denoise] Processing segment ${segmentId}`);
 
-  await AppRuntime.runPromise(
+  return await AppRuntime.runPromise(
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
       const clipFile = yield* ensureClipExists(segmentId);
@@ -368,6 +398,12 @@ const handleDenoise: JobHandler = async (job) => {
       console.log(
         `[Denoise] Segment ${segmentId} - processing not yet implemented`,
       );
+
+      return {
+        segmentId: clipFile.segmentId,
+        speakerId: clipFile.speakerId,
+        clipId: clipFile.clipId,
+      } satisfies ClipJobResult;
     }),
   );
 };
@@ -382,7 +418,7 @@ const handleRemoveOverlap: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
   console.log(`[RemoveOverlap] Processing segment ${segmentId}`);
 
-  await AppRuntime.runPromise(
+  return await AppRuntime.runPromise(
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
       const clipFile = yield* ensureClipExists(segmentId);
@@ -395,6 +431,12 @@ const handleRemoveOverlap: JobHandler = async (job) => {
       console.log(
         `[RemoveOverlap] Segment ${segmentId} - processing not yet implemented`,
       );
+
+      return {
+        segmentId: clipFile.segmentId,
+        speakerId: clipFile.speakerId,
+        clipId: clipFile.clipId,
+      } satisfies ClipJobResult;
     }),
   );
 };
@@ -409,7 +451,7 @@ const handleTranscribe: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
   console.log(`[Transcribe] Processing segment ${segmentId}`);
 
-  await AppRuntime.runPromise(
+  return await AppRuntime.runPromise(
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
       const clipFile = yield* ensureClipExists(segmentId);
@@ -424,6 +466,12 @@ const handleTranscribe: JobHandler = async (job) => {
       console.log(
         `[Transcribe] Segment ${segmentId} - processing not yet implemented`,
       );
+
+      return {
+        segmentId: clipFile.segmentId,
+        speakerId: clipFile.speakerId,
+        clipId: clipFile.clipId,
+      } satisfies ClipJobResult;
     }),
   );
 };
@@ -458,7 +506,7 @@ const worker = new Worker<AudioJobPayload>(
       throw new Error(`Unknown job type: ${jobName}`);
     }
 
-    await handler(job);
+    return await handler(job);
   },
   {
     connection,

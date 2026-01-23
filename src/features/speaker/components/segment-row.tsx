@@ -1,7 +1,7 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { FileAudio } from "lucide-react";
+import { FileAudio, Loader2 } from "lucide-react";
 import { Checkbox } from "~/components/ui/checkbox";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
@@ -17,7 +17,9 @@ interface SegmentRowProps {
 export function SegmentRow({ segment }: SegmentRowProps) {
   const $store = useSpeakerPageStore();
   const selectedIds = useValue($store.selectedSegmentIds);
+  const pendingIds = useValue($store.pendingSegmentIds);
   const isSelected = selectedIds.has(segment.id);
+  const isPending = pendingIds.has(segment.id);
 
   const sessionName =
     segment.session.name ?? segment.session.file.name ?? "Unnamed Session";
@@ -80,6 +82,16 @@ export function SegmentRow({ segment }: SegmentRowProps) {
             onLoadAudio={loadClip}
             duration={segment.clip?.file.duration ?? duration}
           />
+        ) : isPending ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+              Processed
+            </span>
+            <div className="flex h-8 items-center gap-2 text-muted-foreground text-sm">
+              <Loader2 className="size-3.5 animate-spin" />
+              Processing...
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col gap-1.5">
             <span className="font-medium text-muted-foreground text-xs uppercase tracking-wide">

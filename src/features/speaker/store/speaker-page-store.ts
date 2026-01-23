@@ -37,6 +37,7 @@ export type SpeakerPageStateData = {
   stats: SpeakerStats;
   segments: SegmentWithClip[];
   selectedSegmentIds: Set<string>;
+  pendingSegmentIds: Set<string>;
   hasMore: boolean;
   isLoadingMore: boolean;
   nextCursor: string | undefined;
@@ -64,6 +65,7 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
     stats: initialData.stats,
     segments: initialData.initialSegments,
     selectedSegmentIds: new Set<string>(),
+    pendingSegmentIds: new Set<string>(),
     hasMore: initialData.hasMore,
     isLoadingMore: false,
     nextCursor: initialData.nextCursor,
@@ -115,6 +117,23 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
     updateStats: (stats: Partial<SpeakerStats>) => {
       $store.stats.assign(stats);
     },
+
+    markSegmentsPending: (segmentIds: string[]) => {
+      const current = $store.pendingSegmentIds.peek();
+      const updated = new Set([...current, ...segmentIds]);
+      $store.pendingSegmentIds.set(updated);
+    },
+
+    markSegmentComplete: (segmentId: string) => {
+      $store.pendingSegmentIds.delete(segmentId);
+    },
+
+    updateSegmentClip: (segmentId: string, clip: SegmentWithClip["clip"]) => {
+      const index = $store.segments.peek().findIndex((s) => s.id === segmentId);
+      if (index !== -1) {
+        $store.segments[index]?.clip.set(clip);
+      }
+    },
   }) as $SpeakerPageStore;
 
   return $store;
@@ -138,6 +157,9 @@ interface SpeakerPageStoreState extends SpeakerPageStateData {
   setIsLoadingMore: (isLoading: boolean) => void;
   setNextCursor: (cursor: string | undefined) => void;
   updateStats: (stats: Partial<SpeakerStats>) => void;
+  markSegmentsPending: (segmentIds: string[]) => void;
+  markSegmentComplete: (segmentId: string) => void;
+  updateSegmentClip: (segmentId: string, clip: SegmentWithClip["clip"]) => void;
 }
 
 export type $SpeakerPageStore = Observable<SpeakerPageStoreState>;

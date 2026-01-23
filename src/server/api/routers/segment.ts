@@ -1,17 +1,16 @@
+import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import {
-  clippingSessions,
-  segments,
-  speakers,
-} from "~/server/db/schema";
+import { clippingSessions, segments, speakers } from "~/server/db/schema";
+import { type ClipEvent, clipEvents } from "~/server/events/clip-events";
+import { initClipEventsBridge } from "~/server/events/clip-events-bridge";
 import { Database } from "~/services/infra/database";
 import {
-  AudioJobs,
   type AudioJobPayload,
+  AudioJobs,
   QueueService,
   Queues,
 } from "~/services/queue/queue-service";
@@ -699,4 +698,26 @@ export const segmentRouter = createTRPCRouter({
           }),
         ),
     ),
+
+  // SSE subscription for clip completion events
+  onClipCreated: protectedProcedure
+    .input(z.object({ speakerId: z.string().uuid() }))
+    .subscription(async function* (opts) {
+      const { speakerId } = opts.input;
+
+      // Initialize the bridge to listen for BullMQ events (idempotent)
+      initClipEventsBridge();
+
+      // Create an async iterable from the EventEmitter
+      const eventName = `clip:speaker:${speakerId}`;
+
+      // Listen for events using Node.js on() which returns an async iterable
+      for await (const [event] of on(clipEvents, eventName, {
+        signal: opts.signal,
+      })) {
+        yield event as ClipEvent;
+        // Unlike diarization, we don't return after completion
+        // since multiple clips can be processed for the same speaker
+      }
+    }),
 });

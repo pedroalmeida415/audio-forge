@@ -18,6 +18,7 @@ Audio Forge is a webapp designed to streamline the process of creating high-qual
 bun dev                    # Start Next.js dev server with Turbopack
 bun worker:dev             # Start audio processing worker (separate terminal)
 bun worker:admin           # Start BullMQ admin UI
+bun media:start            # Start standalone media server (port 3002)
 
 # Database
 bun db:generate            # Generate Drizzle migrations
@@ -43,6 +44,7 @@ bun storybook              # Start Storybook dev server (port 6006)
 - **Database**: PostgreSQL with Drizzle ORM
 - **API**: tRPC v11 for type-safe RPCs
 - **Auth**: better-auth
+- **Media Server**: Standalone Hono server for audio streaming (media-server/)
 - **Storage**: Cloudflare R2 (S3-compatible)
 - **State Management**: Legend-State (reactive stores with observables)
 - **Services Layer**: Effect-TS for dependency injection and error handling
@@ -155,6 +157,17 @@ const $store = useObservable<ClippingStoreState>({...})
 - **ClippingSession**: 1:1 with File, stores diarization job info in JSONB
 - **Segment**: Time range within a session, always assigned to a speaker
 - **Clip**: Processed audio from a segment (1:1 relationship)
+
+### Media Server
+
+Standalone Hono server (`media-server/`) handles audio streaming with LRU cache.
+- Auth: Validates better-auth session cookies via direct DB lookup
+- Cookie format: `better-auth.session_token={token}.{HMAC-SHA256-signature}` (URL-encoded)
+- Env vars: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `MEDIA_SERVER_INTERNAL_TOKEN`
+
+### BullMQ Gotchas
+- `QueueEvents` "completed" handler: `returnvalue` is already parsed object, not JSON string
+- Worker must `return await handler(job)` (not just `await`) to capture return values in `job.returnvalue`
 
 ### Path Alias
 Use `~` for src imports: `import { api } from "~/trpc/react"`
