@@ -1,5 +1,31 @@
 import { spawn } from "node:child_process";
-import { createReadStream, statSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+/**
+ * Temp directory for FFmpeg output files.
+ * Uses /dev/shm (tmpfs/RAM-backed) to avoid disk I/O.
+ * Falls back to OS temp dir if /dev/shm is not available.
+ *
+ * Note: /dev/shm is cleared on reboot and shared with other processes.
+ * Files are deleted immediately after use, so memory pressure is minimal.
+ */
+const TEMP_DIR = (() => {
+  const baseDir = existsSync("/dev/shm") ? "/dev/shm" : tmpdir();
+  const dir = join(baseDir, "audio-forge");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+})();
 
 interface StreamSliceOptions {
   localPath: string;
@@ -99,8 +125,8 @@ export function streamAudioSlice(options: StreamSliceOptions): Response {
 
 /**
  * Extract a slice as FLAC and return as a complete buffer (for workers).
- * Since clips are short (typically 20-30s), buffering is simpler and faster
- * than streaming for these small files.
+ * Uses a temp file so FFmpeg can finalize the FLAC header with correct metadata
+ * (duration, total samples, etc.). Piping to stdout leaves these as placeholders.
  */
 export async function extractFlacSlice(options: {
   localPath: string;
@@ -113,6 +139,9 @@ export async function extractFlacSlice(options: {
   const startSec = (startMs / 1000).toFixed(3);
   const durationSec = (durationMs / 1000).toFixed(3);
 
+  // Use a temp file so FFmpeg can seek back and finalize the FLAC header
+  const tempPath = join(TEMP_DIR, `flac-slice-${Date.now()}-${Math.random().toString(36).slice(2)}.flac`);
+
   const args = [
     "-ss",
     startSec,
@@ -122,9 +151,8 @@ export async function extractFlacSlice(options: {
     durationSec,
     "-c:a",
     "flac",
-    "-f",
-    "flac",
-    "-",
+    "-y", // Overwrite temp file if exists
+    tempPath,
   ];
 
   return new Promise((resolve) => {
@@ -132,18 +160,19 @@ export async function extractFlacSlice(options: {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const chunks: Buffer[] = [];
+    let stderrOutput = "";
 
-    ffmpeg.stdout.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-
-    ffmpeg.stderr.on("data", () => {
-      // Suppress FFmpeg stderr
+    ffmpeg.stderr.on("data", (chunk: Buffer) => {
+      stderrOutput += chunk.toString();
     });
 
     ffmpeg.on("close", (code) => {
       if (code !== 0) {
+        console.error("[extractFlacSlice] FFmpeg failed:", stderrOutput);
+        // Clean up temp file on error
+        try {
+          rmSync(tempPath, { force: true });
+        } catch {}
         resolve(
           new Response(JSON.stringify({ error: "FFmpeg extraction failed" }), {
             status: 500,
@@ -153,20 +182,38 @@ export async function extractFlacSlice(options: {
         return;
       }
 
-      const buffer = Buffer.concat(chunks);
-      resolve(
-        new Response(buffer, {
-          headers: {
-            "Content-Type": "audio/flac",
-            "Content-Length": buffer.length.toString(),
-            "Cache-Control": "private, max-age=3600",
-          },
-        }),
-      );
+      try {
+        // Read the complete FLAC file with proper headers
+        const buffer = readFileSync(tempPath);
+        // Clean up temp file
+        rmSync(tempPath, { force: true });
+
+        resolve(
+          new Response(buffer, {
+            headers: {
+              "Content-Type": "audio/flac",
+              "Content-Length": buffer.length.toString(),
+              "Cache-Control": "private, max-age=3600",
+            },
+          }),
+        );
+      } catch (err) {
+        console.error("[extractFlacSlice] Failed to read temp file:", err);
+        resolve(
+          new Response(JSON.stringify({ error: "Failed to read extracted audio" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
     });
 
     ffmpeg.on("error", (err) => {
-      console.error("[stream-audio] FFmpeg spawn error:", err);
+      console.error("[extractFlacSlice] FFmpeg spawn error:", err);
+      // Clean up temp file on error
+      try {
+        rmSync(tempPath, { force: true });
+      } catch {}
       resolve(
         new Response(JSON.stringify({ error: "FFmpeg spawn failed" }), {
           status: 500,
@@ -193,8 +240,8 @@ export function streamRawFile(options: { localPath: string }): Response {
 
   const webStream = new ReadableStream({
     start(controller) {
-      nodeStream.on("data", (chunk: Buffer) => {
-        controller.enqueue(new Uint8Array(chunk));
+      nodeStream.on("data", (chunk) => {
+        controller.enqueue(new Uint8Array(chunk as Buffer));
       });
 
       nodeStream.on("end", () => {
