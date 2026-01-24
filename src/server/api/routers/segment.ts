@@ -65,18 +65,23 @@ export const segmentRouter = createTRPCRouter({
 
             const total = totalResult[0]?.total ?? 0;
 
-            // Get segments with clips and session info
+            // Get segments with clips and session info (select only needed columns)
             const segmentResults = yield* db.query.segments.findMany({
               where: eq(segments.speakerId, input.speakerId),
               with: {
                 clip: {
                   with: {
-                    file: true,
+                    file: {
+                      columns: { storageKey: true, duration: true },
+                    },
                   },
                 },
                 session: {
+                  columns: { id: true, name: true },
                   with: {
-                    file: true,
+                    file: {
+                      columns: { name: true, storageKey: true },
+                    },
                   },
                 },
               },

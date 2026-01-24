@@ -9,13 +9,13 @@ import type { Clip, File, Segment, Speaker } from "~/server/db/schema";
 export type SegmentWithClip = Segment & {
   clip:
     | (Clip & {
-        file: File;
+        file: Pick<File, "storageKey" | "duration">;
       })
     | null;
   session: {
     id: string;
     name: string | null;
-    file: File;
+    file: Pick<File, "name" | "storageKey">;
   };
 };
 
