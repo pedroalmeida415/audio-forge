@@ -236,11 +236,12 @@ function AudioPlayer({
           : "border border-amber-500/20 bg-gradient-to-br from-stone-800/60 to-stone-900/60 shadow-[0_0_20px_rgba(245,158,11,0.05)]",
       )}
     >
-      <button
+      <Button
         type="button"
+        size="icon"
         onClick={() => setIsPlaying(!isPlaying)}
         className={cn(
-          "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-200",
+          "size-9 shrink-0 rounded-full transition-all duration-200",
           variant === "original"
             ? "bg-stone-700 text-stone-200 hover:bg-stone-600"
             : "bg-gradient-to-br from-amber-500 to-amber-600 text-stone-900 shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:shadow-[0_0_20px_rgba(245,158,11,0.5)]",
@@ -251,7 +252,7 @@ function AudioPlayer({
         ) : (
           <Play className="size-3.5 translate-x-0.5" fill="currentColor" />
         )}
-      </button>
+      </Button>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="font-medium text-[11px] text-stone-400 uppercase tracking-wider">
@@ -476,14 +477,16 @@ function SegmentCard({
                   </SelectContent>
                 </Select>
               ) : (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setIsAddingTag(true)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-stone-600/40 border-dashed px-2.5 py-1 text-stone-500 text-xs transition-all duration-200 hover:border-amber-500/40 hover:text-amber-400"
+                  className="h-auto gap-1 rounded-lg border-stone-600/40 border-dashed bg-transparent px-2.5 py-1 text-stone-500 text-xs transition-all duration-200 hover:border-amber-500/40 hover:bg-transparent hover:text-amber-400"
                 >
                   <Plus className="size-3" />
                   Add
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -559,10 +562,11 @@ function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-stone-700/40 bg-gradient-to-br from-stone-800/60 to-stone-900/60 backdrop-blur-md">
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full cursor-pointer items-center justify-between px-5 py-4"
+        className="flex h-auto w-full items-center justify-between rounded-b-none px-5 py-4 hover:bg-transparent"
       >
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-lg bg-stone-700/50">
@@ -581,7 +585,7 @@ function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
             isExpanded && "rotate-180",
           )}
         />
-      </button>
+      </Button>
 
       {isExpanded && (
         <div className="border-stone-700/30 border-t px-5 py-4">

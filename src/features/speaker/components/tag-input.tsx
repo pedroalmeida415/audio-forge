@@ -3,6 +3,7 @@
 import { Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { cn } from "~/lib/utils";
 
@@ -83,12 +84,17 @@ export function TagInput({
         {tags.map((tag) => (
           <Badge
             key={tag}
-            variant="secondary"
+            variant="outline"
             className={cn(
-              "cursor-pointer gap-1 pr-1.5 transition-colors hover:bg-destructive/10",
+              "h-auto cursor-pointer gap-1 rounded-lg border-border bg-secondary px-2.5 py-1 text-secondary-foreground text-xs transition-all duration-200 hover:border-primary/30 hover:bg-secondary/80",
               disabled && "pointer-events-none opacity-50",
             )}
             onClick={() => !disabled && onRemoveTag(tag)}
+            onKeyDown={(e) =>
+              e.key === "Enter" && !disabled && onRemoveTag(tag)
+            }
+            role="button"
+            tabIndex={0}
           >
             {tag}
             <X className="size-3" />
@@ -109,39 +115,38 @@ export function TagInput({
               onFocus={() => setShowSuggestions(true)}
               placeholder="Type tag..."
               disabled={disabled}
-              className="h-7 w-28 px-2 text-xs"
+              className="h-7 w-28 border-border bg-secondary px-2 text-foreground text-xs"
             />
             {showSuggestions && availableSuggestions.length > 0 && (
-              <div className="absolute top-full z-50 mt-1 max-h-32 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
+              <div className="absolute top-full z-50 mt-1 max-h-32 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-md">
                 {availableSuggestions.slice(0, 5).map((suggestion) => (
-                  <button
+                  <Button
                     key={suggestion}
-                    type="button"
-                    className="w-full cursor-pointer rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto w-full justify-start px-2 py-1.5 text-xs"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       handleAddTag(suggestion);
                     }}
                   >
                     {suggestion}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
           </div>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleStartAdding}
             disabled={disabled}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-1 rounded-md border border-dashed px-2.5 py-1 text-muted-foreground text-xs transition-colors hover:border-primary/40 hover:text-primary",
-              disabled && "pointer-events-none opacity-50",
-            )}
+            className="h-auto gap-1 rounded-lg border-border/60 border-dashed bg-transparent px-2.5 py-1 text-muted-foreground text-xs hover:border-primary/40 hover:bg-transparent hover:text-primary"
           >
             <Plus className="size-3" />
             Add
-          </button>
+          </Button>
         )}
       </div>
     </div>

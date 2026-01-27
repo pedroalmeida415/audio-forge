@@ -1,10 +1,10 @@
 import { FolderPlusIcon } from "lucide-react";
 import { Suspense } from "react";
+import { ThemeToggle } from "~/components/theme-toggle";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 import { api, HydrateClient } from "~/trpc/server";
 import { CreateProjectDialog } from "./_component/create-project-dialog";
-import { FloatingNav } from "./_component/floating-nav";
 import { ProjectList } from "./_component/project-list";
 
 export default async function Home() {
@@ -14,7 +14,7 @@ export default async function Home() {
     <div className="flex flex-1 flex-col px-6 py-8">
       {/* Header Section */}
       <div
-        className="mb-10 animate-fade-up opacity-0"
+        className="fade-in slide-in-from-bottom-3 mb-10 animate-in fill-mode-both"
         style={{ animationDelay: "0.1s" }}
       >
         <div className="flex items-start justify-between gap-4">
@@ -27,12 +27,15 @@ export default async function Home() {
               and audio segments organized for training.
             </p>
           </div>
-          <CreateProjectDialog>
-            <Button className="shrink-0" size="lg">
-              <FolderPlusIcon className="mr-2 size-5" />
-              New Project
-            </Button>
-          </CreateProjectDialog>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <CreateProjectDialog>
+              <Button className="shrink-0" size="lg">
+                <FolderPlusIcon className="mr-2 size-5" />
+                New Project
+              </Button>
+            </CreateProjectDialog>
+          </div>
         </div>
       </div>
 
@@ -42,7 +45,7 @@ export default async function Home() {
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }, (_, i) => i).map((index) => (
                 <div
-                  className="animate-fade-up opacity-0"
+                  className="fade-in slide-in-from-bottom-3 animate-in fill-mode-both"
                   key={index}
                   style={{ animationDelay: `${0.15 + index * 0.05}s` }}
                 >
@@ -55,7 +58,6 @@ export default async function Home() {
           <ProjectList />
         </Suspense>
       </HydrateClient>
-      <FloatingNav />
     </div>
   );
 }

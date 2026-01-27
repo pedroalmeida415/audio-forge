@@ -59,7 +59,7 @@ export function DurationHistogram({
                 className={cn(
                   "w-8 rounded transition-colors duration-200",
                   bucket.count > 0
-                    ? "bg-primary/80 shadow-sm"
+                    ? "bg-gradient-to-t from-primary/80 to-primary"
                     : "bg-muted-foreground/20",
                 )}
                 style={{

@@ -320,14 +320,15 @@ export default function ClippingEmptyStatePage({
               <ScrollArea className="h-48">
                 <div className="space-y-2">
                   {existingSessions.map((session) => (
-                    <button
+                    <Button
                       key={session.id}
+                      variant="outline"
                       onClick={() =>
                         router.push(
                           `/app/project/${projectId}/clipping/${session.id}`,
                         )
                       }
-                      className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                      className="flex h-auto w-full items-center justify-start gap-3 p-3 text-left"
                     >
                       <Music className="h-5 w-5 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
@@ -341,7 +342,7 @@ export default function ClippingEmptyStatePage({
                           {new Date(session.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </ScrollArea>

@@ -66,13 +66,15 @@ export function SpeakerSidebar() {
   };
 
   return (
-    <div className="flex w-72 flex-col gap-4">
-      {/* Stats Card */}
+    <aside className="flex w-72 shrink-0 flex-col gap-5">
+      {/* Speaker Stats */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="font-medium text-sm">Statistics</CardTitle>
+          <CardTitle className="font-medium text-sm">
+            Speaker Statistics
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <StatRow
             icon={<FileAudio className="size-4" />}
             label="Total Segments"
@@ -97,6 +99,7 @@ export function SpeakerSidebar() {
             icon={<Sparkles className="size-4" />}
             label="Avg Quality"
             value={stats.avgScore !== null ? stats.avgScore.toFixed(2) : "--"}
+            highlight
           />
 
           <Separator className="my-4" />
@@ -111,23 +114,24 @@ export function SpeakerSidebar() {
         </CardContent>
       </Card>
 
-      {/* Processing Actions Card */}
+      {/* Processing Operations */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="font-medium text-sm">Processing</CardTitle>
+          <CardTitle className="font-medium text-sm">
+            Processing Operations
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <Button
             variant="outline"
-            size="sm"
             onClick={() => handleProcess("denoise")}
             disabled={!hasSelection || queueMutation.isPending}
-            className="w-full justify-start"
+            className="h-10 w-full justify-start gap-2.5"
           >
             {processingOperation === "denoise" ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <Volume2 className="size-3.5" />
+              <Volume2 className="size-4" />
             )}
             Denoise
             {hasSelection && (
@@ -138,15 +142,14 @@ export function SpeakerSidebar() {
           </Button>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => handleProcess("remove_overlap")}
             disabled={!hasSelection || queueMutation.isPending}
-            className="w-full justify-start"
+            className="h-10 w-full justify-start gap-2.5"
           >
             {processingOperation === "remove_overlap" ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <Scissors className="size-3.5" />
+              <Scissors className="size-4" />
             )}
             Remove Overlap
             {hasSelection && (
@@ -157,15 +160,14 @@ export function SpeakerSidebar() {
           </Button>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => handleProcess("transcribe")}
             disabled={!hasSelection || queueMutation.isPending}
-            className="w-full justify-start"
+            className="h-10 w-full justify-start gap-2.5"
           >
             {processingOperation === "transcribe" ? (
-              <Loader2 className="size-3.5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <MessageSquare className="size-3.5" />
+              <MessageSquare className="size-4" />
             )}
             Transcribe
             {hasSelection && (
@@ -174,14 +176,15 @@ export function SpeakerSidebar() {
               </span>
             )}
           </Button>
+
           {!hasSelection && (
-            <p className="mt-2 text-muted-foreground text-xs">
-              Select segments to enable processing actions
+            <p className="mt-4 text-muted-foreground text-xs">
+              Select segments to enable processing operations
             </p>
           )}
         </CardContent>
       </Card>
-    </div>
+    </aside>
   );
 }
 
@@ -189,18 +192,24 @@ function StatRow({
   icon,
   label,
   value,
+  highlight,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  highlight?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
+      <div className="flex items-center gap-2.5 text-secondary-foreground text-sm">
         {icon}
-        <span>{label}</span>
+        {label}
       </div>
-      <span className="font-medium text-sm tabular-nums">{value}</span>
+      <span
+        className={`font-mono font-semibold text-sm ${highlight ? "text-primary" : "text-foreground"}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

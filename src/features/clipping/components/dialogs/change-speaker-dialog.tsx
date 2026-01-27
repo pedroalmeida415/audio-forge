@@ -3,6 +3,7 @@
 import { useValue } from "@legendapp/state/react";
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { Button } from "~/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -87,13 +88,17 @@ export function ChangeSpeakerDialog({
             {isLocalSpeaker ? (
               <>
                 Select a project speaker to assign to{" "}
-                {segmentCount === 1 ? "this segment" : `${segmentCount} segments`}
+                {segmentCount === 1
+                  ? "this segment"
+                  : `${segmentCount} segments`}
                 . Local segments will be promoted to project level.
               </>
             ) : (
               <>
                 Select a speaker to assign to{" "}
-                {segmentCount === 1 ? "this segment" : `${segmentCount} segments`}
+                {segmentCount === 1
+                  ? "this segment"
+                  : `${segmentCount} segments`}
               </>
             )}
           </DialogDescription>
@@ -102,29 +107,29 @@ export function ChangeSpeakerDialog({
         <ScrollArea className="max-h-[400px]">
           <div className="grid gap-2 py-2 pr-4">
             {projectSpeakers.map((speaker) => (
-              <button
+              <Button
                 key={speaker.id}
-                type="button"
+                variant="outline"
                 onClick={() => handleSelectSpeaker(speaker.id)}
-                className="flex items-center gap-3 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-muted/50"
+                className="h-auto justify-start gap-3 border-border/50 p-3"
               >
                 <div
                   className="h-4 w-4 shrink-0 rounded-full"
                   style={{ backgroundColor: speaker.color }}
                 />
                 <span className="font-medium">{speaker.name}</span>
-              </button>
+              </Button>
             ))}
 
             {/* Create new speaker option */}
-            <button
-              type="button"
+            <Button
+              variant="outline"
               onClick={() => setIsCreateSpeakerOpen(true)}
-              className="flex items-center gap-3 rounded-lg border border-dashed border-border/50 p-3 text-left text-muted-foreground transition-colors hover:border-border hover:bg-muted/50 hover:text-foreground"
+              className="h-auto justify-start gap-3 border-border/50 border-dashed p-3 text-muted-foreground hover:border-border hover:text-foreground"
             >
               <Plus className="h-4 w-4 shrink-0" />
               <span className="font-medium">Create new speaker...</span>
-            </button>
+            </Button>
           </div>
         </ScrollArea>
 

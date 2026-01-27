@@ -2,6 +2,7 @@
 
 import { Loader2, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "~/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -110,32 +111,31 @@ export function AudioPlayer({
     score === null
       ? "text-muted-foreground"
       : score >= 4
-        ? "text-emerald-500"
+        ? "text-success"
         : score >= 3
-          ? "text-amber-500"
-          : "text-red-500";
+          ? "text-warning"
+          : "text-destructive";
 
   return (
     <div
       className={cn(
-        "flex flex-1 items-center gap-3 rounded-xl px-4 py-3 transition-all duration-200",
+        "flex flex-1 items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300",
         variant === "original"
-          ? "border bg-muted/30"
-          : "border border-primary/20 bg-primary/5",
+          ? "border border-border bg-secondary/40"
+          : "border border-primary/20 bg-gradient-to-br from-secondary/60 to-card/60 shadow-sm",
         className,
       )}
     >
       {/* Circular play button */}
-      <button
-        type="button"
+      <Button
+        variant={variant === "original" ? "secondary" : "default"}
+        size="icon"
         onClick={handlePlayPause}
         disabled={isDisabled}
         className={cn(
-          "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-200",
-          variant === "original"
-            ? "bg-muted-foreground/20 text-foreground hover:bg-muted-foreground/30"
-            : "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
-          isDisabled && "cursor-not-allowed opacity-50",
+          "size-9 shrink-0 rounded-full transition-all duration-200",
+          variant === "processed" &&
+            "bg-gradient-to-br from-primary to-primary/80 shadow-sm hover:shadow-md",
         )}
       >
         {isLoading ? (
@@ -145,11 +145,11 @@ export function AudioPlayer({
         ) : (
           <Play className="size-3.5 translate-x-0.5" fill="currentColor" />
         )}
-      </button>
+      </Button>
 
       {/* Progress section */}
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+        <span className="font-medium text-[11px] text-secondary-foreground uppercase tracking-wider">
           {label}
         </span>
         <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted-foreground/20">
@@ -158,7 +158,7 @@ export function AudioPlayer({
               "absolute inset-y-0 left-0 rounded-full transition-all",
               variant === "original"
                 ? "bg-muted-foreground/50"
-                : "bg-primary shadow-sm",
+                : "bg-gradient-to-r from-primary to-primary/80",
             )}
             style={{ width: `${progress}%` }}
           />

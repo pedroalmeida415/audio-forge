@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -283,10 +284,10 @@ function SpeakerItem({
     >
       {/* Speaker button - wrapped in tooltip when collapsed */}
       {isExpanded ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={onSelect}
-          className="flex flex-1 items-center gap-2 p-1.5"
+          className="flex h-auto flex-1 items-center justify-start gap-2 p-1.5"
         >
           {/* Avatar */}
           <div
@@ -302,8 +303,7 @@ function SpeakerItem({
 
           {/* Name */}
           {isEditing ? (
-            <input
-              type="text"
+            <Input
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={onConfirmEdit}
@@ -312,7 +312,7 @@ function SpeakerItem({
                 if (e.key === "Escape") onCancelEdit();
               }}
               onClick={(e) => e.stopPropagation()}
-              className="min-w-0 flex-1 truncate bg-transparent text-sm outline-none"
+              className="min-w-0 flex-1 truncate bg-transparent text-sm"
               autoFocus
             />
           ) : (
@@ -320,14 +320,14 @@ function SpeakerItem({
               {speaker.name}
             </span>
           )}
-        </button>
+        </Button>
       ) : (
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={onSelect}
-              className="flex items-center gap-2 p-1.5"
+              className="flex h-auto items-center gap-2 p-1.5"
             >
               <div
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
@@ -339,7 +339,7 @@ function SpeakerItem({
               >
                 {initial}
               </div>
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="right">
             <p>{speaker.name}</p>

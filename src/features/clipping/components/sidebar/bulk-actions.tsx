@@ -55,7 +55,7 @@ export function SegmentActions() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500 disabled:text-red-500/50"
+          className="h-9 justify-start text-destructive hover:bg-destructive/10 hover:text-destructive disabled:text-destructive/50"
           onClick={handleDelete}
           disabled={!hasSelection}
         >

@@ -125,7 +125,10 @@ export function InlineSelectionControls() {
   );
 
   return (
-    <div data-testid="selection-controls" className="flex items-center gap-2 border-l pl-3">
+    <div
+      data-testid="selection-controls"
+      className="flex items-center gap-2 border-l pl-3"
+    >
       {/* Time range display */}
       <div
         data-testid="selection-time-range"
@@ -171,15 +174,16 @@ export function InlineSelectionControls() {
             <CommandList>
               <CommandEmpty>
                 {searchValue.trim() ? (
-                  <button
-                    type="button"
-                    className="flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start gap-2"
                     onClick={() => handleCreateSpeaker(searchValue)}
                     disabled={createSpeakerMutation.isPending}
                   >
                     <Plus className="h-4 w-4" />
                     Create "{searchValue.trim()}"
-                  </button>
+                  </Button>
                 ) : (
                   "No speakers found."
                 )}

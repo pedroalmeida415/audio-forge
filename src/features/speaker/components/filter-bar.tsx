@@ -3,6 +3,7 @@
 import { useValue } from "@legendapp/state/react";
 import { ChevronDown, Filter, X } from "lucide-react";
 import { useState } from "react";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Label } from "~/components/ui/label";
 import {
@@ -35,21 +36,21 @@ export function FilterBar() {
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
-      <button
-        type="button"
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <Button
+        variant="ghost"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full cursor-pointer items-center justify-between px-4 py-3"
+        className="flex h-auto w-full items-center justify-between rounded-none px-5 py-4 hover:bg-transparent"
       >
         <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-md bg-muted">
-            <Filter className="size-4 text-muted-foreground" />
+          <div className="flex size-8 items-center justify-center rounded-lg bg-secondary">
+            <Filter className="size-4 text-secondary-foreground" />
           </div>
-          <span className="font-medium text-sm">Filters</span>
+          <span className="font-medium text-foreground text-sm">Filters</span>
           {activeFiltersCount > 0 && (
-            <span className="flex size-5 items-center justify-center rounded-full bg-primary font-medium font-mono text-[10px] text-primary-foreground">
+            <Badge className="size-5 justify-center rounded-full p-0 font-mono text-[10px]">
               {activeFiltersCount}
-            </span>
+            </Badge>
           )}
         </div>
         <ChevronDown
@@ -58,10 +59,10 @@ export function FilterBar() {
             isExpanded && "rotate-180",
           )}
         />
-      </button>
+      </Button>
 
       {isExpanded && (
-        <div className="border-t px-4 py-4">
+        <div className="border-border/50 border-t px-5 py-4">
           <div className="flex flex-wrap items-end gap-6">
             {/* Clip Status */}
             <div className="flex flex-col gap-2">
@@ -82,10 +83,10 @@ export function FilterBar() {
                   })
                 }
               >
-                <SelectTrigger className="h-9 w-36">
+                <SelectTrigger className="h-9 w-36 border-border bg-secondary text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border-border bg-popover">
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="has">Has clip</SelectItem>
                   <SelectItem value="missing">Missing clip</SelectItem>
@@ -112,10 +113,10 @@ export function FilterBar() {
                   })
                 }
               >
-                <SelectTrigger className="h-9 w-36">
+                <SelectTrigger className="h-9 w-36 border-border bg-secondary text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border-border bg-popover">
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="has">Has transcription</SelectItem>
                   <SelectItem value="missing">Missing</SelectItem>
@@ -175,10 +176,10 @@ export function FilterBar() {
                   })
                 }
               >
-                <SelectTrigger className="h-9 w-40">
+                <SelectTrigger className="h-9 w-40 border-border bg-secondary text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border-border bg-popover">
                   <SelectItem value="all">All tags</SelectItem>
                   {allTags.map((tag) => (
                     <SelectItem key={tag} value={tag}>
@@ -191,7 +192,12 @@ export function FilterBar() {
 
             {/* Clear Filters */}
             {activeFiltersCount > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleClearAll}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearAll}
+                className="h-9 text-secondary-foreground hover:bg-secondary hover:text-foreground"
+              >
                 <X className="size-3" />
                 Clear all
               </Button>

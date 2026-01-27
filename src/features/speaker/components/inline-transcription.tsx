@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
@@ -31,12 +32,13 @@ function parseTranscriptionWithBadges(text: string): ReactNode[] {
     if (part.startsWith("[") && part.endsWith("]")) {
       const label = part.slice(1, -1);
       return (
-        <span
+        <Badge
           key={key}
-          className="mx-0.5 inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-400"
+          variant="outline"
+          className="mx-0.5 h-auto border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
         >
           {label}
-        </span>
+        </Badge>
       );
     }
     return <span key={key}>{part}</span>;
@@ -140,7 +142,7 @@ export function InlineTranscription({
   return (
     <div
       className={cn(
-        "group -mx-2 flex min-h-[28px] cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50",
+        "group -mx-2 flex min-h-[28px] cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-secondary/50",
         className,
       )}
       onClick={() => setIsEditing(true)}
@@ -148,7 +150,7 @@ export function InlineTranscription({
       role="button"
       tabIndex={0}
     >
-      <p className="min-h-[24px] flex-1 leading-relaxed">
+      <p className="min-h-[24px] flex-1 text-foreground leading-relaxed">
         {transcription ? (
           <>
             <span className="mr-1 text-muted-foreground">"</span>
@@ -164,7 +166,7 @@ export function InlineTranscription({
       <Button
         variant="ghost"
         size="icon-sm"
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:bg-secondary hover:text-foreground group-hover:opacity-100"
         onClick={(e) => {
           e.stopPropagation();
           setIsEditing(true);

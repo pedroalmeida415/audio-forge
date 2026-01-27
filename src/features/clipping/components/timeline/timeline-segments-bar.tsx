@@ -187,9 +187,9 @@ function updateSegmentStyles(
 
   // Colors
   if (isDimmed) {
-    el.style.backgroundColor = "rgba(100, 100, 100, 0.3)";
-    el.style.borderColor = "rgba(100, 100, 100, 0.5)";
-    if (span) span.style.color = "rgba(150, 150, 150, 0.7)";
+    el.style.backgroundColor = "hsl(var(--muted))";
+    el.style.borderColor = "hsl(var(--border))";
+    if (span) span.style.color = "hsl(var(--muted-foreground))";
   } else {
     el.style.backgroundColor = color ? withAlpha(color, 0.4) : "";
     el.style.borderColor = color ?? "";

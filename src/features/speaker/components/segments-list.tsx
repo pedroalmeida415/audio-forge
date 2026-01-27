@@ -70,18 +70,28 @@ export function SegmentsList() {
       {/* Header with selection controls and count */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={handleSelectAll}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSelectAll}
+            className="border-border bg-secondary text-foreground"
+          >
             <Check className="size-3.5" />
             Select All
           </Button>
           {hasSelection && (
-            <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearSelection}
+              className="text-secondary-foreground hover:bg-secondary hover:text-foreground"
+            >
               <X className="size-3.5" />
               Clear
             </Button>
           )}
           {hasSelection && (
-            <span className="text-muted-foreground text-sm">
+            <span className="text-secondary-foreground text-sm">
               {selectedCount} selected
             </span>
           )}
@@ -99,7 +109,7 @@ export function SegmentsList() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 py-16">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-border/50 border-dashed bg-secondary/30 py-16">
           <Filter className="size-8 text-muted-foreground" />
           <p className="mt-3 text-muted-foreground text-sm">
             No segments match your filters
@@ -108,7 +118,7 @@ export function SegmentsList() {
             variant="ghost"
             size="sm"
             onClick={() => $store.resetFilters()}
-            className="mt-2"
+            className="mt-2 text-secondary-foreground hover:text-primary"
           >
             Clear filters
           </Button>
@@ -121,6 +131,7 @@ export function SegmentsList() {
             variant="outline"
             onClick={handleLoadMore}
             disabled={isLoadingMore}
+            className="border-border bg-secondary text-foreground"
           >
             {isLoadingMore ? (
               <>

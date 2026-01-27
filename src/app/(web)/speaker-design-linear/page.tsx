@@ -238,17 +238,18 @@ function AudioPlayer({
           : "border-zinc-300 bg-white",
       )}
     >
-      <button
+      <Button
         type="button"
+        size="icon"
         onClick={() => setIsPlaying(!isPlaying)}
-        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-700"
+        className="size-8 shrink-0 rounded-full bg-zinc-900 text-white hover:bg-zinc-700"
       >
         {isPlaying ? (
           <Pause className="size-3.5" fill="currentColor" />
         ) : (
           <Play className="size-3.5 translate-x-0.5" fill="currentColor" />
         )}
-      </button>
+      </Button>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="font-medium text-[11px] text-zinc-500 uppercase tracking-wide">
@@ -455,14 +456,16 @@ function SegmentCard({
                   </SelectContent>
                 </Select>
               ) : (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setIsAddingTag(true)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-300 border-dashed px-2 py-0.5 text-xs text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-700"
+                  className="h-auto gap-1 border-zinc-300 border-dashed px-2 py-0.5 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700"
                 >
                   <Plus className="size-3" />
                   Add
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -538,10 +541,11 @@ function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white">
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full cursor-pointer items-center justify-between px-4 py-3"
+        className="flex h-auto w-full items-center justify-between rounded-b-none px-4 py-3 hover:bg-transparent"
       >
         <div className="flex items-center gap-2">
           <Filter className="size-4 text-zinc-500" />
@@ -558,7 +562,7 @@ function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
             isExpanded && "rotate-180",
           )}
         />
-      </button>
+      </Button>
 
       {isExpanded && (
         <div className="border-zinc-100 border-t px-4 py-3">

@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Sans, Syne } from "next/font/google";
 import { redirect } from "next/navigation";
 import { ReactScan } from "~/components/react-scan";
+import { ThemeProvider } from "~/components/theme-provider";
 import { getSession } from "~/server/better-auth/server";
 import { TRPCReactProvider } from "~/trpc/react";
 
@@ -39,13 +40,25 @@ export default async function RootLayout({
   }
 
   return (
-    <html className={`${syne.variable} ${ibmPlexSans.variable}`} lang="en">
+    <html
+      className={`${syne.variable} ${ibmPlexSans.variable}`}
+      lang="en"
+      suppressHydrationWarning
+    >
       <ReactScan />
-      <body className="bg-background bg-studio-grid">
-        <div className="pointer-events-none fixed inset-0 bg-gradient-mesh" />
-        <TRPCReactProvider>
-          <main className="flex min-h-screen flex-1 flex-col">{children}</main>
-        </TRPCReactProvider>
+      <body className="bg-background">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TRPCReactProvider>
+            <main className="flex min-h-screen flex-1 flex-col">
+              {children}
+            </main>
+          </TRPCReactProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

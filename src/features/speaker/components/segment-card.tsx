@@ -85,17 +85,23 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-card transition-all duration-200",
-        isSelected
-          ? "border-primary/50 bg-primary/5 shadow-sm"
-          : "hover:border-border/80 hover:shadow-sm",
+        "group relative overflow-hidden rounded-2xl border transition-all duration-300",
+        "border-border bg-card hover:border-primary/30 hover:shadow-md",
+        isSelected && "border-primary/40 shadow-md",
       )}
     >
+      {/* Subtle gradient overlay */}
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/[0.02] via-transparent to-background/20" />
+
       {/* Main content */}
-      <div className="flex gap-4 p-5">
+      <div className="relative flex gap-4 p-5">
         {/* Selection checkbox */}
         <div className="flex pt-1">
-          <Checkbox checked={isSelected} onCheckedChange={handleToggleSelect} />
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={handleToggleSelect}
+            className="border-muted-foreground data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+          />
         </div>
 
         {/* Audio players section */}
@@ -122,7 +128,7 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
                 className={cn(
                   "font-medium font-mono text-xs",
                   (scoreDelta ?? 0) > 0
-                    ? "text-emerald-500"
+                    ? "text-success"
                     : "text-muted-foreground",
                 )}
               >
@@ -144,9 +150,9 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
                   variant="processed"
                 />
               ) : (
-                <div className="flex h-full min-h-[76px] items-center justify-center rounded-xl border border-dashed bg-muted/20">
+                <div className="flex h-full min-h-[76px] items-center justify-center rounded-xl border border-border/50 border-dashed bg-secondary/30">
                   {isPending ? (
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <div className="flex items-center gap-2 text-secondary-foreground text-sm">
                       <Loader2 className="size-4 animate-spin" />
                       Processing...
                     </div>
@@ -178,14 +184,14 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between border-t bg-muted/30 px-5 py-3">
+      <div className="relative flex items-center justify-between border-border/50 border-t bg-card/40 px-5 py-3">
         <div className="flex items-center gap-4">
-          <span className="font-medium font-mono text-primary/70 text-xs">
+          <span className="font-medium font-mono text-primary/80 text-xs">
             #{String(index + 1).padStart(2, "0")}
           </span>
           <span className="text-muted-foreground text-xs">Session:</span>
           <span
-            className="max-w-[300px] truncate font-mono text-muted-foreground text-xs"
+            className="max-w-[300px] truncate font-mono text-secondary-foreground text-xs"
             title={sessionName}
           >
             {sessionName}
@@ -196,7 +202,7 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
           <span className="text-muted-foreground text-xs">
             {formatTime(segment.startTime)} - {formatTime(segment.endTime)}
           </span>
-          <Badge variant="outline" className="font-mono">
+          <Badge variant="secondary" className="font-mono">
             {formatDuration(duration)}
           </Badge>
         </div>

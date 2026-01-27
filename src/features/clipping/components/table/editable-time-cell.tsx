@@ -2,6 +2,8 @@
 
 import { useSelector } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
 import { useClippingStore } from "~/features/clipping/context/store.context";
 import { formatTimestampWithMs, parseTimestamp } from "~/lib/time-utils";
 import { cn } from "~/lib/utils";
@@ -101,9 +103,8 @@ export function EditableTimeCell({
 
   if (isEditing) {
     return (
-      <input
+      <Input
         ref={inputRef}
-        type="text"
         value={inputValue}
         onChange={(e) => {
           setInputValue(e.target.value);
@@ -113,22 +114,20 @@ export function EditableTimeCell({
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "w-24 rounded border bg-background px-1.5 py-0.5 font-mono text-xs focus:outline-none focus:ring-1",
-          hasError
-            ? "border-red-500 focus:ring-red-500"
-            : "border-border focus:ring-primary",
+          "h-auto w-24 px-1.5 py-0.5 font-mono text-xs",
+          hasError && "border-destructive focus-visible:ring-destructive",
         )}
       />
     );
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={handleStartEdit}
-      className="cursor-text rounded px-1 py-0.5 font-mono text-xs transition-colors hover:bg-muted/50"
+      className="h-auto cursor-text px-1 py-0.5 font-mono text-xs hover:bg-muted/50"
     >
       {formatTimestampWithMs(value)}
-    </button>
+    </Button>
   );
 }
