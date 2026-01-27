@@ -5,6 +5,7 @@ export interface ClipEventData {
   id: string;
   segmentId: string;
   fileId: string;
+  score: number | null;
   createdAt: string;
   file: {
     id: string;

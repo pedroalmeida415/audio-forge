@@ -24,7 +24,26 @@ export interface SpeakerStats {
   totalDuration: number;
   clipsCount: number;
   transcribedCount: number;
+  avgScore: number | null;
 }
+
+export interface FilterState {
+  hasClip: boolean | null;
+  hasTranscription: boolean | null;
+  minDuration: number;
+  maxDuration: number;
+  minScore: number;
+  selectedTag: string | null;
+}
+
+export const DEFAULT_FILTERS: FilterState = {
+  hasClip: null,
+  hasTranscription: null,
+  minDuration: 0,
+  maxDuration: 30,
+  minScore: 0,
+  selectedTag: null,
+};
 
 // ============================================================================
 // State Types
@@ -41,6 +60,7 @@ export type SpeakerPageStateData = {
   hasMore: boolean;
   isLoadingMore: boolean;
   nextCursor: string | undefined;
+  filters: FilterState;
 };
 
 export type SpeakerPageInitialData = Pick<
@@ -51,6 +71,48 @@ export type SpeakerPageInitialData = Pick<
   hasMore: boolean;
   nextCursor: string | undefined;
 };
+
+// ============================================================================
+// Filter Helper
+// ============================================================================
+
+function applyFilters(
+  segments: SegmentWithClip[],
+  filters: FilterState,
+): SegmentWithClip[] {
+  return segments.filter((seg) => {
+    // Clip status filter
+    if (filters.hasClip !== null) {
+      const hasClip = seg.clip !== null;
+      if (hasClip !== filters.hasClip) return false;
+    }
+
+    // Transcription filter
+    if (filters.hasTranscription !== null) {
+      const hasTranscription =
+        seg.transcription !== null && seg.transcription.trim() !== "";
+      if (hasTranscription !== filters.hasTranscription) return false;
+    }
+
+    // Duration filter
+    const duration = seg.endTime - seg.startTime;
+    if (duration < filters.minDuration || duration > filters.maxDuration) {
+      return false;
+    }
+
+    // Score filter (only filter if segment has a score)
+    if (filters.minScore > 0 && seg.score !== null) {
+      if (seg.score < filters.minScore) return false;
+    }
+
+    // Tag filter
+    if (filters.selectedTag !== null) {
+      if (!seg.tags?.includes(filters.selectedTag)) return false;
+    }
+
+    return true;
+  });
+}
 
 // ============================================================================
 // Store Factory
@@ -69,6 +131,7 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
     hasMore: initialData.hasMore,
     isLoadingMore: false,
     nextCursor: initialData.nextCursor,
+    filters: { ...DEFAULT_FILTERS },
 
     // Actions
     toggleSelection: (segmentId: string) => {
@@ -80,8 +143,12 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
     },
 
     selectAll: () => {
-      const allIds = $store.segments.peek().map((s) => s.id);
-      $store.selectedSegmentIds.set(new Set(allIds));
+      // Select all filtered segments
+      const filtered = applyFilters(
+        $store.segments.peek(),
+        $store.filters.peek(),
+      );
+      $store.selectedSegmentIds.set(new Set(filtered.map((s) => s.id)));
     },
 
     clearSelection: () => {
@@ -134,6 +201,37 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
         $store.segments[index]?.clip.set(clip);
       }
     },
+
+    setFilters: (updates: Partial<FilterState>) => {
+      $store.filters.assign(updates);
+    },
+
+    resetFilters: () => {
+      $store.filters.set({ ...DEFAULT_FILTERS });
+    },
+
+    updateSegmentTags: (segmentId: string, tags: string[]) => {
+      const index = $store.segments.peek().findIndex((s) => s.id === segmentId);
+      if (index !== -1) {
+        $store.segments[index]?.tags.set(tags);
+      }
+    },
+
+    getFilteredSegments: () => {
+      return applyFilters($store.segments.peek(), $store.filters.peek());
+    },
+
+    getAllTags: () => {
+      const allTags = new Set<string>();
+      for (const seg of $store.segments.peek()) {
+        if (seg.tags) {
+          for (const tag of seg.tags) {
+            allTags.add(tag);
+          }
+        }
+      }
+      return Array.from(allTags).sort();
+    },
   }) as $SpeakerPageStore;
 
   return $store;
@@ -160,6 +258,11 @@ interface SpeakerPageStoreState extends SpeakerPageStateData {
   markSegmentsPending: (segmentIds: string[]) => void;
   markSegmentComplete: (segmentId: string) => void;
   updateSegmentClip: (segmentId: string, clip: SegmentWithClip["clip"]) => void;
+  setFilters: (updates: Partial<FilterState>) => void;
+  resetFilters: () => void;
+  updateSegmentTags: (segmentId: string, tags: string[]) => void;
+  getFilteredSegments: () => SegmentWithClip[];
+  getAllTags: () => string[];
 }
 
 export type $SpeakerPageStore = Observable<SpeakerPageStoreState>;

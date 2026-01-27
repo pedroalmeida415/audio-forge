@@ -2,8 +2,11 @@
 
 import { Loader2, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "~/components/ui/button";
-import { Slider } from "~/components/ui/slider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 
 type AudioState = "idle" | "loading" | "ready" | "error";
@@ -14,13 +17,15 @@ interface AudioPlayerProps {
   audioUrl: string | null;
   onLoadAudio: () => Promise<void>;
   duration?: number;
+  score: number | null;
+  variant: "original" | "processed";
   className?: string;
 }
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
+  const secs = seconds % 60;
+  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
 }
 
 export function AudioPlayer({
@@ -29,6 +34,8 @@ export function AudioPlayer({
   audioUrl,
   onLoadAudio,
   duration: expectedDuration,
+  score,
+  variant,
   className,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -95,54 +102,92 @@ export function AudioPlayer({
     }
   }, [audioState, audioUrl]);
 
-  const handleSeek = useCallback((values: number[]) => {
-    const audio = audioRef.current;
-    if (!audio || !values[0]) return;
-    audio.currentTime = values[0];
-    setCurrentTime(values[0]);
-  }, []);
-
   const isLoading = audioState === "loading";
   const isDisabled = audioState === "error";
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const scoreColor =
+    score === null
+      ? "text-muted-foreground"
+      : score >= 4
+        ? "text-emerald-500"
+        : score >= 3
+          ? "text-amber-500"
+          : "text-red-500";
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <span className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {label}
-      </span>
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={handlePlayPause}
-          disabled={isDisabled}
-          className="shrink-0"
-        >
-          {isLoading ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : isPlaying ? (
-            <Pause className="size-4" />
-          ) : (
-            <Play className="size-4" />
-          )}
-        </Button>
+    <div
+      className={cn(
+        "flex flex-1 items-center gap-3 rounded-xl px-4 py-3 transition-all duration-200",
+        variant === "original"
+          ? "border bg-muted/30"
+          : "border border-primary/20 bg-primary/5",
+        className,
+      )}
+    >
+      {/* Circular play button */}
+      <button
+        type="button"
+        onClick={handlePlayPause}
+        disabled={isDisabled}
+        className={cn(
+          "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all duration-200",
+          variant === "original"
+            ? "bg-muted-foreground/20 text-foreground hover:bg-muted-foreground/30"
+            : "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
+          isDisabled && "cursor-not-allowed opacity-50",
+        )}
+      >
+        {isLoading ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : isPlaying ? (
+          <Pause className="size-3.5" fill="currentColor" />
+        ) : (
+          <Play className="size-3.5 translate-x-0.5" fill="currentColor" />
+        )}
+      </button>
 
-        <div className="min-w-0 flex-1">
-          <Slider
-            value={[currentTime]}
-            min={0}
-            max={duration || 1}
-            step={0.1}
-            onValueChange={handleSeek}
-            disabled={audioState !== "ready"}
-            className="w-full"
+      {/* Progress section */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+          {label}
+        </span>
+        <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted-foreground/20">
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 rounded-full transition-all",
+              variant === "original"
+                ? "bg-muted-foreground/50"
+                : "bg-primary shadow-sm",
+            )}
+            style={{ width: `${progress}%` }}
           />
         </div>
-
-        <span className="w-10 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
-          {formatTime(duration)}
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>
+
+      {/* Score display */}
+      {score !== null ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={cn(
+                "flex shrink-0 cursor-help items-baseline gap-0.5 font-semibold tabular-nums",
+                scoreColor,
+              )}
+            >
+              <span className="text-2xl">{score.toFixed(1)}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <span>Quality Score (MOS)</span>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        <span className="text-muted-foreground text-sm">--</span>
+      )}
 
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
     </div>

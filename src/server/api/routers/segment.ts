@@ -162,6 +162,57 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
+  // Update segment tags
+  updateTags: protectedProcedure
+    .input(
+      z.object({
+        segmentId: z.string().uuid(),
+        tags: z.array(z.string()),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Get segment with speaker to verify ownership
+            const segment = yield* db.query.segments.findFirst({
+              where: eq(segments.id, input.segmentId),
+              with: {
+                speaker: true,
+              },
+            });
+
+            if (!segment) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Segment not found",
+                }),
+              );
+            }
+
+            if (segment.speaker.userId !== ctx.session.user.id) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to this segment",
+                }),
+              );
+            }
+
+            // Update tags
+            yield* db
+              .update(segments)
+              .set({ tags: input.tags.length > 0 ? input.tags : null })
+              .where(eq(segments.id, input.segmentId));
+
+            return { success: true };
+          }),
+        ),
+    ),
+
   // Queue a processing operation for segments
   queueProcessing: protectedProcedure
     .input(

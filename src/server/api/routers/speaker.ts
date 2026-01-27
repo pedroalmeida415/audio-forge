@@ -1,10 +1,15 @@
 import { TRPCError } from "@trpc/server";
-import { and, count, eq, isNotNull, sql, sum } from "drizzle-orm";
+import { and, avg, count, eq, sql, sum } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clips, clippingSessions, segments, speakers } from "~/server/db/schema";
+import {
+  clippingSessions,
+  clips,
+  segments,
+  speakers,
+} from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
 
 export const speakerRouter = createTRPCRouter({
@@ -50,6 +55,7 @@ export const speakerRouter = createTRPCRouter({
                     transcribedCount: count(
                       sql`CASE WHEN ${segments.transcription} IS NOT NULL THEN 1 END`,
                     ),
+                    avgScore: avg(segments.score),
                   })
                   .from(segments)
                   .where(eq(segments.speakerId, input.speakerId)),
@@ -81,6 +87,7 @@ export const speakerRouter = createTRPCRouter({
               totalSegments: 0,
               totalDuration: 0,
               transcribedCount: 0,
+              avgScore: null,
             };
             const clipsCount = clipsCountResult[0]?.clipsCount ?? 0;
 
@@ -91,6 +98,8 @@ export const speakerRouter = createTRPCRouter({
                 totalDuration: Number(stats.totalDuration ?? 0),
                 clipsCount: Number(clipsCount),
                 transcribedCount: Number(stats.transcribedCount),
+                avgScore:
+                  stats.avgScore !== null ? Number(stats.avgScore) : null,
               },
             };
           }),

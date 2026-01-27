@@ -13,8 +13,10 @@ import {
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Separator } from "~/components/ui/separator";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { api } from "~/trpc/react";
+import { DurationHistogram } from "./duration-histogram";
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -26,6 +28,7 @@ function formatDuration(seconds: number): string {
 export function SpeakerSidebar() {
   const $store = useSpeakerPageStore();
   const stats = useValue($store.stats);
+  const segments = useValue($store.segments);
   const selectedIds = useValue($store.selectedSegmentIds);
 
   const hasSelection = selectedIds.size > 0;
@@ -36,17 +39,14 @@ export function SpeakerSidebar() {
 
   const queueMutation = api.segment.queueProcessing.useMutation({
     onMutate: (variables) => {
-      // Optimistically mark segments as pending
       $store.markSegmentsPending(variables.segmentIds);
     },
     onSuccess: (data) => {
       console.log("Queued:", data.jobIds.length, "jobs");
       setProcessingOperation(null);
-      // Clear selection after queuing
       $store.clearSelection();
     },
     onError: (_error, variables) => {
-      // Remove pending state on error
       for (const id of variables.segmentIds) {
         $store.markSegmentComplete(id);
       }
@@ -93,6 +93,21 @@ export function SpeakerSidebar() {
             label="Transcribed"
             value={stats.transcribedCount.toString()}
           />
+          <StatRow
+            icon={<Sparkles className="size-4" />}
+            label="Avg Quality"
+            value={stats.avgScore !== null ? stats.avgScore.toFixed(2) : "--"}
+          />
+
+          <Separator className="my-4" />
+
+          {/* Duration Distribution */}
+          <div className="space-y-3">
+            <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+              Duration Distribution
+            </span>
+            <DurationHistogram segments={segments} />
+          </div>
         </CardContent>
       </Card>
 
@@ -115,6 +130,11 @@ export function SpeakerSidebar() {
               <Volume2 className="size-3.5" />
             )}
             Denoise
+            {hasSelection && (
+              <span className="ml-auto font-mono text-primary text-xs">
+                {selectedIds.size} selected
+              </span>
+            )}
           </Button>
           <Button
             variant="outline"
@@ -129,6 +149,11 @@ export function SpeakerSidebar() {
               <Scissors className="size-3.5" />
             )}
             Remove Overlap
+            {hasSelection && (
+              <span className="ml-auto font-mono text-primary text-xs">
+                {selectedIds.size} selected
+              </span>
+            )}
           </Button>
           <Button
             variant="outline"
@@ -143,6 +168,11 @@ export function SpeakerSidebar() {
               <MessageSquare className="size-3.5" />
             )}
             Transcribe
+            {hasSelection && (
+              <span className="ml-auto font-mono text-primary text-xs">
+                {selectedIds.size} selected
+              </span>
+            )}
           </Button>
           {!hasSelection && (
             <p className="mt-2 text-muted-foreground text-xs">

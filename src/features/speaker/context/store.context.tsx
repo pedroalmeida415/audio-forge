@@ -92,6 +92,7 @@ function ClipSubscriber() {
             id: event.clip.id,
             segmentId: event.clip.segmentId,
             fileId: event.clip.fileId,
+            score: event.clip.score,
             createdAt: new Date(event.clip.createdAt),
             file: {
               id: event.clip.file.id,

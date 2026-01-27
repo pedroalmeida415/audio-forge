@@ -1,13 +1,13 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { Loader2, XSquare } from "lucide-react";
+import { Check, Filter, Loader2, X } from "lucide-react";
 import { useCallback } from "react";
 import { Button } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { api } from "~/trpc/react";
-import { SegmentRow } from "./segment-row";
+import { FilterBar } from "./filter-bar";
+import { SegmentCard } from "./segment-card";
 
 export function SegmentsList() {
   const $store = useSpeakerPageStore();
@@ -18,13 +18,13 @@ export function SegmentsList() {
   const nextCursor = useValue($store.nextCursor);
   const speakerId = useValue($store.speakerId);
 
+  const filteredSegments = $store.getFilteredSegments();
   const selectedCount = selectedIds.size;
   const hasSelection = selectedCount > 0;
-  const allSelected = selectedCount === segments.length && segments.length > 0;
 
   const segmentsQuery = api.segment.getBySpeaker.useQuery(
     { speakerId, cursor: nextCursor, limit: 50 },
-    { enabled: false }, // Manual fetch only for load more
+    { enabled: false },
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -44,6 +44,14 @@ export function SegmentsList() {
     }
   }, [hasMore, isLoadingMore, segmentsQuery, $store]);
 
+  const handleSelectAll = () => {
+    $store.selectAll();
+  };
+
+  const handleClearSelection = () => {
+    $store.clearSelection();
+  };
+
   if (segments.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -54,45 +62,58 @@ export function SegmentsList() {
     );
   }
 
-  const handleSelectAllToggle = () => {
-    if (allSelected) {
-      $store.clearSelection();
-    } else {
-      $store.selectAll();
-    }
-  };
-
   return (
     <div className="flex flex-col gap-4">
-      {/* List header with selection controls */}
-      <div className="flex items-center justify-between border-b pb-3">
+      {/* Filter Bar */}
+      <FilterBar />
+
+      {/* Header with selection controls and count */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Checkbox
-            checked={allSelected}
-            onCheckedChange={handleSelectAllToggle}
-          />
-          <span className="text-muted-foreground text-sm">
-            {selectedCount > 0
-              ? `${selectedCount} of ${segments.length} selected`
-              : `${segments.length} segments`}
-          </span>
-        </div>
-        {hasSelection && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => $store.clearSelection()}
-          >
-            <XSquare className="size-3.5" />
-            Clear selection
+          <Button variant="outline" size="sm" onClick={handleSelectAll}>
+            <Check className="size-3.5" />
+            Select All
           </Button>
-        )}
+          {hasSelection && (
+            <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+              <X className="size-3.5" />
+              Clear
+            </Button>
+          )}
+          {hasSelection && (
+            <span className="text-muted-foreground text-sm">
+              {selectedCount} selected
+            </span>
+          )}
+        </div>
+        <span className="text-muted-foreground text-sm">
+          Showing {filteredSegments.length} of {segments.length} segments
+        </span>
       </div>
 
       {/* Segments */}
-      {segments.map((segment) => (
-        <SegmentRow key={segment.id} segment={segment} />
-      ))}
+      {filteredSegments.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          {filteredSegments.map((segment, index) => (
+            <SegmentCard key={segment.id} segment={segment} index={index} />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 py-16">
+          <Filter className="size-8 text-muted-foreground" />
+          <p className="mt-3 text-muted-foreground text-sm">
+            No segments match your filters
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => $store.resetFilters()}
+            className="mt-2"
+          >
+            Clear filters
+          </Button>
+        </div>
+      )}
 
       {hasMore && (
         <div className="flex justify-center pt-4">

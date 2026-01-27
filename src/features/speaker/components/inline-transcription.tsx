@@ -1,7 +1,13 @@
 "use client";
 
 import { Check, Loader2, Pencil, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
@@ -12,6 +18,29 @@ interface InlineTranscriptionProps {
   segmentId: string;
   transcription: string | null;
   className?: string;
+}
+
+/**
+ * Parses transcription text and renders [text] patterns as inline badges.
+ * e.g., "Hello [laugh] world [breath]" renders "Hello" + badge + "world" + badge
+ */
+function parseTranscriptionWithBadges(text: string): ReactNode[] {
+  const parts = text.split(/(\[[^\]]+\])/g);
+  return parts.map((part, idx) => {
+    const key = `${idx}-${part}`;
+    if (part.startsWith("[") && part.endsWith("]")) {
+      const label = part.slice(1, -1);
+      return (
+        <span
+          key={key}
+          className="mx-0.5 inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-400"
+        >
+          {label}
+        </span>
+      );
+    }
+    return <span key={key}>{part}</span>;
+  });
 }
 
 export function InlineTranscription({
@@ -111,7 +140,7 @@ export function InlineTranscription({
   return (
     <div
       className={cn(
-        "group -mx-2 flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50",
+        "group -mx-2 flex min-h-[28px] cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50",
         className,
       )}
       onClick={() => setIsEditing(true)}
@@ -119,9 +148,17 @@ export function InlineTranscription({
       role="button"
       tabIndex={0}
     >
-      <p className="min-h-[24px] flex-1 text-foreground/90 text-sm">
-        {transcription || (
-          <span className="text-muted-foreground italic">No transcription</span>
+      <p className="min-h-[24px] flex-1 leading-relaxed">
+        {transcription ? (
+          <>
+            <span className="mr-1 text-muted-foreground">"</span>
+            {parseTranscriptionWithBadges(transcription)}
+            <span className="ml-1 text-muted-foreground">"</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground text-sm italic">
+            No transcription
+          </span>
         )}
       </p>
       <Button

@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uuid,
@@ -169,6 +170,12 @@ export const segments = pgTable(
 
     // User-provided transcription (nullable)
     transcription: text("transcription"),
+
+    // Free-form tags for categorization
+    tags: text("tags").array(),
+
+    // Audio quality score (nullable until calculated)
+    score: real("score"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -334,6 +341,9 @@ export const clips = pgTable(
     fileId: uuid("file_id")
       .notNull()
       .references(() => files.id, { onDelete: "cascade" }),
+
+    // Processed audio quality score (nullable until calculated)
+    score: real("score"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
