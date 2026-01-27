@@ -1,7 +1,6 @@
 import "~/styles/globals.css";
 
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Syne } from "next/font/google";
 import { redirect } from "next/navigation";
 import { ReactScan } from "~/components/react-scan";
 import { ThemeProvider } from "~/components/theme-provider";
@@ -14,22 +13,6 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
-// Syne - Bold, geometric display font for headings
-const syne = Syne({
-  subsets: ["latin"],
-  variable: "--font-heading",
-  display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
-});
-
-// IBM Plex Sans - Technical precision for body text
-const ibmPlexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  variable: "--font-body",
-  display: "swap",
-  weight: ["300", "400", "500", "600", "700"],
-});
-
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -40,11 +23,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html
-      className={`${syne.variable} ${ibmPlexSans.variable}`}
-      lang="en"
-      suppressHydrationWarning
-    >
+    <html lang="en" suppressHydrationWarning>
       <ReactScan />
       <body className="bg-background">
         <ThemeProvider
