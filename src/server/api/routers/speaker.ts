@@ -44,44 +44,26 @@ export const speakerRouter = createTRPCRouter({
             }
 
             // Get aggregate stats for the speaker
-            const statsResult = yield* Effect.tryPromise({
-              try: () =>
-                db
-                  .select({
-                    totalSegments: count(segments.id),
-                    totalDuration: sum(
-                      sql<number>`${segments.endTime} - ${segments.startTime}`,
-                    ),
-                    transcribedCount: count(
-                      sql`CASE WHEN ${segments.transcription} IS NOT NULL THEN 1 END`,
-                    ),
-                    avgScore: avg(segments.score),
-                  })
-                  .from(segments)
-                  .where(eq(segments.speakerId, input.speakerId)),
-              catch: (error) =>
-                new TRPCError({
-                  code: "INTERNAL_SERVER_ERROR",
-                  message: "Failed to fetch segment stats",
-                  cause: error,
-                }),
-            });
+            const statsResult = yield* db
+              .select({
+                totalSegments: count(segments.id),
+                totalDuration: sum(
+                  sql<number>`${segments.endTime} - ${segments.startTime}`,
+                ),
+                transcribedCount: count(
+                  sql`CASE WHEN ${segments.transcription} IS NOT NULL THEN 1 END`,
+                ),
+                avgScore: avg(segments.score),
+              })
+              .from(segments)
+              .where(eq(segments.speakerId, input.speakerId));
 
             // Get clips count for this speaker's segments
-            const clipsCountResult = yield* Effect.tryPromise({
-              try: () =>
-                db
-                  .select({ clipsCount: count(clips.id) })
-                  .from(clips)
-                  .innerJoin(segments, eq(clips.segmentId, segments.id))
-                  .where(eq(segments.speakerId, input.speakerId)),
-              catch: (error) =>
-                new TRPCError({
-                  code: "INTERNAL_SERVER_ERROR",
-                  message: "Failed to fetch clips count",
-                  cause: error,
-                }),
-            });
+            const clipsCountResult = yield* db
+              .select({ clipsCount: count(clips.id) })
+              .from(clips)
+              .innerJoin(segments, eq(clips.segmentId, segments.id))
+              .where(eq(segments.speakerId, input.speakerId));
 
             const stats = statsResult[0] ?? {
               totalSegments: 0,
