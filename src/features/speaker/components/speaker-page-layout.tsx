@@ -17,9 +17,9 @@ export function SpeakerPageLayout() {
         <SpeakerHeader />
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-7xl flex-1 gap-6 p-6">
+      <div className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 gap-6 p-6">
         {/* Main content area with segments list */}
-        <div className="min-w-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1">
           <SegmentsList />
         </div>
 
