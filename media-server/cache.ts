@@ -55,6 +55,7 @@ export class MediaCache {
     this.s3Client = new S3Client({
       region: "auto",
       endpoint: config.r2Endpoint,
+      forcePathStyle: true, // Use path-style URLs to avoid bucket subdomain resolving to blocked IP
       credentials: {
         accessKeyId: config.r2AccessKeyId,
         secretAccessKey: config.r2SecretAccessKey,
