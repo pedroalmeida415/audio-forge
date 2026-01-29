@@ -1,4 +1,4 @@
-import { batch, type Observable } from "@legendapp/state";
+import type { Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
 import type { Clip, File, Segment, Speaker } from "~/server/db/schema";
 
@@ -19,30 +19,11 @@ export type SegmentWithClip = Segment & {
   };
 };
 
-export interface SpeakerStats {
-  totalSegments: number;
-  totalDuration: number;
-  clipsCount: number;
-  transcribedCount: number;
-  avgScore: number | null;
-}
+export type SegmentEntryStatus = "pending" | "loading" | "loaded" | "error";
 
-export interface FilterState {
-  hasClip: boolean | null;
-  hasTranscription: boolean | null;
-  minDuration: number;
-  maxDuration: number;
-  minScore: number;
-  selectedTag: string | null;
-}
-
-export const DEFAULT_FILTERS: FilterState = {
-  hasClip: null,
-  hasTranscription: null,
-  minDuration: 0,
-  maxDuration: 30,
-  minScore: 0,
-  selectedTag: null,
+export type SegmentEntry = {
+  status: SegmentEntryStatus;
+  data: SegmentWithClip | null;
 };
 
 // ============================================================================
@@ -50,90 +31,58 @@ export const DEFAULT_FILTERS: FilterState = {
 // ============================================================================
 
 export type SpeakerPageStateData = {
-  projectId: string;
-  speakerId: string;
   speaker: Speaker;
-  stats: SpeakerStats;
-  segments: SegmentWithClip[];
+  // Unified segments map (preserves insertion order)
+  segments: Map<string, SegmentEntry>;
+  // Selection
   selectedSegmentIds: Set<string>;
-  pendingSegmentIds: Set<string>;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  nextCursor: string | undefined;
-  filters: FilterState;
+  // Clip processing state
+  clipPendingIds: Set<string>;
 };
 
-export type SpeakerPageInitialData = Pick<
-  SpeakerPageStateData,
-  "projectId" | "speakerId" | "speaker" | "stats"
-> & {
-  initialSegments: SegmentWithClip[];
-  hasMore: boolean;
-  nextCursor: string | undefined;
+export type SpeakerPageInitialData = Pick<SpeakerPageStateData, "speaker"> & {
+  segmentIds: string[];
 };
-
-// ============================================================================
-// Filter Helper
-// ============================================================================
-
-function applyFilters(
-  segments: SegmentWithClip[],
-  filters: FilterState,
-): SegmentWithClip[] {
-  return segments.filter((seg) => {
-    // Clip status filter
-    if (filters.hasClip !== null) {
-      const hasClip = seg.clip !== null;
-      if (hasClip !== filters.hasClip) return false;
-    }
-
-    // Transcription filter
-    if (filters.hasTranscription !== null) {
-      const hasTranscription =
-        seg.transcription !== null && seg.transcription.trim() !== "";
-      if (hasTranscription !== filters.hasTranscription) return false;
-    }
-
-    // Duration filter
-    const duration = seg.endTime - seg.startTime;
-    if (duration < filters.minDuration || duration > filters.maxDuration) {
-      return false;
-    }
-
-    // Score filter (only filter if segment has a score)
-    if (filters.minScore > 0 && seg.score !== null) {
-      if (seg.score < filters.minScore) return false;
-    }
-
-    // Tag filter
-    if (filters.selectedTag !== null) {
-      if (!seg.tags?.includes(filters.selectedTag)) return false;
-    }
-
-    return true;
-  });
-}
 
 // ============================================================================
 // Store Factory
 // ============================================================================
 
 export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
+  const { speaker, segmentIds } = initialData;
+
   const $store = useObservable<SpeakerPageStoreState>({
     // State
-    projectId: initialData.projectId,
-    speakerId: initialData.speakerId,
-    speaker: initialData.speaker,
-    stats: initialData.stats,
-    segments: initialData.initialSegments,
+    speaker: speaker,
+    segments: new Map<string, SegmentEntry>(
+      segmentIds.map((id) => [id, { status: "pending", data: null }]),
+    ),
     selectedSegmentIds: new Set<string>(),
-    pendingSegmentIds: new Set<string>(),
-    hasMore: initialData.hasMore,
-    isLoadingMore: false,
-    nextCursor: initialData.nextCursor,
-    filters: { ...DEFAULT_FILTERS },
+    clipPendingIds: new Set<string>(),
 
-    // Actions
+    // Actions - Segments fetching
+    markSegmentsLoading: (ids: string[]) => {
+      for (const id of ids) {
+        const entry = $store.segments.get(id);
+        if (entry.status.peek() === "pending") {
+          entry.status.set("loading");
+        }
+      }
+    },
+
+    setSegmentData: (segments: SegmentWithClip[]) => {
+      for (const seg of segments) {
+        $store.segments.set(seg.id, { status: "loaded", data: seg });
+      }
+    },
+
+    markSegmentsError: (ids: string[]) => {
+      for (const id of ids) {
+        $store.segments.get(id).status.set("error");
+      }
+    },
+
+    // Actions - Selection
     toggleSelection: (segmentId: string) => {
       if ($store.selectedSegmentIds.has(segmentId)) {
         $store.selectedSegmentIds.delete(segmentId);
@@ -143,94 +92,46 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
     },
 
     selectAll: () => {
-      // Select all filtered segments
-      const filtered = applyFilters(
-        $store.segments.peek(),
-        $store.filters.peek(),
-      );
-      $store.selectedSegmentIds.set(new Set(filtered.map((s) => s.id)));
+      for (const id of $store.segments.keys()) {
+        $store.selectedSegmentIds.add(id);
+      }
     },
 
     clearSelection: () => {
       $store.selectedSegmentIds.clear();
     },
 
-    appendSegments: (newSegments: SegmentWithClip[]) => {
-      batch(() => {
-        const current = $store.segments.peek();
-        $store.segments.set([...current, ...newSegments]);
-      });
-    },
-
+    // Actions - Segment updates
     updateTranscription: (segmentId: string, transcription: string | null) => {
-      const index = $store.segments.peek().findIndex((s) => s.id === segmentId);
-      if (index !== -1) {
-        $store.segments[index]?.transcription.set(transcription);
+      const entry = $store.segments.get(segmentId);
+      if (entry.data.peek()) {
+        entry.data.transcription.set(transcription);
       }
-    },
-
-    setHasMore: (hasMore: boolean) => {
-      $store.hasMore.set(hasMore);
-    },
-
-    setIsLoadingMore: (isLoading: boolean) => {
-      $store.isLoadingMore.set(isLoading);
-    },
-
-    setNextCursor: (cursor: string | undefined) => {
-      $store.nextCursor.set(cursor);
-    },
-
-    updateStats: (stats: Partial<SpeakerStats>) => {
-      $store.stats.assign(stats);
-    },
-
-    markSegmentsPending: (segmentIds: string[]) => {
-      const current = $store.pendingSegmentIds.peek();
-      const updated = new Set([...current, ...segmentIds]);
-      $store.pendingSegmentIds.set(updated);
-    },
-
-    markSegmentComplete: (segmentId: string) => {
-      $store.pendingSegmentIds.delete(segmentId);
     },
 
     updateSegmentClip: (segmentId: string, clip: SegmentWithClip["clip"]) => {
-      const index = $store.segments.peek().findIndex((s) => s.id === segmentId);
-      if (index !== -1) {
-        $store.segments[index]?.clip.set(clip);
+      const entry = $store.segments.get(segmentId);
+      if (entry.data.peek()) {
+        entry.data.clip.set(clip);
       }
-    },
-
-    setFilters: (updates: Partial<FilterState>) => {
-      $store.filters.assign(updates);
-    },
-
-    resetFilters: () => {
-      $store.filters.set({ ...DEFAULT_FILTERS });
     },
 
     updateSegmentTags: (segmentId: string, tags: string[]) => {
-      const index = $store.segments.peek().findIndex((s) => s.id === segmentId);
-      if (index !== -1) {
-        $store.segments[index]?.tags.set(tags);
+      const entry = $store.segments.get(segmentId);
+      if (entry.data.peek()) {
+        entry.data.tags.set(tags);
       }
     },
 
-    getFilteredSegments: () => {
-      return applyFilters($store.segments.peek(), $store.filters.peek());
+    // Actions - Clip processing state
+    markClipsPending: (segmentIds: string[]) => {
+      for (const id of segmentIds) {
+        $store.clipPendingIds.add(id);
+      }
     },
 
-    getAllTags: () => {
-      const allTags = new Set<string>();
-      for (const seg of $store.segments.peek()) {
-        if (seg.tags) {
-          for (const tag of seg.tags) {
-            allTags.add(tag);
-          }
-        }
-      }
-      return Array.from(allTags).sort();
+    markClipComplete: (segmentId: string) => {
+      $store.clipPendingIds.delete(segmentId);
     },
   }) as $SpeakerPageStore;
 
@@ -242,27 +143,27 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
 // ============================================================================
 
 interface SpeakerPageStoreState extends SpeakerPageStateData {
-  // Actions
+  // Segments fetching
+  markSegmentsLoading: (ids: string[]) => void;
+  setSegmentData: (segments: SegmentWithClip[]) => void;
+  markSegmentsError: (ids: string[]) => void;
+
+  // Selection
   toggleSelection: (segmentId: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
-  appendSegments: (newSegments: SegmentWithClip[]) => void;
+
+  // Segment updates
   updateTranscription: (
     segmentId: string,
     transcription: string | null,
   ) => void;
-  setHasMore: (hasMore: boolean) => void;
-  setIsLoadingMore: (isLoading: boolean) => void;
-  setNextCursor: (cursor: string | undefined) => void;
-  updateStats: (stats: Partial<SpeakerStats>) => void;
-  markSegmentsPending: (segmentIds: string[]) => void;
-  markSegmentComplete: (segmentId: string) => void;
   updateSegmentClip: (segmentId: string, clip: SegmentWithClip["clip"]) => void;
-  setFilters: (updates: Partial<FilterState>) => void;
-  resetFilters: () => void;
   updateSegmentTags: (segmentId: string, tags: string[]) => void;
-  getFilteredSegments: () => SegmentWithClip[];
-  getAllTags: () => string[];
+
+  // Clip processing state
+  markClipsPending: (segmentIds: string[]) => void;
+  markClipComplete: (segmentId: string) => void;
 }
 
 export type $SpeakerPageStore = Observable<SpeakerPageStoreState>;

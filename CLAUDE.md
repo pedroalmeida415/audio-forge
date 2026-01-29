@@ -146,6 +146,14 @@ const $store = useObservable<ClippingStoreState>({...})
 // Write: $store.segments.set([...])
 ```
 
+**Legend-State Mutation Best Practices**:
+- **Mutate directly** - Legend-State handles reactivity through direct mutations. Avoid re-creating Maps, Sets, arrays, or objects. Use the instance methods provided by the observable (`.set()`, `.delete()`, `.add()`, `.clear()`, etc.).
+- For Maps: use `$store.map.set(key, value)`, `$store.map.delete(key)`, not `$store.map.set(new Map(...))`
+- For Sets: use `$store.set.add(value)`, `$store.set.delete(value)`, not `$store.set.set(new Set(...))`
+- For nested updates: `$store.segments.get(id).status.set("loaded")` instead of replacing the entire entry
+- Use `.peek()` to read without subscribing (in actions), `.get()` to read with subscription (in components via `useValue`)
+- ALWAYS use `useValue`. The `useSelector` hook is deprecated.
+
 **tRPC with Optimistic Updates**: Mutations use `setupMutationDefaults` pattern in `store/mutations.ts` for optimistic updates that sync with Legend-State stores.
 
 **Dual Data Sources**: Segments and speakers can be "local" (from diarization JSONB, not yet saved to DB) or "project" (persisted in DB). Both are unified via `SpeakerWithSource` and `SegmentWithSource` types with a `source` discriminator.

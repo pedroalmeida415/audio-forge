@@ -1,19 +1,14 @@
 import { TRPCError } from "@trpc/server";
-import { and, avg, count, eq, sql, sum } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { generateSpeakerColor } from "~/lib/speaker-colors";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import {
-  clippingSessions,
-  clips,
-  segments,
-  speakers,
-} from "~/server/db/schema";
+import { clippingSessions, speakers } from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
 
 export const speakerRouter = createTRPCRouter({
-  // Get speaker by ID with aggregate stats
+  // Get speaker by ID
   getById: protectedProcedure
     .input(
       z.object({
@@ -26,7 +21,6 @@ export const speakerRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Get speaker details
             const speaker = yield* db.query.speakers.findFirst({
               where: and(
                 eq(speakers.id, input.speakerId),
@@ -43,50 +37,28 @@ export const speakerRouter = createTRPCRouter({
               );
             }
 
-            // Get aggregate stats for the speaker
-            const statsResult = yield* db
-              .select({
-                totalSegments: count(segments.id),
-                totalDuration: sum(
-                  sql<number>`${segments.endTime} - ${segments.startTime}`,
-                ),
-                transcribedCount: count(
-                  sql`CASE WHEN ${segments.transcription} IS NOT NULL THEN 1 END`,
-                ),
-                avgScore: avg(segments.score),
-              })
-              .from(segments)
-              .where(eq(segments.speakerId, input.speakerId));
-
-            // Get clips count for this speaker's segments
-            const clipsCountResult = yield* db
-              .select({ clipsCount: count(clips.id) })
-              .from(clips)
-              .innerJoin(segments, eq(clips.segmentId, segments.id))
-              .where(eq(segments.speakerId, input.speakerId));
-
-            const stats = statsResult[0] ?? {
-              totalSegments: 0,
-              totalDuration: 0,
-              transcribedCount: 0,
-              avgScore: null,
-            };
-            const clipsCount = clipsCountResult[0]?.clipsCount ?? 0;
-
-            return {
-              speaker,
-              stats: {
-                totalSegments: Number(stats.totalSegments),
-                totalDuration: Number(stats.totalDuration ?? 0),
-                clipsCount: Number(clipsCount),
-                transcribedCount: Number(stats.transcribedCount),
-                avgScore:
-                  stats.avgScore !== null ? Number(stats.avgScore) : null,
-              },
-            };
+            return speaker;
           }),
         ),
     ),
+
+  // Get speaker stats (stub with mocked values for now)
+  getStats: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+      }),
+    )
+    .query(async () => {
+      // TODO: Implement real stats when requirements are clear
+      return {
+        totalSegments: 0,
+        totalDuration: 0,
+        clipsCount: 0,
+        transcribedCount: 0,
+        avgScore: null as number | null,
+      };
+    }),
 
   // Create a new speaker (project-level)
   createSpeaker: protectedProcedure

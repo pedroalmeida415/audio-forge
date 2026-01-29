@@ -1,6 +1,6 @@
 import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
@@ -16,13 +16,11 @@ import {
 } from "~/services/queue/queue-service";
 
 export const segmentRouter = createTRPCRouter({
-  // Get paginated segments for a speaker with clips and session info
-  getBySpeaker: protectedProcedure
+  // Get all segment IDs for a speaker (lightweight ID index for windowed fetching)
+  getIdsBySpeaker: protectedProcedure
     .input(
       z.object({
         speakerId: z.string().uuid(),
-        limit: z.number().min(1).max(100).default(50),
-        cursor: z.string().uuid().optional(), // Cursor-based pagination using segment ID
       }),
     )
     .query(
@@ -48,26 +46,81 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            // Get total count for this speaker
-            const totalResult = yield* Effect.tryPromise({
-              try: () =>
-                db
-                  .select({ total: count(segments.id) })
-                  .from(segments)
-                  .where(eq(segments.speakerId, input.speakerId)),
-              catch: (error) =>
+            const aggResult = yield* db
+              .select({
+                ids: sql<string[]>`
+                  array_agg(${segments.id} order by ${segments.startTime} asc)
+                `,
+              })
+              .from(segments)
+              .where(eq(segments.speakerId, input.speakerId));
+
+            if (!aggResult[0])
+              return yield* Effect.fail(
                 new TRPCError({
-                  code: "INTERNAL_SERVER_ERROR",
-                  message: "Failed to count segments",
-                  cause: error,
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
                 }),
-            });
+              );
 
-            const total = totalResult[0]?.total ?? 0;
+            return aggResult[0].ids;
+          }),
+        ),
+    ),
 
-            // Get segments with clips and session info (select only needed columns)
+  // WIP - refactored procedure to have segments relying on fileId instead of needing storageKey directly
+  // getByIds: protectedProcedure
+  //   .input(
+  //     z.object({
+  //       segmentIds: z.array(z.string().uuid()).max(100),
+  //     }),
+  //   )
+  //   .query(
+  //     async ({ ctx, input }) =>
+  //       await ctx.runtime.runPromise(
+  //         Effect.gen(function* () {
+  //           const db = yield* Database;
+
+  //           if (input.segmentIds.length === 0) {
+  //             return [];
+  //           }
+
+  //           // Fetch segments with relations (same as getBySpeaker)
+  //           const segmentResults = yield* db.query.segments.findMany({
+  //             where: inArray(segments.id, input.segmentIds),
+  //             with: {
+  //               clip: true,
+  //               session: {
+  //                 columns: { id: true, name: true },
+  //               },
+  //             },
+  //           });
+
+  //           // Return in the order requested
+  //           return segmentResults;
+  //         }),
+  //       ),
+  //   ),
+
+  getByIds: protectedProcedure
+    .input(
+      z.object({
+        segmentIds: z.array(z.string().uuid()).max(100),
+      }),
+    )
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            if (input.segmentIds.length === 0) {
+              return [];
+            }
+
+            // Fetch segments with relations (same as getBySpeaker)
             const segmentResults = yield* db.query.segments.findMany({
-              where: eq(segments.speakerId, input.speakerId),
+              where: inArray(segments.id, input.segmentIds),
               with: {
                 clip: {
                   with: {
@@ -84,29 +137,39 @@ export const segmentRouter = createTRPCRouter({
                     },
                   },
                 },
+                speaker: {
+                  columns: { userId: true },
+                },
               },
-              orderBy: [asc(segments.startTime)],
-              limit: input.limit + 1, // Get one extra to determine if there's more
-              ...(input.cursor &&
-                {
-                  // For cursor pagination, we'd need to filter by startTime > cursor's startTime
-                  // For simplicity, we'll use offset-based pagination via cursor index
-                }),
             });
 
-            const hasMore = segmentResults.length > input.limit;
-            const items = hasMore
-              ? segmentResults.slice(0, input.limit)
-              : segmentResults;
-            const nextCursor = hasMore
-              ? items[items.length - 1]?.id
-              : undefined;
+            // Verify all segments belong to this user
+            const unauthorized = segmentResults.filter(
+              (s) => s.speaker.userId !== ctx.session.user.id,
+            );
 
-            return {
-              items,
-              nextCursor,
-              total,
-            };
+            if (unauthorized.length > 0) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to some segments",
+                }),
+              );
+            }
+
+            // Strip speaker.userId from response (not needed by client)
+            // and preserve the order from input.segmentIds
+            const segmentMap = new Map(
+              segmentResults.map((s) => {
+                const { speaker: _speaker, ...rest } = s;
+                return [s.id, rest];
+              }),
+            );
+
+            // Return in the order requested
+            return input.segmentIds
+              .map((id) => segmentMap.get(id))
+              .filter((s) => s !== undefined);
           }),
         ),
     ),

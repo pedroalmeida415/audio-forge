@@ -1,6 +1,6 @@
 "use client";
 
-import { useValue } from "@legendapp/state/react";
+import { useParams } from "next/navigation";
 import { createContext, type ReactNode, use } from "react";
 import {
   type $SpeakerPageStore,
@@ -75,18 +75,18 @@ export function useSpeakerPageStore(): $SpeakerPageStore {
 // ============================================================================
 
 function ClipSubscriber() {
+  const { speakerId } = useParams<{ speakerId: string }>();
   const $store = useSpeakerPageStore();
-  const speakerId = useValue($store.speakerId);
 
   api.segment.onClipCreated.useSubscription(
     { speakerId },
     {
       onData: (event) => {
-        // Remove segment from pending state
-        $store.markSegmentComplete(event.segmentId);
+        // Remove segment from clip pending state
+        $store.markClipComplete(event.segmentId);
 
         if (event.status === "completed" && event.clip) {
-          // Update the segment's clip directly from the event data
+          // Update the segment's clip in the loaded segments Map
           // Convert ISO string back to Date for the clip
           const clip = {
             id: event.clip.id,
@@ -95,28 +95,12 @@ function ClipSubscriber() {
             score: event.clip.score,
             createdAt: new Date(event.clip.createdAt),
             file: {
-              id: event.clip.file.id,
-              // Include all required File fields with defaults for unused ones
-              userId: "",
-              projectId: null,
               storageKey: event.clip.file.storageKey,
               duration: event.clip.file.duration,
-              name: null,
-              waveformStatus: "pending" as const,
-              waveformStorageKey: null,
-              waveformError: null,
-              createdAt: new Date(),
-              updatedAt: new Date(),
             },
           };
 
           $store.updateSegmentClip(event.segmentId, clip);
-
-          // Update stats - increment clips count
-          const currentStats = $store.stats.peek();
-          $store.updateStats({
-            clipsCount: currentStats.clipsCount + 1,
-          });
         }
 
         if (event.status === "failed") {

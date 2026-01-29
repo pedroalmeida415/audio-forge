@@ -1,9 +1,10 @@
 "use client";
 
-import { useValue } from "@legendapp/state/react";
+import { useSelector } from "@legendapp/state/react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import { Checkbox } from "~/components/ui/checkbox";
+import { Skeleton } from "~/components/ui/skeleton";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
 import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
@@ -13,28 +14,117 @@ import { AudioPlayer } from "./audio-player";
 import { InlineTranscription } from "./inline-transcription";
 import { TagInput } from "./tag-input";
 
+// ============================================================================
+// Skeleton Component
+// ============================================================================
+
+interface SegmentCardSkeletonProps {
+  index: number;
+}
+
+export function SegmentCardSkeleton({ index }: SegmentCardSkeletonProps) {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-border bg-card">
+      {/* Subtle gradient overlay */}
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-linear-to-br from-primary/2 via-transparent to-background/20" />
+
+      {/* Main content */}
+      <div className="relative flex gap-4 p-5">
+        {/* Selection checkbox placeholder */}
+        <div className="flex pt-1">
+          <Skeleton className="size-4 rounded" />
+        </div>
+
+        {/* Audio players section */}
+        <div className="flex flex-1 flex-col gap-4">
+          {/* A/B Audio comparison skeleton */}
+          <div className="flex items-center gap-3">
+            {/* Original Segment Player skeleton */}
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-[76px] w-full rounded-xl" />
+            </div>
+
+            {/* Arrow with score delta */}
+            <div className="flex shrink-0 flex-col items-center gap-1 px-2">
+              <ArrowRight className="size-4 text-muted-foreground/30" />
+              <Skeleton className="h-4 w-8" />
+            </div>
+
+            {/* Processed Clip Player skeleton */}
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-[76px] w-full rounded-xl" />
+            </div>
+          </div>
+
+          {/* Transcription skeleton */}
+          <Skeleton className="h-10 w-full rounded-lg" />
+
+          {/* Tags skeleton */}
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="relative flex items-center justify-between border-border/50 border-t bg-card/40 px-5 py-3">
+        <div className="flex items-center gap-4">
+          <span className="font-medium font-mono text-primary/80 text-xs">
+            #{String(index + 1).padStart(2, "0")}
+          </span>
+          <Skeleton className="h-4 w-24" />
+        </div>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-5 w-12 rounded-md" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Component - Subscribes to its own segment entry
+// ============================================================================
+
 interface SegmentCardProps {
+  segmentId: string;
+  index: number;
+}
+
+export function SegmentCard({ segmentId, index }: SegmentCardProps) {
+  const $store = useSpeakerPageStore();
+
+  // Subscribe to this specific segment entry from the store
+  // This gives granular reactivity - only this card re-renders when its entry changes
+  const entry = useSelector(() => $store.segments.get(segmentId));
+
+  // Show skeleton if not loaded yet
+  if (!entry || entry.status !== "loaded" || !entry.data) {
+    return <SegmentCardSkeleton index={index} />;
+  }
+
+  return <SegmentCardInner segment={entry.data} index={index} />;
+}
+
+// ============================================================================
+// Inner Component - Has all the hooks and rendering logic
+// ============================================================================
+
+interface SegmentCardInnerProps {
   segment: SegmentWithClip;
   index: number;
 }
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
-}
-
-function formatDuration(seconds: number): string {
-  return `${seconds.toFixed(2)}s`;
-}
-
-export function SegmentCard({ segment, index }: SegmentCardProps) {
+function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
   const $store = useSpeakerPageStore();
-  const selectedIds = useValue($store.selectedSegmentIds);
-  const pendingIds = useValue($store.pendingSegmentIds);
-  const allTags = $store.getAllTags();
-  const isSelected = selectedIds.has(segment.id);
-  const isPending = pendingIds.has(segment.id);
+  const isSelected = useSelector(() =>
+    $store.selectedSegmentIds.has(segment.id),
+  );
+  const isClipPending = useSelector(() =>
+    $store.clipPendingIds.has(segment.id),
+  );
 
   const sessionName =
     segment.session.name ?? segment.session.file.name ?? "Unnamed Session";
@@ -91,7 +181,7 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
       )}
     >
       {/* Subtle gradient overlay */}
-      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/[0.02] via-transparent to-background/20" />
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-linear-to-br from-primary/2 via-transparent to-background/20" />
 
       {/* Main content */}
       <div className="relative flex gap-4 p-5">
@@ -151,7 +241,7 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
                 />
               ) : (
                 <div className="flex h-full min-h-[76px] items-center justify-center rounded-xl border border-border/50 border-dashed bg-secondary/30">
-                  {isPending ? (
+                  {isClipPending ? (
                     <div className="flex items-center gap-2 text-secondary-foreground text-sm">
                       <Loader2 className="size-4 animate-spin" />
                       Processing...
@@ -175,7 +265,7 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
           {/* Tags */}
           <TagInput
             tags={segmentTags}
-            suggestedTags={allTags}
+            suggestedTags={[]}
             onAddTag={handleAddTag}
             onRemoveTag={handleRemoveTag}
             disabled={updateTagsMutation.isPending}
@@ -209,4 +299,18 @@ export function SegmentCard({ segment, index }: SegmentCardProps) {
       </div>
     </div>
   );
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toFixed(2).padStart(5, "0")}`;
+}
+
+function formatDuration(seconds: number): string {
+  return `${seconds.toFixed(2)}s`;
 }

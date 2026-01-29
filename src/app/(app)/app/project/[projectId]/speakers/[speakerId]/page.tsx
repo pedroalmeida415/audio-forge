@@ -10,30 +10,26 @@ export default function SpeakerPage({
 }: {
   params: Promise<{ projectId: string; speakerId: string }>;
 }) {
-  const { projectId, speakerId } = use(params);
+  const { speakerId } = use(params);
 
-  // Fetch speaker data with stats
-  const [speakerData] = api.speaker.getById.useSuspenseQuery(
+  // Fetch speaker data
+  const [speaker] = api.speaker.getById.useSuspenseQuery(
     { speakerId },
     { refetchOnWindowFocus: false },
   );
 
-  // Fetch initial segments
-  const [segmentsData] = api.segment.getBySpeaker.useSuspenseQuery(
-    { speakerId, limit: 50 },
+  // Prefetch all segment IDs (sorted by startTime)
+  // Windowed fetching will handle loading actual segments on mount
+  const [segmentIds] = api.segment.getIdsBySpeaker.useSuspenseQuery(
+    { speakerId },
     { refetchOnWindowFocus: false },
   );
 
   return (
     <SpeakerPageProvider
       initialData={{
-        projectId,
-        speakerId,
-        speaker: speakerData.speaker,
-        stats: speakerData.stats,
-        initialSegments: segmentsData.items,
-        hasMore: !!segmentsData.nextCursor,
-        nextCursor: segmentsData.nextCursor,
+        speaker,
+        segmentIds,
       }}
     >
       <SpeakerPageLayout />
