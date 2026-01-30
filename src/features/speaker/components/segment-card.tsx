@@ -1,6 +1,6 @@
 "use client";
 
-import { useSelector } from "@legendapp/state/react";
+import { useValue } from "@legendapp/state/react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -98,7 +98,7 @@ export function SegmentCard({ segmentId, index }: SegmentCardProps) {
 
   // Subscribe to this specific segment entry from the store
   // This gives granular reactivity - only this card re-renders when its entry changes
-  const entry = useSelector(() => $store.segments.get(segmentId));
+  const entry = useValue(() => $store.segments.get(segmentId));
 
   // Show skeleton if not loaded yet
   if (!entry || entry.status !== "loaded" || !entry.data) {
@@ -119,11 +119,11 @@ interface SegmentCardInnerProps {
 
 function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
   const $store = useSpeakerPageStore();
-  const isSelected = useSelector(() =>
-    $store.selectedSegmentIds.has(segment.id),
+  const isSelected = useValue(() =>
+    $store.selectedSegmentIds.get().has(segment.id),
   );
-  const isClipPending = useSelector(() =>
-    $store.clipPendingIds.has(segment.id),
+  const isClipPending = useValue(() =>
+    $store.clipPendingIds.get().has(segment.id),
   );
 
   const sessionName =
