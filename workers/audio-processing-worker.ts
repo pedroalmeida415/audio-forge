@@ -25,8 +25,8 @@ import { StorageService } from "../src/services/storage/storage-service";
 
 const mediaServerUrl = process.env.MEDIA_SERVER_URL ?? "http://localhost:3002";
 const mediaServerToken = process.env.MEDIA_SERVER_INTERNAL_TOKEN;
-const scoringServerUrl =
-  process.env.SPEECH_SCORING_SERVER_URL ?? "http://localhost:8000";
+const speechProcessingServerUrl =
+  process.env.SPEECH_PROCESSING_SERVER_URL ?? "http://localhost:8000";
 
 /**
  * Download a file from the media server to a local path.
@@ -136,13 +136,176 @@ export interface ClipJobResult {
   clip: ClipData;
 }
 
+/** Context needed to create a clip from an audio buffer */
+interface SegmentContext {
+  segmentId: string;
+  speakerId: string;
+  userId: string;
+  projectId: string;
+  startTime: number;
+  endTime: number;
+}
+
+/** Result of extractSegmentAudio */
+interface ExtractSegmentResult {
+  audioBuffer: Buffer;
+  context: SegmentContext;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
 
 /**
+ * Extract audio buffer from a segment's source file.
+ * Does NOT create any DB records or upload to R2.
+ * Returns the raw audio buffer and context needed for further processing.
+ */
+const extractSegmentAudio = (segmentId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Database;
+
+    // Look up segment with session relations (no clip needed)
+    const segment = yield* db.query.segments.findFirst({
+      where: eq(segments.id, segmentId),
+      with: {
+        session: {
+          with: {
+            file: true,
+          },
+        },
+        speaker: true,
+      },
+    });
+
+    if (!segment) {
+      return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
+    }
+
+    const sourceFile = segment.session.file;
+    if (!sourceFile?.storageKey) {
+      return yield* Effect.fail(
+        new Error(`Source file not found for segment ${segmentId}`),
+      );
+    }
+
+    console.log(
+      `[extractSegmentAudio] Extracting audio for segment ${segmentId} (${segment.startTime}s - ${segment.endTime}s)`,
+    );
+
+    // Fetch slice from media server
+    const startMs = segment.startTime * 1000;
+    const endMs = segment.endTime * 1000;
+
+    const audioBuffer = yield* fetchSliceFromMediaServer({
+      storageKey: sourceFile.storageKey as string,
+      startMs,
+      endMs,
+    });
+
+    const context: SegmentContext = {
+      segmentId,
+      speakerId: segment.speakerId,
+      userId: segment.speaker.userId,
+      projectId: segment.session.projectId,
+      startTime: segment.startTime,
+      endTime: segment.endTime,
+    };
+
+    return { audioBuffer, context } satisfies ExtractSegmentResult;
+  });
+
+/**
+ * Upload an audio buffer to R2 and create file + clip DB records.
+ * Used after processing (denoising, etc.) to persist the result.
+ */
+const createClipFromBuffer = (params: {
+  audioBuffer: Buffer;
+  context: SegmentContext;
+  contentType: string;
+  extension: string;
+}) =>
+  Effect.gen(function* () {
+    const { audioBuffer, context, contentType, extension } = params;
+    const db = yield* Database;
+
+    // Generate storage key for clip
+    const clipStorageKey = `clips/${context.userId}/${context.segmentId}.${extension}`;
+
+    console.log(
+      `[createClipFromBuffer] Uploading clip for segment ${context.segmentId}: ${clipStorageKey}`,
+    );
+
+    // Upload buffer to R2
+    yield* StorageService.uploadBuffer({
+      key: clipStorageKey,
+      data: audioBuffer,
+      contentType,
+    });
+
+    // Calculate duration
+    const durationSeconds = context.endTime - context.startTime;
+
+    // Create file record
+    const [newClipFile] = yield* db
+      .insert(files)
+      .values({
+        userId: context.userId,
+        projectId: context.projectId,
+        storageKey: clipStorageKey,
+        name: `clip-${context.segmentId.slice(0, 8)}.${extension}`,
+        duration: durationSeconds,
+      })
+      .returning();
+
+    if (!newClipFile) {
+      return yield* Effect.fail(
+        new Error(`Failed to create file record for clip`),
+      );
+    }
+
+    // Create clip record
+    const [newClip] = yield* db
+      .insert(clips)
+      .values({
+        segmentId: context.segmentId,
+        fileId: newClipFile.id,
+      })
+      .returning();
+
+    if (!newClip) {
+      return yield* Effect.fail(
+        new Error(
+          `Failed to create clip record for segment ${context.segmentId}`,
+        ),
+      );
+    }
+
+    console.log(
+      `[createClipFromBuffer] Created clip for segment ${context.segmentId}: ${clipStorageKey}`,
+    );
+
+    return {
+      segmentId: context.segmentId,
+      speakerId: context.speakerId,
+      clip: {
+        id: newClip.id,
+        segmentId: context.segmentId,
+        fileId: newClipFile.id,
+        createdAt: newClip.createdAt.toISOString(),
+        file: {
+          id: newClipFile.id,
+          storageKey: clipStorageKey,
+          duration: durationSeconds,
+        },
+      },
+    } satisfies EnsureClipResult;
+  });
+
+/**
  * Ensures a clip exists for the given segment.
  * If no clip exists, extracts audio from the source file and creates one.
+ * Also scores the source audio and stores in segment.scores.
  * Returns the clip's file info for further processing.
  */
 const ensureClipExists = (segmentId: string) =>
@@ -441,8 +604,14 @@ const handleGenerateWaveform: JobHandler = async (job) => {
 /**
  * Denoise a segment's audio.
  * entryId = segmentId
- * Ensures clip exists, then applies denoising filter.
- * TODO: Implement actual denoising logic
+ *
+ * Flow:
+ * 1. Check if clip already exists → return early if so
+ * 2. Extract raw audio from source file (no R2 upload yet)
+ * 3. Score source audio → save to segment.scores
+ * 4. Denoise audio via speech processing server
+ * 5. Upload denoised audio to R2 and create clip records
+ * 6. Return result (auto-triggers scoring of processed clip)
  */
 const handleDenoise: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
@@ -450,17 +619,97 @@ const handleDenoise: JobHandler = async (job) => {
 
   return await AppRuntime.runPromise(
     Effect.gen(function* () {
-      // Ensure clip exists (creates if needed)
-      const result = yield* ensureClipExists(segmentId);
-      console.log(`[Denoise] Clip ready: ${result.clip.file.storageKey}`);
+      const db = yield* Database;
 
-      // TODO: Implement denoising
-      // 1. Download audio from result.clip.file.storageKey
-      // 2. Apply denoising filter (ffmpeg or external service)
-      // 3. Upload processed audio (update file or create new version)
+      // Check if clip already exists
+      const existingSegment = yield* db.query.segments.findFirst({
+        where: eq(segments.id, segmentId),
+        with: {
+          clip: {
+            with: {
+              file: true,
+            },
+          },
+          speaker: true,
+        },
+      });
+
+      if (!existingSegment) {
+        return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
+      }
+
+      // Return early if clip already exists
+      if (existingSegment.clip?.file?.storageKey) {
+        console.log(
+          `[Denoise] Clip already exists for segment ${segmentId}, skipping`,
+        );
+        return {
+          segmentId,
+          speakerId: existingSegment.speakerId,
+          clip: {
+            id: existingSegment.clip.id,
+            segmentId,
+            fileId: existingSegment.clip.fileId,
+            createdAt: existingSegment.clip.createdAt.toISOString(),
+            file: {
+              id: existingSegment.clip.file.id,
+              storageKey: existingSegment.clip.file.storageKey,
+              duration: existingSegment.clip.file.duration ?? 0,
+            },
+          },
+        } satisfies ClipJobResult;
+      }
+
+      // Extract raw audio from source file
+      console.log(`[Denoise] Extracting audio for segment ${segmentId}`);
+      const { audioBuffer, context } = yield* extractSegmentAudio(segmentId);
       console.log(
-        `[Denoise] Segment ${segmentId} - processing not yet implemented`,
+        `[Denoise] Extracted ${audioBuffer.length} bytes from source`,
       );
+
+      // Score source audio and save to segment.scores
+      console.log(`[Denoise] Scoring source audio for segment ${segmentId}`);
+      const sourceScores = yield* callScoringServer(audioBuffer).pipe(
+        Effect.catchAll((error) => {
+          console.warn(
+            `[Denoise] Failed to score source audio: ${error.message}`,
+          );
+          return Effect.succeed(null);
+        }),
+      );
+
+      if (sourceScores) {
+        yield* db
+          .update(segments)
+          .set({ scores: { DNSMOS: sourceScores.DNSMOS } })
+          .where(eq(segments.id, segmentId))
+          .pipe(
+            Effect.catchAll((error) => {
+              console.error(`[Denoise] Failed to save source scores:`, error);
+              return Effect.void;
+            }),
+          );
+        console.log(
+          `[Denoise] Source scores saved: OVRL=${sourceScores.DNSMOS.OVRL.toFixed(2)}`,
+        );
+      }
+
+      // Denoise audio via speech processing server
+      console.log(`[Denoise] Denoising audio for segment ${segmentId}`);
+      const denoisedBuffer = yield* callDenoiseServer(audioBuffer);
+      console.log(
+        `[Denoise] Denoised audio: ${denoisedBuffer.length} bytes (FLAC 48kHz)`,
+      );
+
+      // Upload denoised audio to R2 and create clip records
+      const result = yield* createClipFromBuffer({
+        audioBuffer: denoisedBuffer,
+        context,
+        contentType: "audio/flac",
+        extension: "flac",
+      });
+
+      console.log(`[Denoise] Clip created: ${result.clip.file.storageKey}`);
 
       return result satisfies ClipJobResult;
     }),
@@ -550,7 +799,7 @@ const callScoringServer = (audioBuffer: Buffer) =>
         "audio.flac",
       );
 
-      const response = await fetch(`${scoringServerUrl}/score`, {
+      const response = await fetch(`${speechProcessingServerUrl}/score`, {
         method: "POST",
         body: formData,
       });
@@ -565,6 +814,38 @@ const callScoringServer = (audioBuffer: Buffer) =>
     catch: (error) =>
       new Error(
         `Failed to call scoring server: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
+
+/**
+ * Call the speech processing server to denoise audio.
+ * Returns the denoised audio as a FLAC buffer (48kHz).
+ */
+const callDenoiseServer = (audioBuffer: Buffer) =>
+  Effect.tryPromise({
+    try: async () => {
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }),
+        "audio.flac",
+      );
+
+      const response = await fetch(`${speechProcessingServerUrl}/denoise`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Denoise server error: ${response.status} - ${text}`);
+      }
+
+      return Buffer.from(await response.arrayBuffer());
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to call denoise server: ${error instanceof Error ? error.message : String(error)}`,
       ),
   });
 
