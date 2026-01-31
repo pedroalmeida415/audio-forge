@@ -6,7 +6,6 @@ import {
   jsonb,
   pgEnum,
   pgTable,
-  real,
   text,
   timestamp,
   uuid,
@@ -84,6 +83,37 @@ export const verification = pgTable("verification", {
     .notNull()
     .$onUpdate(() => new Date()),
 });
+
+// ============================================================================
+// AUDIO QUALITY SCORES
+// ============================================================================
+
+/**
+ * DNSMOS (Deep Noise Suppression MOS) scores for audio quality assessment.
+ * Scale: 1-5 (higher is better)
+ */
+export interface DNSMOSScores {
+  /** Speech signal quality (1-5) */
+  SIG: number;
+  /** Background noise quality (1-5) - higher means less noise */
+  BAK: number;
+  /** Overall quality (1-5) */
+  OVRL: number;
+  /** P.808 MOS prediction (1-5) */
+  P808_MOS: number;
+}
+
+/**
+ * Audio quality scores stored as JSONB.
+ * Currently supports DNSMOS, extensible for future metrics.
+ */
+export interface AudioScores {
+  DNSMOS: DNSMOSScores;
+  _meta?: {
+    scoredAt: string;
+    model: string;
+  };
+}
 
 // ============================================================================
 // MAIN TABLES
@@ -174,8 +204,8 @@ export const segments = pgTable(
     // Free-form tags for categorization
     tags: text("tags").array(),
 
-    // Audio quality score (nullable until calculated)
-    score: real("score"),
+    // Audio quality scores (nullable until calculated)
+    scores: jsonb("scores").$type<AudioScores>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -342,8 +372,8 @@ export const clips = pgTable(
       .notNull()
       .references(() => files.id, { onDelete: "cascade" }),
 
-    // Processed audio quality score (nullable until calculated)
-    score: real("score"),
+    // Processed audio quality scores (nullable until calculated)
+    scores: jsonb("scores").$type<AudioScores>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

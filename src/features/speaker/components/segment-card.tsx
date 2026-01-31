@@ -153,10 +153,12 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
 
   const duration = segment.endTime - segment.startTime;
   const segmentTags = segment.tags ?? [];
+
+  // Extract OVRL scores for display
+  const segmentScore = segment.scores?.DNSMOS?.OVRL ?? null;
+  const clipScore = segment.clip?.scores?.DNSMOS?.OVRL ?? null;
   const scoreDelta =
-    segment.clip?.score != null && segment.score != null
-      ? segment.clip.score - segment.score
-      : null;
+    clipScore != null && segmentScore != null ? clipScore - segmentScore : null;
 
   const handleToggleSelect = () => {
     $store.toggleSelection(segment.id);
@@ -206,7 +208,7 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
                 audioUrl={sourceUrl}
                 onLoadAudio={loadSource}
                 duration={duration}
-                score={segment.score}
+                score={segmentScore}
                 variant="original"
               />
             </div>
@@ -236,7 +238,7 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
                   audioUrl={clipUrl}
                   onLoadAudio={loadClip}
                   duration={segment.clip?.file.duration ?? duration}
-                  score={segment.clip?.score ?? null}
+                  score={clipScore}
                   variant="processed"
                 />
               ) : (

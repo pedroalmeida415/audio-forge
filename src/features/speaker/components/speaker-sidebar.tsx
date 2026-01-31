@@ -21,7 +21,7 @@ export function SpeakerSidebar() {
 
   const queueMutation = api.segment.queueProcessing.useMutation({
     onMutate: (variables) => {
-      $store.markSegmentsPending(variables.segmentIds);
+      $store.markClipsPending(variables.segmentIds);
     },
     onSuccess: (data) => {
       console.log("Queued:", data.jobIds.length, "jobs");
@@ -30,7 +30,7 @@ export function SpeakerSidebar() {
     },
     onError: (_error, variables) => {
       for (const id of variables.segmentIds) {
-        $store.markSegmentComplete(id);
+        $store.markClipComplete(id);
       }
       setProcessingOperation(null);
     },

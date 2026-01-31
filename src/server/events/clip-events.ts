@@ -1,11 +1,12 @@
 import { EventEmitter } from "node:events";
+import type { AudioScores } from "~/server/db/schema";
 
 /** Clip data included in completion events */
 export interface ClipEventData {
   id: string;
   segmentId: string;
   fileId: string;
-  score: number | null;
+  scores: AudioScores | null;
   createdAt: string;
   file: {
     id: string;
@@ -18,6 +19,10 @@ export interface ClipEvent {
   segmentId: string;
   speakerId: string;
   clip?: ClipEventData;
+  /** Segment scores (source audio) - included when CalculateScore job completes */
+  segmentScores?: AudioScores;
+  /** Clip scores (processed audio) - included when CalculateScore job completes */
+  clipScores?: AudioScores;
   status: "completed" | "failed";
   error?: string;
   timestamp: string;
@@ -54,6 +59,8 @@ class ClipEventEmitter extends EventEmitter {
     segmentId: string;
     speakerId: string;
     clip?: ClipEventData;
+    segmentScores?: AudioScores;
+    clipScores?: AudioScores;
     status: "completed" | "failed";
     error?: string;
   }) {

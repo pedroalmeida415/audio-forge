@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Job, Worker } from "bullmq";
+import { type Job, Queue, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import IORedis from "ioredis";
@@ -20,11 +20,13 @@ import {
 import { StorageService } from "../src/services/storage/storage-service";
 
 // ============================================================================
-// Media Server Configuration
+// Server Configuration
 // ============================================================================
 
 const mediaServerUrl = process.env.MEDIA_SERVER_URL ?? "http://localhost:3002";
 const mediaServerToken = process.env.MEDIA_SERVER_INTERNAL_TOKEN;
+const scoringServerUrl =
+  process.env.SPEECH_SCORING_SERVER_URL ?? "http://localhost:8000";
 
 /**
  * Download a file from the media server to a local path.
@@ -261,6 +263,40 @@ const ensureClipExists = (segmentId: string) =>
       `[ensureClipExists] Created clip for segment ${segmentId}: ${clipStorageKey}`,
     );
 
+    // Score the source audio and store in segments.scores
+    // This represents the quality of the original audio before any processing
+    console.log(
+      `[ensureClipExists] Scoring source audio for segment ${segmentId}`,
+    );
+    const sourceScores = yield* callScoringServer(audioBuffer).pipe(
+      Effect.catchAll((error) => {
+        console.warn(
+          `[ensureClipExists] Failed to score source audio: ${error.message}`,
+        );
+        return Effect.succeed(null);
+      }),
+    );
+
+    if (sourceScores) {
+      yield* Effect.catchAll(
+        db
+          .update(segments)
+          .set({ scores: { DNSMOS: sourceScores.DNSMOS } })
+          .where(eq(segments.id, segmentId)),
+        (error) => {
+          console.error(
+            `[ensureClipExists] Failed to save source scores:`,
+            error,
+          );
+          return Effect.fail(error);
+        },
+      );
+      console.log(
+        `[ensureClipExists] Source scores saved for segment ${segmentId}:`,
+        sourceScores.DNSMOS,
+      );
+    }
+
     return {
       segmentId,
       speakerId: segment.speakerId,
@@ -491,6 +527,128 @@ const handleTranscribe: JobHandler = async (job) => {
   );
 };
 
+/** DNSMOS score response from scoring server */
+interface DNSMOSResponse {
+  DNSMOS: {
+    SIG: number;
+    BAK: number;
+    OVRL: number;
+    P808_MOS: number;
+  };
+}
+
+/**
+ * Call the speech scoring server to calculate DNSMOS scores.
+ */
+const callScoringServer = (audioBuffer: Buffer) =>
+  Effect.tryPromise({
+    try: async () => {
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }),
+        "audio.flac",
+      );
+
+      const response = await fetch(`${scoringServerUrl}/score`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Scoring server error: ${response.status} - ${text}`);
+      }
+
+      return (await response.json()) as DNSMOSResponse;
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to call scoring server: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
+
+/**
+ * Fetch audio buffer from media server.
+ */
+const fetchAudioBuffer = (storageKey: string) =>
+  Effect.tryPromise({
+    try: async () => {
+      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(storageKey)}`;
+      const headers: Record<string, string> = {};
+
+      if (mediaServerToken) {
+        headers.Authorization = `Bearer ${mediaServerToken}`;
+      }
+
+      const response = await fetch(url, { headers });
+
+      if (!response.ok) {
+        throw new Error(
+          `Media server error: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      return Buffer.from(await response.arrayBuffer());
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to fetch from media server: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
+
+/**
+ * Calculate DNSMOS quality scores for a segment's audio.
+ * entryId = segmentId
+ *
+ * Fetches the clip audio from media server, sends to speech scoring server,
+ * and updates DB with scores.
+ */
+const handleCalculateScore: JobHandler = async (job) => {
+  const segmentId = job.data.entryId;
+  console.log(`[CalculateScore] Processing segment ${segmentId}`);
+
+  return await AppRuntime.runPromise(
+    Effect.gen(function* () {
+      const db = yield* Database;
+
+      // Ensure clip exists (creates if needed)
+      const result = yield* ensureClipExists(segmentId);
+      console.log(
+        `[CalculateScore] Clip ready: ${result.clip.file.storageKey}`,
+      );
+
+      // Fetch audio from media server
+      const audioBuffer = yield* fetchAudioBuffer(result.clip.file.storageKey);
+      console.log(
+        `[CalculateScore] Fetched ${audioBuffer.length} bytes from media server`,
+      );
+
+      // Call scoring server
+      const scores = yield* callScoringServer(audioBuffer);
+      console.log(`[CalculateScore] Scores received:`, scores.DNSMOS);
+
+      // Update clip scores only (segment source scores are set in ensureClipExists)
+      yield* Effect.catchAll(
+        db
+          .update(clips)
+          .set({ scores: { DNSMOS: scores.DNSMOS } })
+          .where(eq(clips.segmentId, segmentId)),
+        (error) => {
+          console.error(`[CalculateScore] Failed to save clip scores:`, error);
+          return Effect.fail(error);
+        },
+      );
+
+      console.log(
+        `[CalculateScore] Clip scores saved for segment ${segmentId}`,
+      );
+
+      return result satisfies ClipJobResult;
+    }),
+  );
+};
+
 // ============================================================================
 // Handler Registry
 // ============================================================================
@@ -500,6 +658,7 @@ const handlers: HandlerRegistry = {
   [AudioJobs.Denoise]: handleDenoise,
   [AudioJobs.RemoveOverlap]: handleRemoveOverlap,
   [AudioJobs.Transcribe]: handleTranscribe,
+  [AudioJobs.CalculateScore]: handleCalculateScore,
 };
 
 // ============================================================================
@@ -509,6 +668,18 @@ const handlers: HandlerRegistry = {
 const connection = new IORedis(env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null,
 });
+
+// Queue instance for enqueuing follow-up jobs (e.g., scoring after processing)
+const audioQueue = new Queue<AudioJobPayload>(Queues.AudioProcessing, {
+  connection,
+});
+
+// Processing jobs that should trigger automatic scoring on completion
+const PROCESSING_JOBS: AudioJobName[] = [
+  AudioJobs.Denoise,
+  AudioJobs.RemoveOverlap,
+  AudioJobs.Transcribe,
+];
 
 const worker = new Worker<AudioJobPayload>(
   Queues.AudioProcessing,
@@ -537,8 +708,28 @@ const worker = new Worker<AudioJobPayload>(
 // Event Handlers
 // ============================================================================
 
-worker.on("completed", (job) => {
+worker.on("completed", async (job) => {
   console.log(`[AudioWorker] Job ${job.id} (${job.name}) completed`);
+
+  // Auto-enqueue scoring after processing jobs complete
+  if (PROCESSING_JOBS.includes(job.name as AudioJobName)) {
+    const result = job.returnvalue as ClipJobResult | undefined;
+    if (result?.segmentId) {
+      try {
+        await audioQueue.add(AudioJobs.CalculateScore, {
+          entryId: result.segmentId,
+        });
+        console.log(
+          `[AudioWorker] Enqueued scoring for segment ${result.segmentId}`,
+        );
+      } catch (error) {
+        console.error(
+          `[AudioWorker] Failed to enqueue scoring for segment ${result.segmentId}:`,
+          error,
+        );
+      }
+    }
+  }
 });
 
 worker.on("failed", (job, err) => {
@@ -564,6 +755,7 @@ console.log(
 async function shutdown() {
   console.log("[AudioWorker] Shutting down...");
   await worker.close();
+  await audioQueue.close();
   await connection.quit();
   await disposeRuntime();
   process.exit(0);

@@ -21,6 +21,7 @@ export const AudioJobs = {
   Denoise: "denoise",
   RemoveOverlap: "remove_overlap",
   Transcribe: "transcribe",
+  CalculateScore: "calculate_score",
 } as const;
 
 export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
