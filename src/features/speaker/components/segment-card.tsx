@@ -5,6 +5,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Skeleton } from "~/components/ui/skeleton";
+import { env } from "~/env";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
 import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
@@ -155,10 +156,28 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
   const segmentTags = segment.tags ?? [];
 
   // Extract OVRL scores for display
-  const segmentScore = segment.scores?.DNSMOS?.OVRL ?? null;
-  const clipScore = segment.clip?.scores?.DNSMOS?.OVRL ?? null;
+  const segmentScore = segment.scores?.DNSMOS?.P808_MOS ?? null;
+  const clipScore = segment.clip?.scores?.DNSMOS?.P808_MOS ?? null;
   const scoreDelta =
     clipScore != null && segmentScore != null ? clipScore - segmentScore : null;
+
+  // Build download URLs for media server
+  // Note: format=flac ensures we get a proper FLAC file with metadata (duration, etc.)
+  // Without it, sliced audio returns fMP4 which is optimized for streaming, not downloads
+  const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
+  const startMs = Math.floor(segment.startTime * 1000);
+  const endMs = Math.ceil(segment.endTime * 1000);
+  const sourceDownloadUrl = mediaServerUrl
+    ? `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(storageKey)}&startMs=${startMs}&endMs=${endMs}&format=flac`
+    : undefined;
+  const clipDownloadUrl =
+    mediaServerUrl && segment.clip?.file.storageKey
+      ? `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(segment.clip.file.storageKey)}`
+      : undefined;
+
+  // Extract file extension from clip storage key for download filename
+  // Note: source segments always download as FLAC (via format=flac param)
+  const clipExt = getExtensionFromStorageKey(segment.clip?.file.storageKey);
 
   const handleToggleSelect = () => {
     $store.toggleSelection(segment.id);
@@ -186,7 +205,7 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
       <div className="pointer-events-none absolute inset-0 rounded-2xl bg-linear-to-br from-primary/2 via-transparent to-background/20" />
 
       {/* Main content */}
-      <div className="relative flex gap-4 p-5">
+      <div className="relative flex gap-5 p-5">
         {/* Selection checkbox */}
         <div className="flex pt-1">
           <Checkbox
@@ -210,6 +229,8 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
                 duration={duration}
                 score={segmentScore}
                 variant="original"
+                downloadUrl={sourceDownloadUrl}
+                downloadFilename={`segment-${segment.id}.flac`}
               />
             </div>
 
@@ -240,6 +261,8 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
                   duration={segment.clip?.file.duration ?? duration}
                   score={clipScore}
                   variant="processed"
+                  downloadUrl={clipDownloadUrl}
+                  downloadFilename={`clip-${segment.id}.${clipExt}`}
                 />
               ) : (
                 <div className="flex h-full min-h-[76px] items-center justify-center rounded-xl border border-border/50 border-dashed bg-secondary/30">
@@ -277,7 +300,7 @@ function SegmentCardInner({ segment, index }: SegmentCardInnerProps) {
 
       {/* Footer */}
       <div className="relative flex items-center justify-between border-border/50 border-t bg-card/40 px-5 py-3">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-5">
           <span className="font-medium font-mono text-primary/80 text-xs">
             #{String(index + 1).padStart(2, "0")}
           </span>
@@ -315,4 +338,12 @@ function formatTime(seconds: number): string {
 
 function formatDuration(seconds: number): string {
   return `${seconds.toFixed(2)}s`;
+}
+
+function getExtensionFromStorageKey(
+  storageKey: string | null | undefined,
+): string {
+  if (!storageKey) return "wav";
+  const match = storageKey.match(/\.([a-zA-Z0-9]+)$/);
+  return match?.[1] ?? "wav";
 }

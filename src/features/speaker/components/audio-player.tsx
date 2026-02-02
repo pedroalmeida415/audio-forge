@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Pause, Play } from "lucide-react";
+import { Download, Loader2, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
@@ -21,6 +21,8 @@ interface AudioPlayerProps {
   score: number | null;
   variant: "original" | "processed";
   className?: string;
+  downloadUrl?: string;
+  downloadFilename?: string;
 }
 
 function formatTime(seconds: number): string {
@@ -38,11 +40,14 @@ export function AudioPlayer({
   score,
   variant,
   className,
+  downloadUrl,
+  downloadFilename,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(expectedDuration ?? 0);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Update duration when audio loads
   useEffect(() => {
@@ -103,6 +108,34 @@ export function AudioPlayer({
     }
   }, [audioState, audioUrl]);
 
+  const handleDownload = useCallback(async () => {
+    if (!downloadUrl || isDownloading) return;
+
+    setIsDownloading(true);
+    try {
+      const response = await fetch(downloadUrl, { credentials: "include" });
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = downloadFilename ?? "audio.wav";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Failed to download audio:", error);
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [downloadUrl, downloadFilename, isDownloading]);
+
   const isLoading = audioState === "loading";
   const isDisabled = audioState === "error";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -119,7 +152,7 @@ export function AudioPlayer({
   return (
     <div
       className={cn(
-        "flex flex-1 items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300",
+        "relative flex flex-1 items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300",
         variant === "original"
           ? "border border-border bg-secondary/40"
           : "border border-primary/20 bg-gradient-to-br from-secondary/60 to-card/60 shadow-sm",
@@ -187,6 +220,32 @@ export function AudioPlayer({
         </Tooltip>
       ) : (
         <span className="text-muted-foreground text-sm">--</span>
+      )}
+
+      {/* Download button - positioned in top-right corner */}
+      {downloadUrl && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "absolute top-0 right-0 flex size-6 items-center justify-center rounded-bl-lg border-border border-b border-l text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+                variant === "processed" && "border-primary/20",
+              )}
+              onClick={handleDownload}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Download className="size-3" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <span>Download audio</span>
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
