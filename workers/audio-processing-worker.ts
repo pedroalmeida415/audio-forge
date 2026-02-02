@@ -1,13 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import archiver from "archiver";
 import { type Job, Queue, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import IORedis from "ioredis";
 
 import { env } from "../src/env";
-import { clips, files, segments } from "../src/server/db/schema";
+import { clips, files, segments, speakers } from "../src/server/db/schema";
 import { AppRuntime, disposeRuntime } from "../src/services";
 import { AudioProcessingService } from "../src/services/audio/audio-processing-service";
 import { Database } from "../src/services/infra/database";
@@ -15,6 +16,7 @@ import {
   type AudioJobName,
   type AudioJobPayload,
   AudioJobs,
+  type LJSpeechExportPayload,
   Queues,
 } from "../src/services/queue/queue-service";
 import { StorageService } from "../src/services/storage/storage-service";
@@ -104,6 +106,18 @@ const fetchSliceFromMediaServer = (params: {
 type JobHandler = (
   job: Job<AudioJobPayload>,
 ) => Promise<ClipJobResult | undefined>;
+
+/** Result returned from LJSpeech export jobs */
+export interface LJSpeechExportResult {
+  downloadUrl: string;
+  fileCount: number;
+  totalDuration: number;
+  skippedCount: number;
+}
+
+type ExportJobHandler = (
+  job: Job<LJSpeechExportPayload>,
+) => Promise<LJSpeechExportResult>;
 
 type HandlerRegistry = {
   [K in AudioJobName]?: JobHandler;
@@ -930,6 +944,220 @@ const handleCalculateScore: JobHandler = async (job) => {
   );
 };
 
+/**
+ * Export segments as LJSpeech dataset (ZIP with WAV files + metadata.csv).
+ *
+ * Flow:
+ * 1. Fetch all segments for speaker with clips and transcriptions
+ * 2. Filter to segments with both clip AND transcription
+ * 3. For each exportable segment:
+ *    - Fetch clip audio from media server
+ *    - Convert to WAV at specified sample rate (mono, 16-bit PCM)
+ *    - Add to metadata.csv
+ * 4. Create ZIP archive
+ * 5. Upload to R2 and generate presigned download URL
+ */
+const handleLJSpeechExport: ExportJobHandler = async (job) => {
+  const { speakerId, userId, sampleRate } = job.data;
+  console.log(
+    `[LJSpeechExport] Starting export for speaker ${speakerId} at ${sampleRate}Hz`,
+  );
+
+  return await AppRuntime.runPromise(
+    Effect.acquireUseRelease(
+      // Acquire: Create temp directory
+      Effect.sync(() => {
+        const tempDir = mkdtempSync(join(tmpdir(), `ljspeech-${speakerId}-`));
+        const wavsDir = join(tempDir, "wavs");
+        require("node:fs").mkdirSync(wavsDir);
+        console.log(`[LJSpeechExport] Created temp directory: ${tempDir}`);
+        return { tempDir, wavsDir };
+      }),
+
+      // Use: Process export
+      ({ tempDir, wavsDir }) =>
+        Effect.gen(function* () {
+          const db = yield* Database;
+
+          // Fetch all segments for speaker with clips and transcriptions
+          const segmentResults = yield* db.query.segments.findMany({
+            where: eq(segments.speakerId, speakerId),
+            with: {
+              clip: {
+                with: {
+                  file: true,
+                },
+              },
+            },
+            orderBy: (segments, { asc }) => [asc(segments.startTime)],
+          });
+
+          // Filter to only segments with both clip AND transcription
+          // Type guard to narrow the type properly
+          type ExportableSegment = (typeof segmentResults)[number] & {
+            clip: NonNullable<(typeof segmentResults)[number]["clip"]> & {
+              file: NonNullable<
+                NonNullable<(typeof segmentResults)[number]["clip"]>["file"]
+              > & { storageKey: string };
+            };
+            transcription: string;
+          };
+
+          const exportableSegments = segmentResults.filter(
+            (s): s is ExportableSegment =>
+              s.clip?.file?.storageKey != null &&
+              s.transcription != null &&
+              s.transcription.trim().length > 0,
+          );
+
+          const skippedCount =
+            segmentResults.length - exportableSegments.length;
+          console.log(
+            `[LJSpeechExport] Found ${exportableSegments.length} exportable segments (${skippedCount} skipped)`,
+          );
+
+          if (exportableSegments.length === 0) {
+            return yield* Effect.fail(
+              new Error(
+                "No segments with both clips and transcriptions found for export",
+              ),
+            );
+          }
+
+          // Get speaker prefix for filenames
+          const speaker = yield* db.query.speakers.findFirst({
+            where: eq(speakers.id, speakerId),
+          });
+          const speakerPrefix =
+            speaker?.name
+              .replace(/[^a-zA-Z0-9]/g, "_")
+              .toLowerCase()
+              .slice(0, 20) ?? speakerId.slice(0, 8);
+
+          const metadataLines: string[] = [];
+          let totalDuration = 0;
+
+          // Process each segment
+          for (let i = 0; i < exportableSegments.length; i++) {
+            const segment = exportableSegments[i];
+            const clipStorageKey = segment.clip.file.storageKey;
+            const transcription = segment.transcription.trim();
+
+            // Report progress
+            yield* Effect.promise(() =>
+              job.updateProgress({
+                type: "export",
+                processed: i,
+                total: exportableSegments.length,
+              }),
+            );
+
+            // Generate filename (1-indexed, zero-padded)
+            const index = String(i + 1).padStart(5, "0");
+            const filename = `${speakerPrefix}_${index}`;
+            const wavPath = join(wavsDir, `${filename}.wav`);
+
+            // Fetch audio from media server
+            const audioBuffer = yield* fetchAudioBuffer(clipStorageKey);
+
+            // Write to temp file for ffmpeg input
+            const inputPath = join(tempDir, `input_${index}.flac`);
+            writeFileSync(inputPath, audioBuffer);
+
+            // Convert to WAV: mono, 16-bit PCM, specified sample rate
+            yield* AudioProcessingService.convertToWav({
+              inputPath,
+              outputPath: wavPath,
+              sampleRate,
+              channels: 1,
+              bitDepth: 16,
+            });
+
+            // Clean up input file
+            rmSync(inputPath);
+
+            // Add to metadata (filename|transcription)
+            metadataLines.push(`${filename}|${transcription}`);
+            totalDuration += segment.endTime - segment.startTime;
+
+            console.log(
+              `[LJSpeechExport] Processed ${i + 1}/${exportableSegments.length}: ${filename}`,
+            );
+          }
+
+          // Write metadata.csv (no header, pipe-delimited)
+          const metadataPath = join(tempDir, "metadata.csv");
+          writeFileSync(metadataPath, metadataLines.join("\n"));
+
+          // Create ZIP archive using archiver
+          const zipPath = join(tempDir, "dataset.zip");
+          yield* Effect.async<void, Error>((resume) => {
+            const output = createWriteStream(zipPath);
+            const archive = archiver("zip", { zlib: { level: 9 } });
+
+            output.on("close", () => {
+              resume(Effect.succeed(undefined));
+            });
+
+            archive.on("error", (err) => {
+              resume(
+                Effect.fail(new Error(`Failed to create ZIP: ${err.message}`)),
+              );
+            });
+
+            archive.pipe(output);
+
+            // Add wavs directory
+            archive.directory(wavsDir, "wavs");
+
+            // Add metadata.csv
+            archive.file(metadataPath, { name: "metadata.csv" });
+
+            archive.finalize();
+          });
+
+          console.log(`[LJSpeechExport] Created ZIP archive: ${zipPath}`);
+
+          // Upload to R2
+          const timestamp = Date.now();
+          const exportKey = `exports/${userId}/${timestamp}-${speakerId.slice(0, 8)}.zip`;
+
+          yield* StorageService.uploadFromPath({
+            localPath: zipPath,
+            key: exportKey,
+            contentType: "application/zip",
+          });
+
+          console.log(`[LJSpeechExport] Uploaded to R2: ${exportKey}`);
+
+          // Generate presigned download URL (24h expiry)
+          const downloadUrl =
+            yield* StorageService.generatePresignedDownloadUrl({
+              key: exportKey,
+              expiresIn: 24 * 60 * 60, // 24 hours
+            });
+
+          console.log(
+            `[LJSpeechExport] Export complete: ${exportableSegments.length} files, ${totalDuration.toFixed(1)}s total`,
+          );
+
+          return {
+            downloadUrl,
+            fileCount: exportableSegments.length,
+            totalDuration,
+            skippedCount,
+          } satisfies LJSpeechExportResult;
+        }),
+
+      // Release: Cleanup temp directory
+      ({ tempDir }) =>
+        Effect.sync(() => {
+          rmSync(tempDir, { recursive: true, force: true });
+        }),
+    ),
+  );
+};
+
 // ============================================================================
 // Handler Registry
 // ============================================================================
@@ -940,6 +1168,10 @@ const handlers: HandlerRegistry = {
   [AudioJobs.RemoveOverlap]: handleRemoveOverlap,
   [AudioJobs.Transcribe]: handleTranscribe,
   [AudioJobs.CalculateScore]: handleCalculateScore,
+};
+
+const exportHandlers: { [key: string]: ExportJobHandler } = {
+  [AudioJobs.LJSpeechExport]: handleLJSpeechExport,
 };
 
 // ============================================================================
@@ -962,18 +1194,25 @@ const PROCESSING_JOBS: AudioJobName[] = [
   AudioJobs.Transcribe,
 ];
 
-const worker = new Worker<AudioJobPayload>(
+const worker = new Worker(
   Queues.AudioProcessing,
   async (job) => {
     const jobName = job.name as AudioJobName;
-    const handler = handlers[jobName];
 
+    // Check if it's an export job (different payload type)
+    const exportHandler = exportHandlers[jobName];
+    if (exportHandler) {
+      return await exportHandler(job as Job<LJSpeechExportPayload>);
+    }
+
+    // Regular audio processing job
+    const handler = handlers[jobName];
     if (!handler) {
       console.error(`[AudioWorker] Unknown job type: ${jobName}`);
       throw new Error(`Unknown job type: ${jobName}`);
     }
 
-    return await handler(job);
+    return await handler(job as Job<AudioJobPayload>);
   },
   {
     connection,

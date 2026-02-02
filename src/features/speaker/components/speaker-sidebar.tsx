@@ -1,15 +1,40 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { Loader2, MessageSquare, Scissors, Volume2 } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  MessageSquare,
+  Scissors,
+  Volume2,
+} from "lucide-react";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { api } from "~/trpc/react";
+import { ExportProgressDialog } from "./export-progress-dialog";
 import { SpeakerStatsCard } from "./speaker-stats-card";
 
+const SAMPLE_RATES = [
+  { value: "8000", label: "8 kHz" },
+  { value: "16000", label: "16 kHz" },
+  { value: "22050", label: "22.05 kHz" },
+  { value: "24000", label: "24 kHz (Recommended)" },
+  { value: "44100", label: "44.1 kHz" },
+  { value: "48000", label: "48 kHz" },
+] as const;
+
 export function SpeakerSidebar() {
+  const { speakerId } = useParams<{ speakerId: string }>();
   const $store = useSpeakerPageStore();
   const selectedIds = useValue($store.selectedSegmentIds);
 
@@ -18,6 +43,25 @@ export function SpeakerSidebar() {
   const [processingOperation, setProcessingOperation] = useState<string | null>(
     null,
   );
+
+  // Export state
+  const [sampleRate, setSampleRate] = useState("24000");
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+
+  const exportMutation = api.export.startLJSpeechExport.useMutation({
+    onSuccess: (data) => {
+      setExportJobId(data.jobId);
+      setShowExportDialog(true);
+    },
+  });
+
+  const handleExport = () => {
+    exportMutation.mutate({
+      speakerId,
+      sampleRate: Number.parseInt(sampleRate, 10),
+    });
+  };
 
   const queueMutation = api.segment.queueProcessing.useMutation({
     onMutate: (variables) => {
@@ -121,6 +165,62 @@ export function SpeakerSidebar() {
           )}
         </CardContent>
       </Card>
+
+      {/* Export Dataset */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="font-medium text-sm">Export Dataset</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="sample-rate"
+              className="text-muted-foreground text-xs"
+            >
+              Sample Rate
+            </label>
+            <Select value={sampleRate} onValueChange={setSampleRate}>
+              <SelectTrigger id="sample-rate" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SAMPLE_RATES.map((rate) => (
+                  <SelectItem key={rate.value} value={rate.value}>
+                    {rate.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={exportMutation.isPending}
+            className="h-10 w-full justify-start gap-2.5"
+          >
+            {exportMutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            Export LJSpeech
+          </Button>
+
+          <p className="text-muted-foreground text-xs">
+            Exports segments with clips and transcriptions. Ensure
+            transcriptions are normalized (numbers spelled out, abbreviations
+            expanded) before exporting.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Export Progress Dialog */}
+      <ExportProgressDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        jobId={exportJobId}
+      />
     </aside>
   );
 }

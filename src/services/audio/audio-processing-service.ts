@@ -329,6 +329,47 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
 
           return { outputPath: params.outputPath };
         }),
+
+      /**
+       * Convert audio file to WAV format with specified parameters.
+       * Used for dataset export (e.g., LJSpeech format).
+       */
+      convertToWav: (params: {
+        inputPath: string;
+        outputPath: string;
+        sampleRate: number;
+        channels: number;
+        bitDepth: 16 | 24 | 32;
+      }) =>
+        Effect.async<{ outputPath: string }, AudioProcessingError>((resume) => {
+          const codecMap: Record<number, string> = {
+            16: "pcm_s16le",
+            24: "pcm_s24le",
+            32: "pcm_s32le",
+          };
+
+          ffmpeg(params.inputPath)
+            .audioCodec(codecMap[params.bitDepth] ?? "pcm_s16le")
+            .audioChannels(params.channels)
+            .audioFrequency(params.sampleRate)
+            .output(params.outputPath)
+            .on("end", () =>
+              resume(Effect.succeed({ outputPath: params.outputPath })),
+            )
+            .on("error", (err) =>
+              resume(
+                Effect.fail(
+                  new AudioProcessingError({
+                    operation: "convert",
+                    message: `Failed to convert to WAV: ${err.message}`,
+                    code: "FFMPEG_ERROR",
+                    cause: err,
+                  }),
+                ),
+              ),
+            )
+            .run();
+        }),
     },
     accessors: true,
   },

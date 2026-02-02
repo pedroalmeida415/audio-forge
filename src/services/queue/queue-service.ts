@@ -22,6 +22,7 @@ export const AudioJobs = {
   RemoveOverlap: "remove_overlap",
   Transcribe: "transcribe",
   CalculateScore: "calculate_score",
+  LJSpeechExport: "ljspeech_export",
 } as const;
 
 export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
@@ -34,6 +35,13 @@ export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
 /** Payload for all audio processing jobs */
 export interface AudioJobPayload {
   entryId: string;
+}
+
+/** Payload for LJSpeech export jobs */
+export interface LJSpeechExportPayload {
+  speakerId: string;
+  userId: string;
+  sampleRate: number;
 }
 
 // ============================================================================
