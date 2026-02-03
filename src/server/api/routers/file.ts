@@ -112,7 +112,6 @@ export const fileRouter = createTRPCRouter({
                   ),
                 ),
               ),
-              Effect.fork,
             );
 
             return { file, session };
@@ -361,7 +360,6 @@ export const fileRouter = createTRPCRouter({
                     ),
                   ),
                 ),
-                Effect.fork,
               );
 
               return { file, session };
