@@ -247,8 +247,6 @@ export const clippingSessionRouter = createTRPCRouter({
             // 3. Submit diarization job
             const jobResult = yield* PyannoteService.submitJob({
               audioUrl,
-              numSpeakers: input.numSpeakers,
-              confidence: true,
             }).pipe(
               Effect.catchTag("PyannoteError", (error) =>
                 Effect.fail(

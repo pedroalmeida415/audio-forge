@@ -22,8 +22,6 @@ export interface DiarizationSegment {
 
 export interface SubmitJobParams {
   audioUrl: string;
-  numSpeakers?: number;
-  confidence?: boolean;
 }
 
 export interface SubmitJobResult {
@@ -104,8 +102,6 @@ export class PyannoteService extends Effect.Service<PyannoteService>()(
                 body: JSON.stringify({
                   url: params.audioUrl,
                   webhook: webhookUrl,
-                  numSpeakers: params.numSpeakers,
-                  confidence: params.confidence ?? true,
                 }),
               });
 
