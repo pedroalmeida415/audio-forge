@@ -15,7 +15,6 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { useWindowedSegments } from "~/features/speaker/hooks/use-windowed-segments";
 import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
-import { cn } from "~/lib/utils";
 import { createColumns } from "./columns";
 import { TableToolbar } from "./table-toolbar";
 
@@ -60,12 +59,6 @@ interface LoadedRowProps {
 }
 
 function LoadedRow({ segment, index }: LoadedRowProps) {
-  const $store = useSpeakerPageStore();
-
-  const isSelected = useValue(() =>
-    $store.selectedSegmentIds.get().has(segment.id),
-  );
-
   const table = useReactTable({
     data: [segment],
     columns,
@@ -76,14 +69,12 @@ function LoadedRow({ segment, index }: LoadedRowProps) {
   const row = table.getRowModel().rows[0];
   if (!row) return null;
 
+  // Row selection styling is handled via CSS :has() to avoid duplicate subscriptions
+  // SelectCell already subscribes to selectedSegmentIds for the checkbox state
   return (
     <div
       role="row"
-      className={cn(
-        "group/row grid items-center border-border/50 border-b transition-colors",
-        isSelected && "bg-primary/5",
-        !isSelected && "hover:bg-muted/50",
-      )}
+      className="group/row grid items-center border-border/50 border-b transition-colors hover:bg-muted/50 has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:hover:bg-primary/5"
       style={{ gridTemplateColumns: GRID_COLUMNS }}
       data-segment-id={segment.id}
     >
