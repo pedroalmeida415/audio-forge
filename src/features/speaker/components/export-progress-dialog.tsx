@@ -11,23 +11,42 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { Label } from "~/components/ui/label";
 import { Progress } from "~/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { api } from "~/trpc/react";
+
+const SAMPLE_RATES = [
+  { value: "8000", label: "8 kHz" },
+  { value: "16000", label: "16 kHz" },
+  { value: "22050", label: "22.05 kHz" },
+  { value: "24000", label: "24 kHz (Recommended)" },
+  { value: "44100", label: "44.1 kHz" },
+  { value: "48000", label: "48 kHz" },
+] as const;
 
 interface ExportProgressDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  jobId: string | null;
+  speakerId: string;
 }
 
 export function ExportProgressDialog({
   open,
   onOpenChange,
-  jobId,
+  speakerId,
 }: ExportProgressDialogProps) {
   const [status, setStatus] = useState<
-    "processing" | "completed" | "failed" | "idle"
-  >("idle");
+    "config" | "processing" | "completed" | "failed"
+  >("config");
+  const [sampleRate, setSampleRate] = useState("24000");
+  const [jobId, setJobId] = useState<string | null>(null);
   const [processed, setProcessed] = useState(0);
   const [total, setTotal] = useState(0);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -36,10 +55,12 @@ export function ExportProgressDialog({
   const [skippedCount, setSkippedCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset state when dialog opens with a new job
+  // Reset state when dialog opens
   useEffect(() => {
-    if (open && jobId) {
-      setStatus("processing");
+    if (open) {
+      setStatus("config");
+      setSampleRate("24000");
+      setJobId(null);
       setProcessed(0);
       setTotal(0);
       setDownloadUrl(null);
@@ -48,7 +69,18 @@ export function ExportProgressDialog({
       setSkippedCount(null);
       setError(null);
     }
-  }, [open, jobId]);
+  }, [open]);
+
+  const exportMutation = api.export.startLJSpeechExport.useMutation({
+    onSuccess: (data) => {
+      setJobId(data.jobId);
+      setStatus("processing");
+    },
+    onError: (err) => {
+      setStatus("failed");
+      setError(err.message);
+    },
+  });
 
   // Subscribe to export progress
   api.export.onExportProgress.useSubscription(
@@ -58,9 +90,9 @@ export function ExportProgressDialog({
       onData: (event) => {
         setProcessed(event.processed);
         setTotal(event.total);
-        setStatus(event.status);
 
         if (event.status === "completed") {
+          setStatus("completed");
           setDownloadUrl(event.downloadUrl ?? null);
           setFileCount(event.fileCount ?? null);
           setTotalDuration(event.totalDuration ?? null);
@@ -68,6 +100,7 @@ export function ExportProgressDialog({
         }
 
         if (event.status === "failed") {
+          setStatus("failed");
           setError(event.error ?? "Export failed");
         }
       },
@@ -80,6 +113,13 @@ export function ExportProgressDialog({
 
   const progressPercent = total > 0 ? (processed / total) * 100 : 0;
 
+  const handleStartExport = () => {
+    exportMutation.mutate({
+      speakerId,
+      sampleRate: Number.parseInt(sampleRate, 10),
+    });
+  };
+
   const handleDownload = () => {
     if (downloadUrl) {
       window.open(downloadUrl, "_blank");
@@ -88,8 +128,6 @@ export function ExportProgressDialog({
 
   const handleClose = () => {
     onOpenChange(false);
-    // Reset to idle after closing
-    setTimeout(() => setStatus("idle"), 300);
   };
 
   return (
@@ -97,12 +135,14 @@ export function ExportProgressDialog({
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
+            {status === "config" && "Export LJSpeech Dataset"}
             {status === "processing" && "Exporting Dataset..."}
             {status === "completed" && "Export Complete"}
             {status === "failed" && "Export Failed"}
-            {status === "idle" && "Export Dataset"}
           </DialogTitle>
           <DialogDescription>
+            {status === "config" &&
+              "Configure export settings for your dataset"}
             {status === "processing" && "Creating LJSpeech dataset ZIP file"}
             {status === "completed" && "Your dataset is ready for download"}
             {status === "failed" && "There was an error during export"}
@@ -110,6 +150,26 @@ export function ExportProgressDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {status === "config" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="sample-rate">Sample Rate</Label>
+                <Select value={sampleRate} onValueChange={setSampleRate}>
+                  <SelectTrigger id="sample-rate">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SAMPLE_RATES.map((rate) => (
+                      <SelectItem key={rate.value} value={rate.value}>
+                        {rate.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           {status === "processing" && (
             <>
               <div className="flex items-center gap-3">
@@ -170,18 +230,41 @@ export function ExportProgressDialog({
         </div>
 
         <DialogFooter>
-          {status === "completed" && downloadUrl && (
-            <Button onClick={handleDownload} className="gap-2">
-              <Download className="size-4" />
-              Download ZIP
+          {status === "config" && (
+            <>
+              <Button variant="outline" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleStartExport}
+                disabled={exportMutation.isPending}
+              >
+                {exportMutation.isPending && (
+                  <Loader2 className="size-4 animate-spin" />
+                )}
+                Start Export
+              </Button>
+            </>
+          )}
+          {status === "processing" && (
+            <Button variant="outline" onClick={handleClose}>
+              Cancel
             </Button>
           )}
-          <Button
-            variant={status === "completed" ? "outline" : "default"}
-            onClick={handleClose}
-          >
-            {status === "processing" ? "Cancel" : "Close"}
-          </Button>
+          {status === "completed" && (
+            <>
+              {downloadUrl && (
+                <Button onClick={handleDownload} className="gap-2">
+                  <Download className="size-4" />
+                  Download ZIP
+                </Button>
+              )}
+              <Button variant="outline" onClick={handleClose}>
+                Close
+              </Button>
+            </>
+          )}
+          {status === "failed" && <Button onClick={handleClose}>Close</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
