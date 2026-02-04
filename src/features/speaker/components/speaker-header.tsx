@@ -1,39 +1,72 @@
 "use client";
 
 import { useValue } from "@legendapp/state/react";
-import { ArrowLeft, Volume2 } from "lucide-react";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "~/components/ui/breadcrumb";
 import { Button } from "~/components/ui/button";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
+import { api } from "~/trpc/react";
+import { ExportProgressDialog } from "./export-progress-dialog";
 
 export function SpeakerHeader() {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectId, speakerId } = useParams<{
+    projectId: string;
+    speakerId: string;
+  }>();
   const $store = useSpeakerPageStore();
   const speaker = useValue($store.speaker);
 
+  const [showExportDialog, setShowExportDialog] = useState(false);
+
+  // Fetch project name for breadcrumb
+  const { data: project } = api.projects.getById.useQuery(
+    { id: projectId },
+    { refetchOnWindowFocus: false },
+  );
+
   return (
-    <div className="flex items-center gap-4">
-      <Button
-        variant="ghost"
-        size="icon"
-        asChild
-        className="text-secondary-foreground hover:bg-secondary hover:text-foreground"
-      >
-        <Link href={`/app/project/${projectId}`}>
-          <ArrowLeft className="size-5" />
-        </Link>
-      </Button>
+    <>
+      <div className="flex w-full items-center justify-between">
+        {/* Left: Breadcrumb navigation */}
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href={`/app/project/${projectId}`}>
+                  {project?.name ?? "Project"}
+                </Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{speaker.name}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
 
-      <div className="flex size-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-md">
-        <Volume2 className="size-5 text-primary-foreground" />
+        {/* Right: Export button */}
+        <Button onClick={() => setShowExportDialog(true)} size="sm">
+          <Download className="size-4" />
+          Export
+        </Button>
       </div>
 
-      <div className="flex flex-col">
-        <h1 className="font-semibold text-foreground text-lg">
-          {speaker.name}
-        </h1>
-      </div>
-    </div>
+      {/* Export Dialog */}
+      <ExportProgressDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        speakerId={speakerId}
+      />
+    </>
   );
 }

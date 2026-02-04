@@ -1,34 +1,28 @@
 "use client";
 
-import { SegmentsList } from "./segments-list";
 import { SpeakerHeader } from "./speaker-header";
 import { SpeakerSidebar } from "./speaker-sidebar";
+import { SegmentsTable } from "./table/segments-table";
 
 export function SpeakerPageLayout() {
   return (
-    <div className="relative flex min-h-full flex-col bg-gradient-to-br from-background via-card to-background">
-      {/* Subtle ambient glow */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute top-0 left-1/4 h-[500px] w-[500px] rounded-full bg-primary/[0.03] blur-[100px]" />
-        <div className="absolute right-1/4 bottom-0 h-[400px] w-[400px] rounded-full bg-muted-foreground/[0.05] blur-[80px]" />
-      </div>
-
-      <div className="relative flex h-20 items-center border-border border-b px-6">
+    <div className="flex min-h-screen flex-col">
+      {/* Header - full width, sticky at top */}
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center border-border border-b bg-background px-6">
         <SpeakerHeader />
-      </div>
+      </header>
 
-      <div className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 gap-6 p-6">
-        {/* Main content area with segments list */}
-        <div className="min-h-0 min-w-0 flex-1">
-          <SegmentsList />
+      {/* Main content area below header */}
+      <div className="flex min-h-0 flex-1">
+        {/* Table container */}
+        <div className="min-w-0 flex-1 p-4">
+          <SegmentsTable />
         </div>
 
-        {/* Sidebar with stats and actions - sticky positioning */}
-        <div className="shrink-0">
-          <div className="sticky top-6">
-            <SpeakerSidebar />
-          </div>
-        </div>
+        {/* Sidebar - sticky, under header */}
+        <aside className="sticky top-14 h-[calc(100vh-3.5rem)] w-[196px] shrink-0 overflow-y-auto border-border border-l bg-background p-4">
+          <SpeakerSidebar />
+        </aside>
       </div>
     </div>
   );

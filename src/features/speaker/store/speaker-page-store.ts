@@ -133,6 +133,15 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
     markClipComplete: (segmentId: string) => {
       $store.clipPendingIds.delete(segmentId);
     },
+
+    // Actions - Segment removal
+    removeSegments: (ids: string[]) => {
+      for (const id of ids) {
+        $store.segments.delete(id);
+        $store.selectedSegmentIds.delete(id);
+        $store.clipPendingIds.delete(id);
+      }
+    },
   }) as $SpeakerPageStore;
 
   return $store;
@@ -164,6 +173,9 @@ interface SpeakerPageStoreState extends SpeakerPageStateData {
   // Clip processing state
   markClipsPending: (segmentIds: string[]) => void;
   markClipComplete: (segmentId: string) => void;
+
+  // Segment removal
+  removeSegments: (ids: string[]) => void;
 }
 
 export type $SpeakerPageStore = Observable<SpeakerPageStoreState>;

@@ -70,6 +70,7 @@
     "react-dom": "^19.2.1",
     "react-dropzone": "^14.3.8",
     "react-scan": "^0.4.3",
+    "recharts": "^3.7.0",
     "server-only": "^0.0.1",
     "shadcn": "^3.7.0",
     "superjson": "^2.2.6",

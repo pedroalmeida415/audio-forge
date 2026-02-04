@@ -818,6 +818,120 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
+  // Delete segments by speaker (for speaker page)
+  // Verifies ownership via speaker, not session
+  deleteSegmentsBySpeaker: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+        segmentIds: z.array(z.string().uuid()).min(1),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Verify speaker ownership
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            // Delete segments that belong to this speaker
+            const result = yield* db
+              .delete(segments)
+              .where(
+                and(
+                  inArray(segments.id, input.segmentIds),
+                  eq(segments.speakerId, input.speakerId),
+                ),
+              )
+              .returning({ id: segments.id });
+
+            return { success: true, deletedCount: result.length };
+          }),
+        ),
+    ),
+
+  // Change speaker for segments (move segments to different speaker)
+  changeSpeaker: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(), // Current speaker (for ownership verification)
+        segmentIds: z.array(z.string().uuid()).min(1),
+        targetSpeakerId: z.string().uuid(),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Verify current speaker ownership
+            const currentSpeaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!currentSpeaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Current speaker not found",
+                }),
+              );
+            }
+
+            // Verify target speaker ownership
+            const targetSpeaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.targetSpeakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!targetSpeaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Target speaker not found",
+                }),
+              );
+            }
+
+            // Update segments to new speaker
+            const result = yield* db
+              .update(segments)
+              .set({ speakerId: input.targetSpeakerId })
+              .where(
+                and(
+                  inArray(segments.id, input.segmentIds),
+                  eq(segments.speakerId, input.speakerId),
+                ),
+              )
+              .returning({ id: segments.id });
+
+            return { success: true, updatedCount: result.length };
+          }),
+        ),
+    ),
+
   // SSE subscription for clip completion events
   onClipCreated: protectedProcedure
     .input(z.object({ speakerId: z.string().uuid() }))

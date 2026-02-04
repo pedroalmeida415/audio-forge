@@ -1,12 +1,13 @@
 "use client";
 
+import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "~/components/ui/tooltip";
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "~/components/ui/chart";
 import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
-import { cn } from "~/lib/utils";
 
 interface DurationHistogramProps {
   segments: SegmentWithClip[];
@@ -15,12 +16,10 @@ interface DurationHistogramProps {
 
 interface DurationBucket {
   range: string;
-  min: number;
-  max: number;
   count: number;
 }
 
-const DURATION_BUCKETS: Omit<DurationBucket, "count">[] = [
+const DURATION_BUCKETS = [
   { range: "0-2s", min: 0, max: 2 },
   { range: "2-4s", min: 2, max: 4 },
   { range: "4-6s", min: 4, max: 6 },
@@ -29,53 +28,70 @@ const DURATION_BUCKETS: Omit<DurationBucket, "count">[] = [
 ];
 
 function computeBuckets(segments: SegmentWithClip[]): DurationBucket[] {
-  const buckets = DURATION_BUCKETS.map((b) => ({ ...b, count: 0 }));
+  const buckets = DURATION_BUCKETS.map((b) => ({ range: b.range, count: 0 }));
 
   for (const seg of segments) {
     const duration = seg.endTime - seg.startTime;
-    const bucket = buckets.find((b) => duration >= b.min && duration < b.max);
-    if (bucket) {
-      bucket.count++;
+    const bucketIdx = DURATION_BUCKETS.findIndex(
+      (b) => duration >= b.min && duration < b.max,
+    );
+    if (bucketIdx !== -1 && buckets[bucketIdx]) {
+      buckets[bucketIdx].count++;
     }
   }
 
   return buckets;
 }
 
+const chartConfig = {
+  count: {
+    label: "Segments",
+    color: "hsl(var(--primary))",
+  },
+} satisfies ChartConfig;
+
 export function DurationHistogram({
   segments,
   className,
 }: DurationHistogramProps) {
-  const buckets = computeBuckets(segments);
-  const maxCount = Math.max(...buckets.map((b) => b.count), 1);
+  const data = computeBuckets(segments);
+
+  // Don't render if no data
+  if (segments.length === 0) {
+    return (
+      <div className="flex h-[100px] items-center justify-center text-muted-foreground text-xs">
+        No data available
+      </div>
+    );
+  }
 
   return (
-    <div className={cn("flex items-end gap-2", className)}>
-      {buckets.map((bucket) => (
-        <Tooltip key={bucket.range}>
-          <TooltipTrigger asChild>
-            <div className="flex cursor-help flex-col items-center gap-1.5">
-              <div
-                className={cn(
-                  "w-8 rounded transition-colors duration-200",
-                  bucket.count > 0
-                    ? "bg-gradient-to-t from-primary/80 to-primary"
-                    : "bg-muted-foreground/20",
-                )}
-                style={{
-                  height: `${Math.max((bucket.count / maxCount) * 48, 4)}px`,
-                }}
-              />
-              <span className="text-[10px] text-muted-foreground">
-                {bucket.range}
-              </span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {bucket.count} segment{bucket.count !== 1 ? "s" : ""}
-          </TooltipContent>
-        </Tooltip>
-      ))}
-    </div>
+    <ChartContainer config={chartConfig} className={className}>
+      <BarChart
+        layout="vertical"
+        data={data}
+        margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
+      >
+        <XAxis type="number" hide />
+        <YAxis
+          dataKey="range"
+          type="category"
+          tickLine={false}
+          axisLine={false}
+          width={36}
+          tick={{ fontSize: 10 }}
+        />
+        <ChartTooltip
+          cursor={false}
+          content={<ChartTooltipContent hideLabel />}
+        />
+        <Bar
+          dataKey="count"
+          fill="var(--color-count)"
+          radius={4}
+          barSize={12}
+        />
+      </BarChart>
+    </ChartContainer>
   );
 }

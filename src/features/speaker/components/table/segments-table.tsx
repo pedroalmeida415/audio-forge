@@ -1,0 +1,309 @@
+"use client";
+
+import { useValue } from "@legendapp/state/react";
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import {
+  useWindowVirtualizer,
+  type Virtualizer,
+} from "@tanstack/react-virtual";
+import { useCallback, useRef } from "react";
+import { Skeleton } from "~/components/ui/skeleton";
+import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
+import { useWindowedSegments } from "~/features/speaker/hooks/use-windowed-segments";
+import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
+import { cn } from "~/lib/utils";
+import { createColumns } from "./columns";
+import { TableToolbar } from "./table-toolbar";
+
+const columns = createColumns();
+
+// Grid column template: select | original | delta | processed | transcription | duration | tags (flex) | index
+const GRID_COLUMNS = "40px 180px 50px 180px 200px 70px 1fr 60px";
+
+// Row height for virtualization
+const ROW_HEIGHT = 48;
+
+// ============================================================================
+// Segment Row Component (subscribes to its own entry)
+// ============================================================================
+
+interface SegmentRowProps {
+  segmentId: string;
+  index: number;
+}
+
+function SegmentRow({ segmentId, index }: SegmentRowProps) {
+  const $store = useSpeakerPageStore();
+
+  // Subscribe to this specific segment entry
+  const entry = useValue($store.segments.get(segmentId));
+  const segment = entry?.status === "loaded" && entry.data ? entry.data : null;
+
+  if (!segment) {
+    return <SkeletonRow />;
+  }
+
+  return <LoadedRow segment={segment} index={index} />;
+}
+
+// ============================================================================
+// Loaded Row Component
+// ============================================================================
+
+interface LoadedRowProps {
+  segment: SegmentWithClip;
+  index: number;
+}
+
+function LoadedRow({ segment, index }: LoadedRowProps) {
+  const $store = useSpeakerPageStore();
+
+  const isSelected = useValue(() =>
+    $store.selectedSegmentIds.get().has(segment.id),
+  );
+
+  const table = useReactTable({
+    data: [segment],
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => row.id,
+  });
+
+  const row = table.getRowModel().rows[0];
+  if (!row) return null;
+
+  return (
+    <div
+      role="row"
+      className={cn(
+        "group/row grid cursor-pointer border-border/50 border-b transition-colors",
+        isSelected && "bg-primary/5",
+        !isSelected && "hover:bg-muted/50",
+      )}
+      style={{ gridTemplateColumns: GRID_COLUMNS }}
+      data-segment-id={segment.id}
+    >
+      {row.getVisibleCells().map((cell) => (
+        <div key={cell.id} role="cell" className="px-2 py-2">
+          {flexRender(cell.column.columnDef.cell, {
+            ...cell.getContext(),
+            row: { ...cell.getContext().row, index },
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// Skeleton Row Component
+// ============================================================================
+
+function SkeletonRow() {
+  return (
+    <div
+      role="row"
+      className="grid border-border/50 border-b"
+      style={{ gridTemplateColumns: GRID_COLUMNS }}
+    >
+      <div className="px-2 py-2">
+        <Skeleton className="size-4 rounded" />
+      </div>
+      <div className="px-2 py-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-6 rounded-full" />
+          <div className="flex flex-1 flex-col gap-0.5">
+            <Skeleton className="h-1 w-full rounded-full" />
+            <Skeleton className="h-3 w-8" />
+          </div>
+          <Skeleton className="h-6 w-10" />
+        </div>
+      </div>
+      <div className="px-2 py-2">
+        <div className="flex flex-col items-center gap-0.5">
+          <Skeleton className="size-4" />
+          <Skeleton className="h-3 w-6" />
+        </div>
+      </div>
+      <div className="px-2 py-2">
+        <Skeleton className="h-6 w-full" />
+      </div>
+      <div className="px-2 py-2">
+        <Skeleton className="h-4 w-full" />
+      </div>
+      <div className="px-2 py-2">
+        <Skeleton className="h-5 w-12 rounded-md" />
+      </div>
+      <div className="px-2 py-2">
+        <div className="flex gap-1">
+          <Skeleton className="h-5 w-12 rounded-full" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+      </div>
+      <div className="px-2 py-2">
+        <Skeleton className="h-4 w-12" />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Grid Header Component
+// ============================================================================
+
+function GridHeader() {
+  const headerTable = useReactTable({
+    data: [],
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  return (
+    <div role="rowgroup" className="bg-muted/95">
+      {headerTable.getHeaderGroups().map((headerGroup) => (
+        <div
+          key={headerGroup.id}
+          role="row"
+          className="grid border-b"
+          style={{ gridTemplateColumns: GRID_COLUMNS }}
+        >
+          {headerGroup.headers.map((header) => (
+            <div
+              key={header.id}
+              role="columnheader"
+              className="px-2 py-2 text-left font-medium text-muted-foreground text-xs uppercase tracking-wide"
+            >
+              {header.isPlaceholder
+                ? null
+                : flexRender(
+                    header.column.columnDef.header,
+                    header.getContext(),
+                  )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Table Component
+// ============================================================================
+
+export function SegmentsTable() {
+  const { totalCount, getSegmentIdAt, onRangeChange } = useWindowedSegments();
+
+  const stickyRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Notify windowed segments hook when scrolling stops
+  const handleVirtualizerChange = useCallback(
+    (instance: Virtualizer<Window, Element>, sync: boolean) => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+
+      if (sync) return;
+
+      debounceRef.current = setTimeout(() => {
+        const items = instance.getVirtualItems();
+        if (items.length > 0) {
+          const first = items[0];
+          const last = items[items.length - 1];
+          if (first && last) {
+            onRangeChange(first.index, last.index);
+          }
+        }
+      }, 50);
+    },
+    [onRangeChange],
+  );
+
+  const virtualizer = useWindowVirtualizer({
+    count: totalCount,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+    scrollMargin: stickyRef.current?.offsetHeight ?? 0,
+    onChange: handleVirtualizerChange,
+  });
+
+  if (totalCount === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card">
+        <TableToolbar />
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-muted-foreground">
+            No segments found for this speaker.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const virtualItems = virtualizer.getVirtualItems();
+
+  return (
+    <div
+      role="table"
+      className="overflow-clip rounded-lg border border-border bg-card"
+    >
+      {/* Single sticky container for toolbar + header */}
+      <div ref={stickyRef} className="sticky top-14 z-10 rounded-t-lg bg-card">
+        <TableToolbar />
+        <GridHeader />
+      </div>
+
+      {/* Grid body */}
+      <div role="rowgroup">
+        {/* Top spacer for virtualization */}
+        {virtualItems.length > 0 && virtualItems[0].start > 0 && (
+          <div
+            style={{
+              height: Math.max(
+                0,
+                virtualItems[0].start - virtualizer.options.scrollMargin,
+              ),
+            }}
+          />
+        )}
+
+        {virtualItems.map((virtualRow) => {
+          const segmentId = getSegmentIdAt(virtualRow.index);
+
+          if (segmentId) {
+            return (
+              <SegmentRow
+                key={segmentId}
+                segmentId={segmentId}
+                index={virtualRow.index}
+              />
+            );
+          }
+
+          return <SkeletonRow key={virtualRow.index} />;
+        })}
+
+        {/* Bottom spacer */}
+        {virtualItems.length > 0 &&
+          virtualItems[virtualItems.length - 1].end <
+            virtualizer.getTotalSize() && (
+            <div
+              style={{
+                height: Math.max(
+                  0,
+                  virtualizer.getTotalSize() -
+                    virtualItems[virtualItems.length - 1].end,
+                ),
+              }}
+            />
+          )}
+      </div>
+    </div>
+  );
+}
