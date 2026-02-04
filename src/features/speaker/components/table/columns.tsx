@@ -143,9 +143,11 @@ function ScoreDeltaCellWrapper({ segment }: { segment: SegmentWithClip }) {
 function DurationCell({ segment }: { segment: SegmentWithClip }) {
   const duration = segment.endTime - segment.startTime;
   return (
-    <Badge variant="secondary" className="font-mono text-xs">
-      {duration.toFixed(1)}s
-    </Badge>
+    <div className="flex justify-center">
+      <Badge variant="secondary" className="font-mono text-xs">
+        {duration.toFixed(1)}s
+      </Badge>
+    </div>
   );
 }
 
@@ -174,12 +176,20 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       size: 40,
     },
 
+    // Index
+    {
+      id: "index",
+      header: "#",
+      cell: ({ row }) => <IndexCell index={row.index} />,
+      size: 60,
+    },
+
     // Original Segment audio cell
     {
       id: "original",
-      header: "Original",
+      header: "Original Segment",
       cell: ({ row }) => <OriginalAudioCell segment={row.original} />,
-      size: 180,
+      size: 220,
     },
 
     // Arrow with score delta
@@ -193,9 +203,17 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     // Processed Clip audio cell
     {
       id: "processed",
-      header: "Processed",
+      header: "Processed Clip",
       cell: ({ row }) => <ProcessedAudioCell segment={row.original} />,
-      size: 180,
+      size: 220,
+    },
+
+    // Duration badge
+    {
+      id: "duration",
+      header: () => <span className="w-full text-center">Duration</span>,
+      cell: ({ row }) => <DurationCell segment={row.original} />,
+      size: 80,
     },
 
     // Transcription (truncated with ellipsis)
@@ -205,15 +223,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       cell: ({ row }) => (
         <TranscriptionCell transcription={row.original.transcription} />
       ),
-      size: 200,
-    },
-
-    // Duration badge
-    {
-      id: "duration",
-      header: "Duration",
-      cell: ({ row }) => <DurationCell segment={row.original} />,
-      size: 70,
+      size: 400,
     },
 
     // Tags (only column that expands)
@@ -222,14 +232,6 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       header: "Tags",
       cell: ({ row }) => <TagsCell tags={row.original.tags} />,
       // No size - this column expands to fill available space
-    },
-
-    // Index
-    {
-      id: "index",
-      header: "#",
-      cell: ({ row }) => <IndexCell index={row.index} />,
-      size: 60,
     },
   ];
 }

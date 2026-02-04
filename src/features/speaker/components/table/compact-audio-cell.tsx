@@ -115,13 +115,13 @@ export function CompactAudioCell({
     <div className="flex items-center gap-2">
       {/* Play/Pause button */}
       <Button
-        variant="ghost"
+        variant="secondary"
         size="icon"
         onClick={handlePlayPause}
         disabled={isDisabled}
         className={cn(
-          "size-6 shrink-0 rounded-full",
-          variant === "processed" && "text-primary",
+          "size-7 shrink-0 rounded-full",
+          variant === "processed" && "bg-primary/10 text-primary hover:bg-primary/20",
         )}
       >
         {isLoading ? (
@@ -133,8 +133,8 @@ export function CompactAudioCell({
         )}
       </Button>
 
-      {/* Progress bar and duration */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      {/* Progress bar */}
+      <div className="flex min-w-0 flex-1 items-center">
         <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted-foreground/20">
           <div
             className={cn(
@@ -144,9 +144,6 @@ export function CompactAudioCell({
             style={{ width: `${progress}%` }}
           />
         </div>
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {duration.toFixed(1)}s
-        </span>
       </div>
 
       {/* Score display - large and prominent */}
@@ -155,7 +152,7 @@ export function CompactAudioCell({
           <TooltipTrigger asChild>
             <span
               className={cn(
-                "shrink-0 cursor-help font-bold font-mono text-lg tabular-nums",
+                "shrink-0 cursor-help font-bold text-2xl tabular-nums tracking-tighter",
                 scoreColor,
               )}
             >
@@ -167,7 +164,7 @@ export function CompactAudioCell({
           </TooltipContent>
         </Tooltip>
       ) : (
-        <span className="shrink-0 font-mono text-lg text-muted-foreground/50">
+        <span className="shrink-0 text-2xl tracking-tighter text-muted-foreground/50">
           --
         </span>
       )}

@@ -21,8 +21,8 @@ import { TableToolbar } from "./table-toolbar";
 
 const columns = createColumns();
 
-// Grid column template: select | original | delta | processed | transcription | duration | tags (flex) | index
-const GRID_COLUMNS = "40px 180px 50px 180px 200px 70px 1fr 60px";
+// Grid column template: select | index | original | delta | processed | duration | transcription | tags (flex)
+const GRID_COLUMNS = "40px 60px 220px 50px 220px 80px 400px 1fr";
 
 // Row height for virtualization
 const ROW_HEIGHT = 48;
@@ -80,7 +80,7 @@ function LoadedRow({ segment, index }: LoadedRowProps) {
     <div
       role="row"
       className={cn(
-        "group/row grid cursor-pointer border-border/50 border-b transition-colors",
+        "group/row grid items-center border-border/50 border-b transition-colors",
         isSelected && "bg-primary/5",
         !isSelected && "hover:bg-muted/50",
       )}
@@ -107,45 +107,54 @@ function SkeletonRow() {
   return (
     <div
       role="row"
-      className="grid border-border/50 border-b"
+      className="grid items-center border-border/50 border-b"
       style={{ gridTemplateColumns: GRID_COLUMNS }}
     >
+      {/* Select */}
       <div className="px-2 py-2">
         <Skeleton className="size-4 rounded" />
       </div>
+      {/* Index */}
+      <div className="px-2 py-2">
+        <Skeleton className="h-4 w-12" />
+      </div>
+      {/* Original */}
       <div className="px-2 py-2">
         <div className="flex items-center gap-2">
-          <Skeleton className="size-6 rounded-full" />
-          <div className="flex flex-1 flex-col gap-0.5">
-            <Skeleton className="h-1 w-full rounded-full" />
-            <Skeleton className="h-3 w-8" />
-          </div>
+          <Skeleton className="size-7 rounded-full" />
+          <Skeleton className="h-1 flex-1 rounded-full" />
           <Skeleton className="h-6 w-10" />
         </div>
       </div>
+      {/* Delta */}
       <div className="px-2 py-2">
         <div className="flex flex-col items-center gap-0.5">
           <Skeleton className="size-4" />
           <Skeleton className="h-3 w-6" />
         </div>
       </div>
+      {/* Processed */}
       <div className="px-2 py-2">
-        <Skeleton className="h-6 w-full" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-7 rounded-full" />
+          <Skeleton className="h-1 flex-1 rounded-full" />
+          <Skeleton className="h-6 w-10" />
+        </div>
       </div>
+      {/* Duration */}
+      <div className="flex justify-center px-2 py-2">
+        <Skeleton className="h-5 w-12 rounded-md" />
+      </div>
+      {/* Transcription */}
       <div className="px-2 py-2">
         <Skeleton className="h-4 w-full" />
       </div>
-      <div className="px-2 py-2">
-        <Skeleton className="h-5 w-12 rounded-md" />
-      </div>
+      {/* Tags */}
       <div className="px-2 py-2">
         <div className="flex gap-1">
           <Skeleton className="h-5 w-12 rounded-full" />
           <Skeleton className="h-5 w-16 rounded-full" />
         </div>
-      </div>
-      <div className="px-2 py-2">
-        <Skeleton className="h-4 w-12" />
       </div>
     </div>
   );
@@ -168,7 +177,7 @@ function GridHeader() {
         <div
           key={headerGroup.id}
           role="row"
-          className="grid border-b"
+          className="grid items-center border-b"
           style={{ gridTemplateColumns: GRID_COLUMNS }}
         >
           {headerGroup.headers.map((header) => (
