@@ -24,36 +24,36 @@ export function useWindowedSegments() {
 
       const currentSegments = $store.segments.peek();
 
-      // Find first pending in rendered range
-      let firstPendingIdx = -1;
+      // Check if there are any pending segments in the visible range
+      let hasPending = false;
       for (let i = startIdx; i <= endIdx; i++) {
         const id = segmentIds[i];
         if (id && currentSegments.get(id)?.status === "pending") {
-          firstPendingIdx = i;
+          hasPending = true;
           break;
         }
       }
 
-      if (firstPendingIdx === -1) return;
+      if (!hasPending) return;
 
-      // Collect BATCH_SIZE pending in each direction from first pending
+      // Calculate middle index of visible range
+      const middleIdx = Math.floor((startIdx + endIdx) / 2);
+
+      // Collect BATCH_SIZE pending in each direction from middle
       const idsToFetch: string[] = [];
 
-      // Up to BATCH_SIZE going up
-      const upEnd = Math.max(0, firstPendingIdx - BATCH_SIZE);
-      for (let i = firstPendingIdx; i >= upEnd; i--) {
+      // Up to BATCH_SIZE going up from middle (inclusive)
+      const upEnd = Math.max(0, middleIdx - BATCH_SIZE);
+      for (let i = middleIdx; i >= upEnd; i--) {
         const id = segmentIds[i];
         if (id && currentSegments.get(id)?.status === "pending") {
           idsToFetch.push(id);
         }
       }
 
-      // Up to BATCH_SIZE going down (skip firstPendingIdx, already added)
-      const downEnd = Math.min(
-        segmentIds.length - 1,
-        firstPendingIdx + BATCH_SIZE,
-      );
-      for (let i = firstPendingIdx + 1; i <= downEnd; i++) {
+      // Up to BATCH_SIZE going down from middle (exclusive, already added middle)
+      const downEnd = Math.min(segmentIds.length - 1, middleIdx + BATCH_SIZE);
+      for (let i = middleIdx + 1; i <= downEnd; i++) {
         const id = segmentIds[i];
         if (id && currentSegments.get(id)?.status === "pending") {
           idsToFetch.push(id);

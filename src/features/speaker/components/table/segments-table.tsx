@@ -198,7 +198,7 @@ function GridHeader() {
 export function SegmentsTable() {
   const { totalCount, getSegmentIdAt, onRangeChange } = useWindowedSegments();
 
-  const stickyRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Notify windowed segments hook when scrolling stops
@@ -228,8 +228,8 @@ export function SegmentsTable() {
   const virtualizer = useWindowVirtualizer({
     count: totalCount,
     estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
-    scrollMargin: stickyRef.current?.offsetHeight ?? 0,
+    overscan: 5,
+    scrollMargin: listRef.current?.offsetTop ?? 0,
     onChange: handleVirtualizerChange,
   });
 
@@ -254,55 +254,37 @@ export function SegmentsTable() {
       className="overflow-clip rounded-lg border border-border bg-card"
     >
       {/* Single sticky container for toolbar + header */}
-      <div ref={stickyRef} className="sticky top-14 z-10 rounded-t-lg bg-card">
+      <div className="sticky top-14 z-10 rounded-t-lg bg-card">
         <TableToolbar />
         <GridHeader />
       </div>
 
-      {/* Grid body */}
-      <div role="rowgroup">
-        {/* Top spacer for virtualization */}
-        {virtualItems.length > 0 && virtualItems[0].start > 0 && (
-          <div
-            style={{
-              height: Math.max(
-                0,
-                virtualItems[0].start - virtualizer.options.scrollMargin,
-              ),
-            }}
-          />
-        )}
-
+      {/* Grid body - absolute positioning for virtualization */}
+      <div
+        ref={listRef}
+        role="rowgroup"
+        className="relative w-full"
+        style={{ height: virtualizer.getTotalSize() }}
+      >
         {virtualItems.map((virtualRow) => {
           const segmentId = getSegmentIdAt(virtualRow.index);
+          // Subtract scrollMargin since item.start includes it but our container is already below the sticky header
+          const offsetY = virtualRow.start - virtualizer.options.scrollMargin;
 
-          if (segmentId) {
-            return (
-              <SegmentRow
-                key={segmentId}
-                segmentId={segmentId}
-                index={virtualRow.index}
-              />
-            );
-          }
-
-          return <SkeletonRow key={virtualRow.index} />;
-        })}
-
-        {/* Bottom spacer */}
-        {virtualItems.length > 0 &&
-          virtualItems[virtualItems.length - 1].end <
-            virtualizer.getTotalSize() && (
+          return (
             <div
-              style={{
-                height: Math.max(
-                  0,
-                  virtualizer.getTotalSize() -
-                    virtualItems[virtualItems.length - 1].end,
-                ),
-              }}
-            />
-          )}
+              key={segmentId ?? virtualRow.index}
+              className="absolute left-0 w-full"
+              style={{ transform: `translateY(${offsetY}px)` }}
+            >
+              {segmentId ? (
+                <SegmentRow segmentId={segmentId} index={virtualRow.index} />
+              ) : (
+                <SkeletonRow />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
