@@ -20,9 +20,7 @@ export function SpeakerPageLayout() {
         </div>
 
         {/* Sidebar - sticky, under header */}
-        <aside className="sticky top-14 h-[calc(100vh-3.5rem)] w-[196px] shrink-0 overflow-y-auto border-border border-l bg-background p-4">
-          <SpeakerSidebar />
-        </aside>
+        <SpeakerSidebar />
       </div>
     </div>
   );

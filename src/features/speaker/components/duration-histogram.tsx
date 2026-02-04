@@ -7,57 +7,30 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "~/components/ui/chart";
-import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
-
-interface DurationHistogramProps {
-  segments: SegmentWithClip[];
-  className?: string;
-}
 
 interface DurationBucket {
   range: string;
   count: number;
 }
 
-const DURATION_BUCKETS = [
-  { range: "0-2s", min: 0, max: 2 },
-  { range: "2-4s", min: 2, max: 4 },
-  { range: "4-6s", min: 4, max: 6 },
-  { range: "6-8s", min: 6, max: 8 },
-  { range: "8s+", min: 8, max: Number.POSITIVE_INFINITY },
-];
-
-function computeBuckets(segments: SegmentWithClip[]): DurationBucket[] {
-  const buckets = DURATION_BUCKETS.map((b) => ({ range: b.range, count: 0 }));
-
-  for (const seg of segments) {
-    const duration = seg.endTime - seg.startTime;
-    const bucketIdx = DURATION_BUCKETS.findIndex(
-      (b) => duration >= b.min && duration < b.max,
-    );
-    if (bucketIdx !== -1 && buckets[bucketIdx]) {
-      buckets[bucketIdx].count++;
-    }
-  }
-
-  return buckets;
+interface DurationHistogramProps {
+  buckets: DurationBucket[];
+  className?: string;
 }
 
 const chartConfig = {
   count: {
     label: "Segments",
-    color: "hsl(var(--primary))",
+    color: "var(--primary)",
   },
 } satisfies ChartConfig;
 
 export function DurationHistogram({
-  segments,
+  buckets,
   className,
 }: DurationHistogramProps) {
-  const data = computeBuckets(segments);
-
   // Don't render if no data
-  if (segments.length === 0) {
+  if (buckets.length === 0) {
     return (
       <div className="flex h-[100px] items-center justify-center text-muted-foreground text-xs">
         No data available
@@ -67,29 +40,22 @@ export function DurationHistogram({
 
   return (
     <ChartContainer config={chartConfig} className={className}>
-      <BarChart
-        layout="vertical"
-        data={data}
-        margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
-      >
-        <XAxis type="number" hide />
-        <YAxis
+      <BarChart data={buckets} margin={{ left: 0, right: 0, top: 4, bottom: 4 }}>
+        <XAxis
           dataKey="range"
-          type="category"
           tickLine={false}
           axisLine={false}
-          width={36}
           tick={{ fontSize: 10 }}
         />
+        <YAxis type="number" hide />
         <ChartTooltip
           cursor={false}
           content={<ChartTooltipContent hideLabel />}
         />
         <Bar
           dataKey="count"
-          fill="var(--color-count)"
-          radius={4}
-          barSize={12}
+          fill="var(--color-primary)"
+          radius={[4, 4, 0, 0]}
         />
       </BarChart>
     </ChartContainer>
