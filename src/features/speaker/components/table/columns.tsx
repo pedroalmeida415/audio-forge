@@ -7,8 +7,8 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
 import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
+import { cn } from "~/lib/utils";
 import { CompactAudioCell, PlaceholderAudioCell } from "./compact-audio-cell";
-import { ScoreDeltaCell } from "./score-delta-cell";
 import { TagsCell } from "./tags-cell";
 import { TranscriptionCell } from "./transcription-cell";
 
@@ -37,12 +37,13 @@ function SelectAllCheckbox() {
   };
 
   return (
-    <Checkbox
-      checked={isAllSelected}
-      onCheckedChange={(value) => handleToggleAll(!!value)}
-      aria-label="Select all"
-      className="translate-y-[2px]"
-    />
+    <div className="flex justify-center">
+      <Checkbox
+        checked={isAllSelected}
+        onCheckedChange={(value) => handleToggleAll(!!value)}
+        aria-label="Select all"
+      />
+    </div>
   );
 }
 
@@ -54,13 +55,14 @@ function SelectCell({ segmentId }: { segmentId: string }) {
   );
 
   return (
-    <Checkbox
-      checked={isSelected}
-      onCheckedChange={() => $store.toggleSelection(segmentId)}
-      onClick={(e) => e.stopPropagation()}
-      aria-label="Select row"
-      className="translate-y-[2px]"
-    />
+    <div className="flex justify-center">
+      <Checkbox
+        checked={isSelected}
+        onCheckedChange={() => $store.toggleSelection(segmentId)}
+        onClick={(e) => e.stopPropagation()}
+        aria-label="Select row"
+      />
+    </div>
   );
 }
 
@@ -76,15 +78,12 @@ function OriginalAudioCell({ segment }: { segment: SegmentWithClip }) {
     clipStorageKey: null,
   });
 
-  const score = segment.scores?.DNSMOS?.P808_MOS ?? null;
-
   return (
     <CompactAudioCell
       audioState={sourceState}
       audioUrl={sourceUrl}
       onLoadAudio={loadSource}
       duration={duration}
-      score={score}
       variant="original"
     />
   );
@@ -106,7 +105,6 @@ function ProcessedAudioCell({ segment }: { segment: SegmentWithClip }) {
     clipStorageKey: segment.clip?.file.storageKey ?? null,
   });
 
-  const score = segment.clip?.scores?.DNSMOS?.P808_MOS ?? null;
   const duration =
     segment.clip?.file.duration ?? segment.endTime - segment.startTime;
 
@@ -120,22 +118,35 @@ function ProcessedAudioCell({ segment }: { segment: SegmentWithClip }) {
       audioUrl={clipUrl}
       onLoadAudio={loadClip}
       duration={duration}
-      score={score}
       variant="processed"
     />
   );
 }
 
-// Score delta cell wrapper
-function ScoreDeltaCellWrapper({ segment }: { segment: SegmentWithClip }) {
-  const originalScore = segment.scores?.DNSMOS?.P808_MOS ?? null;
-  const processedScore = segment.clip?.scores?.DNSMOS?.P808_MOS ?? null;
+// Score cell - shows clip quality score
+function ScoreCell({ segment }: { segment: SegmentWithClip }) {
+  const score = segment.clip?.scores?.DNSMOS?.P808_MOS ?? null;
+
+  const scoreColor =
+    score === null
+      ? "text-muted-foreground/50"
+      : score >= 4
+        ? "text-success"
+        : score >= 3
+          ? "text-warning"
+          : "text-destructive";
 
   return (
-    <ScoreDeltaCell
-      originalScore={originalScore}
-      processedScore={processedScore}
-    />
+    <div className="flex justify-center">
+      <span
+        className={cn(
+          "font-bold text-2xl tabular-nums tracking-tighter",
+          scoreColor,
+        )}
+      >
+        {score !== null ? score.toFixed(1) : "--"}
+      </span>
+    </div>
   );
 }
 
@@ -189,15 +200,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       id: "original",
       header: "Original Segment",
       cell: ({ row }) => <OriginalAudioCell segment={row.original} />,
-      size: 220,
-    },
-
-    // Arrow with score delta
-    {
-      id: "delta",
-      header: "",
-      cell: ({ row }) => <ScoreDeltaCellWrapper segment={row.original} />,
-      size: 50,
+      size: 180,
     },
 
     // Processed Clip audio cell
@@ -205,7 +208,15 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       id: "processed",
       header: "Processed Clip",
       cell: ({ row }) => <ProcessedAudioCell segment={row.original} />,
-      size: 220,
+      size: 180,
+    },
+
+    // Score (clip quality)
+    {
+      id: "score",
+      header: () => <span className="w-full text-center">Score</span>,
+      cell: ({ row }) => <ScoreCell segment={row.original} />,
+      size: 60,
     },
 
     // Duration badge

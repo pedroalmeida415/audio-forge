@@ -21,8 +21,8 @@ import { TableToolbar } from "./table-toolbar";
 
 const columns = createColumns();
 
-// Grid column template: select | index | original | delta | processed | duration | transcription | tags (flex)
-const GRID_COLUMNS = "40px 60px 220px 50px 220px 80px 400px 1fr";
+// Grid column template: select | index | original | processed | score | duration | transcription | tags (flex)
+const GRID_COLUMNS = "40px 60px 180px 180px 60px 80px 400px 1fr";
 
 // Row height for virtualization
 const ROW_HEIGHT = 48;
@@ -123,14 +123,6 @@ function SkeletonRow() {
         <div className="flex items-center gap-2">
           <Skeleton className="size-7 rounded-full" />
           <Skeleton className="h-1 flex-1 rounded-full" />
-          <Skeleton className="h-6 w-10" />
-        </div>
-      </div>
-      {/* Delta */}
-      <div className="px-2 py-2">
-        <div className="flex flex-col items-center gap-0.5">
-          <Skeleton className="size-4" />
-          <Skeleton className="h-3 w-6" />
         </div>
       </div>
       {/* Processed */}
@@ -138,8 +130,11 @@ function SkeletonRow() {
         <div className="flex items-center gap-2">
           <Skeleton className="size-7 rounded-full" />
           <Skeleton className="h-1 flex-1 rounded-full" />
-          <Skeleton className="h-6 w-10" />
         </div>
+      </div>
+      {/* Score */}
+      <div className="flex justify-center px-2 py-2">
+        <Skeleton className="h-7 w-10" />
       </div>
       {/* Duration */}
       <div className="flex justify-center px-2 py-2">

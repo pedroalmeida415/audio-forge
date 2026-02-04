@@ -3,11 +3,6 @@
 import { Loader2, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 
 type AudioState = "idle" | "loading" | "ready" | "error";
@@ -17,7 +12,6 @@ interface CompactAudioCellProps {
   audioUrl: string | null;
   onLoadAudio: () => Promise<void>;
   duration: number;
-  score: number | null;
   variant: "original" | "processed";
 }
 
@@ -26,7 +20,6 @@ export function CompactAudioCell({
   audioUrl,
   onLoadAudio,
   duration: expectedDuration,
-  score,
   variant,
 }: CompactAudioCellProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -102,15 +95,6 @@ export function CompactAudioCell({
   const isDisabled = audioState === "error";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  const scoreColor =
-    score === null
-      ? "text-muted-foreground"
-      : score >= 4
-        ? "text-success"
-        : score >= 3
-          ? "text-warning"
-          : "text-destructive";
-
   return (
     <div className="flex items-center gap-2">
       {/* Play/Pause button */}
@@ -120,8 +104,9 @@ export function CompactAudioCell({
         onClick={handlePlayPause}
         disabled={isDisabled}
         className={cn(
-          "size-7 shrink-0 rounded-full",
-          variant === "processed" && "bg-primary/10 text-primary hover:bg-primary/20",
+          "size-8 shrink-0 rounded-full",
+          variant === "processed" &&
+            "bg-primary/10 text-primary hover:bg-primary/20",
         )}
       >
         {isLoading ? (
@@ -129,7 +114,7 @@ export function CompactAudioCell({
         ) : isPlaying ? (
           <Pause className="size-3" fill="currentColor" />
         ) : (
-          <Play className="size-3 translate-x-0.5" fill="currentColor" />
+          <Play className="size-3" fill="currentColor" />
         )}
       </Button>
 
@@ -145,29 +130,6 @@ export function CompactAudioCell({
           />
         </div>
       </div>
-
-      {/* Score display - large and prominent */}
-      {score !== null ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className={cn(
-                "shrink-0 cursor-help font-bold text-2xl tabular-nums tracking-tighter",
-                scoreColor,
-              )}
-            >
-              {score.toFixed(1)}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <span>Quality Score (MOS)</span>
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        <span className="shrink-0 text-2xl tracking-tighter text-muted-foreground/50">
-          --
-        </span>
-      )}
 
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
     </div>
