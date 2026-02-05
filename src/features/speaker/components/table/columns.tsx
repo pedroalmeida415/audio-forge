@@ -2,22 +2,21 @@
 
 import { useValue } from "@legendapp/state/react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { PencilIcon } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
-import type { SegmentWithClip } from "~/features/speaker/store/speaker-page-store";
 import { cn } from "~/lib/utils";
 import { CompactAudioCell, PlaceholderAudioCell } from "./compact-audio-cell";
-import { TagsCell } from "./tags-cell";
-import { TranscriptionCell } from "./transcription-cell";
 
 // ============================================================================
-// Cell Components
+// Cell Components (exported for direct rendering in TableRow)
 // ============================================================================
 
 // Header checkbox for select all
-function SelectAllCheckbox() {
+export function SelectAllCheckbox() {
   const $store = useSpeakerPageStore();
 
   const isAllSelected = useValue(() => {
@@ -48,7 +47,7 @@ function SelectAllCheckbox() {
 }
 
 // Row checkbox cell
-function SelectCell({ segmentId }: { segmentId: string }) {
+export function SelectCell({ segmentId }: { segmentId: string }) {
   const $store = useSpeakerPageStore();
   const isSelected = useValue(() =>
     $store.selectedSegmentIds.get().has(segmentId),
@@ -67,14 +66,21 @@ function SelectCell({ segmentId }: { segmentId: string }) {
 }
 
 // Original segment audio cell
-function OriginalAudioCell({ segment }: { segment: SegmentWithClip }) {
-  const storageKey = segment.session.file.storageKey ?? "";
-  const duration = segment.endTime - segment.startTime;
+export function OriginalAudioCell({
+  storageKey,
+  startTime,
+  endTime,
+}: {
+  storageKey: string;
+  startTime: number;
+  endTime: number;
+}) {
+  const duration = endTime - startTime;
 
   const { sourceState, sourceUrl, loadSource } = useSegmentAudio({
     sessionFileStorageKey: storageKey,
-    startTime: segment.startTime,
-    endTime: segment.endTime,
+    startTime,
+    endTime,
     clipStorageKey: null,
   });
 
@@ -90,25 +96,32 @@ function OriginalAudioCell({ segment }: { segment: SegmentWithClip }) {
 }
 
 // Processed clip audio cell
-function ProcessedAudioCell({ segment }: { segment: SegmentWithClip }) {
+export function ProcessedAudioCell({
+  segmentId,
+  clipStorageKey,
+  clipDuration,
+  fallbackDuration,
+}: {
+  segmentId: string;
+  clipStorageKey: string | null;
+  clipDuration: number | null;
+  fallbackDuration: number;
+}) {
   const $store = useSpeakerPageStore();
   const isClipPending = useValue(() =>
-    $store.clipPendingIds.get().has(segment.id),
+    $store.clipPendingIds.get().has(segmentId),
   );
-
-  const hasClip = !!segment.clip?.file.storageKey;
 
   const { clipState, clipUrl, loadClip } = useSegmentAudio({
     sessionFileStorageKey: "",
     startTime: 0,
     endTime: 0,
-    clipStorageKey: segment.clip?.file.storageKey ?? null,
+    clipStorageKey,
   });
 
-  const duration =
-    segment.clip?.file.duration ?? segment.endTime - segment.startTime;
+  const duration = clipDuration ?? fallbackDuration;
 
-  if (!hasClip) {
+  if (!clipStorageKey) {
     return <PlaceholderAudioCell isPending={isClipPending} />;
   }
 
@@ -124,9 +137,7 @@ function ProcessedAudioCell({ segment }: { segment: SegmentWithClip }) {
 }
 
 // Score cell - shows clip quality score
-function ScoreCell({ segment }: { segment: SegmentWithClip }) {
-  const score = segment.clip?.scores?.DNSMOS?.P808_MOS ?? null;
-
+export function ScoreCell({ score }: { score: number | null }) {
   const scoreColor =
     score === null
       ? "text-muted-foreground/50"
@@ -151,8 +162,7 @@ function ScoreCell({ segment }: { segment: SegmentWithClip }) {
 }
 
 // Duration badge cell
-function DurationCell({ segment }: { segment: SegmentWithClip }) {
-  const duration = segment.endTime - segment.startTime;
+export function DurationCell({ duration }: { duration: number }) {
   return (
     <div className="flex justify-center">
       <Badge variant="secondary" className="font-mono text-xs">
@@ -163,7 +173,7 @@ function DurationCell({ segment }: { segment: SegmentWithClip }) {
 }
 
 // Index cell
-function IndexCell({ index }: { index: number }) {
+export function IndexCell({ index }: { index: number }) {
   return (
     <span className="font-mono text-muted-foreground text-xs">
       #{String(index + 1).padStart(4, "0")}
@@ -171,78 +181,81 @@ function IndexCell({ index }: { index: number }) {
   );
 }
 
+// Actions cell - visible on row hover
+export function ActionsCell({ segmentId }: { segmentId: string }) {
+  const handleEdit = () => {
+    // TODO: Implement segment editing
+    console.log("Edit segment:", segmentId);
+  };
+
+  return (
+    <div className="flex justify-end opacity-0 transition-opacity group-hover/row:opacity-100">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        onClick={handleEdit}
+        aria-label="Edit segment"
+      >
+        <PencilIcon className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
 // ============================================================================
-// Column Definitions
+// Column Definitions (headers only - cells are manually rendered in TableRow)
 // ============================================================================
 
-export function createColumns(): ColumnDef<SegmentWithClip>[] {
+export function createColumns(): ColumnDef<string>[] {
   return [
-    // Checkbox column
     {
       id: "select",
       header: () => <SelectAllCheckbox />,
-      cell: ({ row }) => <SelectCell segmentId={row.original.id} />,
       enableSorting: false,
       enableHiding: false,
       size: 40,
     },
-
-    // Index
     {
       id: "index",
       header: "#",
-      cell: ({ row }) => <IndexCell index={row.index} />,
       size: 60,
     },
-
-    // Original Segment audio cell
     {
       id: "original",
       header: "Original Segment",
-      cell: ({ row }) => <OriginalAudioCell segment={row.original} />,
       size: 180,
     },
-
-    // Processed Clip audio cell
     {
       id: "processed",
       header: "Processed Clip",
-      cell: ({ row }) => <ProcessedAudioCell segment={row.original} />,
       size: 180,
     },
-
-    // Score (clip quality)
     {
       id: "score",
       header: () => <span className="w-full text-center">Score</span>,
-      cell: ({ row }) => <ScoreCell segment={row.original} />,
       size: 60,
     },
-
-    // Duration badge
     {
       id: "duration",
       header: () => <span className="w-full text-center">Duration</span>,
-      cell: ({ row }) => <DurationCell segment={row.original} />,
       size: 80,
     },
-
-    // Transcription (truncated with ellipsis)
     {
       id: "transcription",
       header: "Transcription",
-      cell: ({ row }) => (
-        <TranscriptionCell transcription={row.original.transcription} />
-      ),
       size: 400,
     },
-
-    // Tags (only column that expands)
     {
       id: "tags",
       header: "Tags",
-      cell: ({ row }) => <TagsCell tags={row.original.tags} />,
-      // No size - this column expands to fill available space
+    },
+    {
+      id: "actions",
+      header: () => null,
+      enableSorting: false,
+      enableHiding: false,
+      size: 48,
     },
   ];
 }

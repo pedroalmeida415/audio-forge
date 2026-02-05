@@ -24,6 +24,7 @@ export type SegmentEntryStatus = "pending" | "loading" | "loaded" | "error";
 export type SegmentEntry = {
   status: SegmentEntryStatus;
   data: SegmentWithClip | null;
+  error?: string;
 };
 
 // ============================================================================
@@ -54,8 +55,11 @@ export function createSpeakerPageStore(initialData: SpeakerPageInitialData) {
   const $store = useObservable<SpeakerPageStoreState>({
     // State
     speaker: speaker,
-    segments: new Map<string, SegmentEntry>(
-      segmentIds.map((id) => [id, { status: "pending", data: null }]),
+    segments: new Map(
+      segmentIds.map((id) => [
+        id,
+        { status: "pending", data: null, error: undefined },
+      ]),
     ),
     selectedSegmentIds: new Set<string>(),
     clipPendingIds: new Set<string>(),
