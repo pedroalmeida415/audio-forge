@@ -118,19 +118,6 @@ export function CompactAudioCell({
         )}
       </Button>
 
-      {/* Progress bar */}
-      <div className="flex min-w-0 flex-1 items-center">
-        <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted-foreground/20">
-          <div
-            className={cn(
-              "absolute inset-y-0 left-0 rounded-full transition-all",
-              variant === "original" ? "bg-muted-foreground/50" : "bg-primary",
-            )}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
     </div>
   );
@@ -150,7 +137,7 @@ export function PlaceholderAudioCell({ isPending }: PlaceholderAudioCellProps) {
           <span className="text-xs">Processing...</span>
         </>
       ) : (
-        <span className="text-xs">No clip</span>
+        <span className="text-xs">--</span>
       )}
     </div>
   );

@@ -6,7 +6,7 @@ import { DurationHistogram } from "./duration-histogram";
 
 // Mock data for demonstration
 const MOCK_STATS = {
-  totalSegments: 1247,
+  totalSegments: 12470,
   totalProcessed: 892,
   totalTranscribed: 756,
   avgQuality: 3.82,
@@ -52,49 +52,60 @@ export function SpeakerSidebar() {
       <div className="flex h-full flex-col gap-6">
         {/* Big stat metrics */}
         <div className="flex flex-col gap-6">
-          <BigStat label="Total Segments" value={stats.totalSegments} />
-          <BigStat label="Processed" value={stats.totalProcessed} />
-          <BigStat label="Transcribed" value={stats.totalTranscribed} />
-          <BigStat
-            label="Avg. Quality"
-            value={stats.avgQuality.toFixed(2)}
-            highlight
-          />
-          <BigStat
-            label="Total Duration"
-            value={formatDuration(stats.totalDuration)}
-          />
+          <div>
+            <div className="text-muted-foreground text-xs"># of Segments</div>
+            <div
+              className={`font-bold font-mono text-5xl text-foreground tabular-nums`}
+            >
+              {stats.totalSegments}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs"># of Clips</div>
+            <div
+              className={`font-bold font-mono text-5xl text-foreground tabular-nums`}
+            >
+              {stats.totalProcessed}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs"># Transcribed</div>
+            <div
+              className={`font-bold font-mono text-5xl text-foreground tabular-nums`}
+            >
+              {stats.totalTranscribed}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">
+              Avg. Clip Quality
+            </div>
+            <div
+              className={`font-bold font-mono text-6xl text-primary tabular-nums`}
+            >
+              {stats.avgQuality.toFixed(2)}
+            </div>
+          </div>
         </div>
 
         {/* Duration Distribution */}
-        <div className="mt-auto flex flex-col gap-2">
-          <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-            Duration Distribution
-          </span>
-          <DurationHistogram buckets={MOCK_DURATION_BUCKETS} />
+        <div className="mt-auto flex flex-col gap-4">
+          <div>
+            <div className="text-muted-foreground text-xs">Total Duration</div>
+            <div
+              className={`font-bold font-mono text-5xl text-foreground tabular-nums`}
+            >
+              {formatDuration(stats.totalDuration)}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">
+              Duration Distribution
+            </div>
+            <DurationHistogram buckets={MOCK_DURATION_BUCKETS} />
+          </div>
         </div>
       </div>
     </aside>
-  );
-}
-
-function BigStat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string | number;
-  highlight?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <span
-        className={`font-bold font-mono text-5xl tabular-nums ${highlight ? "text-primary" : "text-foreground"}`}
-      >
-        {value}
-      </span>
-    </div>
   );
 }

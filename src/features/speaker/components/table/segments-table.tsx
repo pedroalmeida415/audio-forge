@@ -32,7 +32,7 @@ import { TranscriptionCell } from "./transcription-cell";
 const columns = createColumns();
 
 // Grid column template: select | index | original | processed | score | duration | transcription | tags (flex) | actions
-const GRID_COLUMNS = "40px 60px 180px 180px 60px 80px 400px 1fr 48px";
+const GRID_COLUMNS = "40px 60px 48px 48px 60px 80px 1fr 200px 48px";
 
 // Row height for virtualization
 const ROW_HEIGHT = 48;
@@ -252,14 +252,12 @@ export function SegmentsTable() {
                 <div
                   key={header.id}
                   role="columnheader"
-                  className="px-2 py-2 text-left font-medium text-muted-foreground text-xs uppercase tracking-wide"
+                  className="px-2 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide"
                 >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
+                  {flexRender(
+                    header.column.columnDef.header,
+                    header.getContext(),
+                  )}
                 </div>
               ))}
             </div>

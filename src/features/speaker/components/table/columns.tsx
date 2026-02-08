@@ -214,37 +214,30 @@ export function createColumns(): ColumnDef<string>[] {
       header: () => <SelectAllCheckbox />,
       enableSorting: false,
       enableHiding: false,
-      size: 40,
     },
     {
       id: "index",
       header: "#",
-      size: 60,
     },
     {
-      id: "original",
-      header: "Original Segment",
-      size: 180,
+      id: "segment",
+      header: "Seg.",
     },
     {
-      id: "processed",
-      header: "Processed Clip",
-      size: 180,
+      id: "clip",
+      header: "Clip",
     },
     {
       id: "score",
       header: () => <span className="w-full text-center">Score</span>,
-      size: 60,
     },
     {
       id: "duration",
       header: () => <span className="w-full text-center">Duration</span>,
-      size: 80,
     },
     {
       id: "transcription",
       header: "Transcription",
-      size: 400,
     },
     {
       id: "tags",
@@ -255,7 +248,6 @@ export function createColumns(): ColumnDef<string>[] {
       header: () => null,
       enableSorting: false,
       enableHiding: false,
-      size: 48,
     },
   ];
 }

@@ -40,12 +40,15 @@ export function DurationHistogram({
 
   return (
     <ChartContainer config={chartConfig} className={className}>
-      <BarChart data={buckets} margin={{ left: 0, right: 0, top: 4, bottom: 4 }}>
+      <BarChart
+        data={buckets}
+        margin={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      >
         <XAxis
           dataKey="range"
           tickLine={false}
           axisLine={false}
-          tick={{ fontSize: 10 }}
+          tick={{ fontSize: 12 }}
         />
         <YAxis type="number" hide />
         <ChartTooltip
