@@ -48,7 +48,7 @@ export function DurationHistogram({
           dataKey="range"
           tickLine={false}
           axisLine={false}
-          tick={{ fontSize: 12 }}
+          tick={{ fontSize: 11 }}
         />
         <YAxis type="number" hide />
         <ChartTooltip
