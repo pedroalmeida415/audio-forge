@@ -153,21 +153,6 @@ export function TableToolbar() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleProcess("remove_overlap")}
-            disabled={!hasSelection || queueMutation.isPending}
-            className="hidden lg:flex"
-          >
-            {processingOperation === "remove_overlap" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Scissors className="size-4" />
-            )}
-            Remove Overlap
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
             onClick={() => setShowDeleteDialog(true)}
             disabled={!hasSelection || queueMutation.isPending}
             className="text-destructive hover:bg-destructive hover:text-destructive-foreground"

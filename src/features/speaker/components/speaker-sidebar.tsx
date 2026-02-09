@@ -48,7 +48,7 @@ export function SpeakerSidebar() {
   const stats = MOCK_STATS;
 
   return (
-    <aside className="sticky top-14 h-[calc(100vh-3.5rem)] w-60 shrink-0 overflow-y-auto border-border border-l bg-background p-4">
+    <aside className="sticky top-14 h-[calc(100vh-6rem)] w-60 shrink-0 overflow-y-auto border-border border-l bg-background p-4">
       <div className="flex h-full flex-col gap-6">
         {/* Big stat metrics */}
         <div className="flex flex-col gap-6">
@@ -81,7 +81,7 @@ export function SpeakerSidebar() {
               Avg. Clip Quality
             </div>
             <div
-              className={`font-bold font-mono text-6xl text-primary tabular-nums`}
+              className={`font-bold font-mono text-5xl text-primary tabular-nums`}
             >
               {stats.avgQuality.toFixed(2)}
             </div>
