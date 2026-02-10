@@ -10,6 +10,9 @@ Audio Forge is a webapp designed to streamline the process of creating high-qual
 
 - **Package Manager**: Use BUN exclusively. NEVER use npm or pnpm.
 - **No Barrel Files**: Do NOT create `index.ts` files that re-export from other modules. Import directly from specific files instead.
+- **React Compiler**: Enabled (`experimental.reactCompiler`). Do not add manual `useMemo`/`useCallback` — the compiler handles memoization.
+- **TypeScript Strictness**: `noUncheckedIndexedAccess: true` — array/object index access returns `T | undefined`, so handle accordingly.
+- **Tailwind v4**: Config is CSS-based in `src/app/globals.css` (via `@theme` directive), not a JS/TS config file. Uses OKLCH color space with `light-dark()` function.
 
 ## Commands
 
@@ -137,6 +140,29 @@ class AudioProcessingService extends Effect.Service<AudioProcessingService>()("A
 - Use `accessors: true` to enable direct method calls via the service tag
 - Provide services via `.Default` layer which includes all dependencies
 
+**Effect-TS in tRPC Routers**: Procedures execute Effect programs via `AppRuntime`:
+```typescript
+// In a tRPC router procedure:
+export const myRouter = createTRPCRouter({
+  doSomething: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.runtime.runPromise(
+        Effect.gen(function* () {
+          const db = yield* Database;
+          // Use services directly (if accessors: true)
+          const result = yield* StorageService.upload({ ... });
+          // Throw tRPC errors via Effect.fail
+          if (!found) yield* Effect.fail(new TRPCError({ code: "NOT_FOUND" }));
+          return result;
+        }),
+      );
+    }),
+});
+```
+
+**tRPC Procedures**: `publicProcedure` includes timing middleware (adds artificial 100-500ms delay in dev to catch waterfalls). `protectedProcedure` adds auth check and narrows `ctx.session` to non-nullable.
+
 **Legend-State Stores**: Client state uses observable stores with slices:
 ```typescript
 // Store created in provider with useObservable
@@ -153,6 +179,7 @@ const $store = useObservable<ClippingStoreState>({...})
 - For nested updates: `$store.segments.get(id).status.set("loaded")` instead of replacing the entire entry
 - Use `.peek()` to read without subscribing (in actions), `.get()` to read with subscription (in components via `useValue`)
 - ALWAYS use `useValue`. The `useSelector` hook is deprecated.
+- Use `batch(() => { ... })` to group multiple mutations into a single reactive update.
 
 **tRPC with Optimistic Updates**: Mutations use `setupMutationDefaults` pattern in `store/mutations.ts` for optimistic updates that sync with Legend-State stores.
 
@@ -176,6 +203,18 @@ Standalone Hono server (`media-server/`) handles audio streaming with LRU cache.
 ### BullMQ Gotchas
 - `QueueEvents` "completed" handler: `returnvalue` is already parsed object, not JSON string
 - Worker must `return await handler(job)` (not just `await`) to capture return values in `job.returnvalue`
+
+### Biome Conventions
+- `useSortedClasses` is enforced (warn) for `clsx`, `cva`, and `cn` — keep Tailwind classes sorted.
+- `useExhaustiveDependencies` is disabled (Legend-State observables don't need deps tracking).
+- 2-space indentation.
+
+### Drizzle Schema Conventions
+- All tables: `uuid("id").defaultRandom().primaryKey()` with `createdAt`/`updatedAt` timestamps
+- Enums: defined with `pgEnum()` before tables
+- Relations: defined separately after tables using `relations()` helper
+- JSONB typing: `.jsonb("column").$type<InterfaceName>()`
+- Type inference: `typeof table.$inferSelect`
 
 ### Path Alias
 Use `~` for src imports: `import { api } from "~/trpc/react"`
