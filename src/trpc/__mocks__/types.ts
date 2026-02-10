@@ -10,7 +10,7 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 /**
  * Extracts all procedure paths from RouterInputs.
- * e.g., "file.getWaveformUrl" | "clippingSession.onDiarizationComplete" | ...
+ * e.g., "file.getWaveformUrl" | "source.onDiarizationComplete" | ...
  */
 export type AppProcedurePath = {
   [K in keyof RouterInputs]: keyof RouterInputs[K] extends string

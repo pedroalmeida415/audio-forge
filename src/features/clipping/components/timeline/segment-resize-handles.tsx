@@ -23,7 +23,7 @@ interface HandlePosition {
  */
 export function SegmentResizeHandles() {
   const $store = useClippingStore();
-  const sessionId = useSelector(() => $store.sessionId.get());
+  const sourceId = useSelector(() => $store.sourceId.get());
   const updateSegmentsMutation = api.segment.updateSegments.useMutation();
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
@@ -159,13 +159,13 @@ export function SegmentResizeHandles() {
       // Only call mutation if value actually changed
       if (edge === "start" && updatedSegment.startTime !== originalStart) {
         updateSegmentsMutation.mutate({
-          sessionId,
+          sourceId,
           segmentIds: activeId,
           updates: { startTime: updatedSegment.startTime },
         });
       } else if (edge === "end" && updatedSegment.endTime !== originalEnd) {
         updateSegmentsMutation.mutate({
-          sessionId,
+          sourceId,
           segmentIds: activeId,
           updates: { endTime: updatedSegment.endTime },
         });

@@ -91,13 +91,13 @@ function ClipSubscriber() {
           const clip = {
             id: event.clip.id,
             segmentId: event.clip.segmentId,
-            fileId: event.clip.fileId,
-            score: event.clip.score,
+            userId: event.clip.userId,
+            storageKey: event.clip.storageKey,
+            duration: event.clip.duration,
+            processingStatus: event.clip.processingStatus,
+            processingError: event.clip.processingError,
+            scores: event.clip.scores,
             createdAt: new Date(event.clip.createdAt),
-            file: {
-              storageKey: event.clip.file.storageKey,
-              duration: event.clip.file.duration,
-            },
           };
 
           $store.updateSegmentClip(event.segmentId, clip);

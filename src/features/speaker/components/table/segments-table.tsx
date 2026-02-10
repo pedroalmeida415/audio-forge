@@ -72,7 +72,7 @@ function TableRow({ row }: TableRowProps) {
       </div>
       <div role="cell" className="px-2 py-2">
         <OriginalAudioCell
-          storageKey={segment.session.file.storageKey ?? ""}
+          storageKey={segment.source.storageKey ?? ""}
           startTime={segment.startTime}
           endTime={segment.endTime}
         />
@@ -80,8 +80,8 @@ function TableRow({ row }: TableRowProps) {
       <div role="cell" className="px-2 py-2">
         <ProcessedAudioCell
           segmentId={segmentId}
-          clipStorageKey={segment.clip?.file.storageKey ?? null}
-          clipDuration={segment.clip?.file.duration ?? null}
+          clipStorageKey={segment.clip?.storageKey ?? null}
+          clipDuration={segment.clip?.duration ?? null}
           fallbackDuration={duration}
         />
       </div>

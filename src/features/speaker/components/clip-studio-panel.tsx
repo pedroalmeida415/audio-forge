@@ -21,19 +21,18 @@ import { ClipStudioTimeline } from "./clip-studio-timeline";
 export function ClipStudioPanel() {
   const { projectId } = useParams<{ projectId: string }>();
   const [open, setOpen] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(
     null,
   );
 
-  const { data: sessions } = api.clippingSession.listByProject.useQuery(
+  const { data: sources } = api.source.listByProject.useQuery(
     { projectId },
     { refetchOnWindowFocus: false },
   );
 
-  const getSessionLabel = (session: NonNullable<typeof sessions>[number]) =>
-    session.name ??
-    session.file?.name ??
-    session.file?.storageKey?.split("/").pop() ??
+  const getSourceLabel = (source: NonNullable<typeof sources>[number]) =>
+    source.name ??
+    source.storageKey?.split("/").pop() ??
     "Untitled";
 
   return (
@@ -46,21 +45,21 @@ export function ClipStudioPanel() {
         <div className="flex items-center gap-3">
           <span className="font-medium text-sm">Clip Studio</span>
 
-          {sessions && sessions.length > 0 && (
+          {sources && sources.length > 0 && (
             <Select
-              value={selectedSessionId ?? ""}
+              value={selectedSourceId ?? ""}
               onValueChange={(value) => {
-                setSelectedSessionId(value);
+                setSelectedSourceId(value);
                 if (!open) setOpen(true);
               }}
             >
               <SelectTrigger size="sm">
-                <SelectValue placeholder="Select session" />
+                <SelectValue placeholder="Select source" />
               </SelectTrigger>
               <SelectContent position="popper" align="start">
-                {sessions.map((session) => (
-                  <SelectItem key={session.id} value={session.id}>
-                    {getSessionLabel(session)}
+                {sources.map((source) => (
+                  <SelectItem key={source.id} value={source.id}>
+                    {getSourceLabel(source)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -80,7 +79,7 @@ export function ClipStudioPanel() {
       <CollapsibleContent className="bg-card">
         <ClipStudioTimeline
           projectId={projectId}
-          sessionId={selectedSessionId}
+          sourceId={selectedSourceId}
         />
       </CollapsibleContent>
     </Collapsible>

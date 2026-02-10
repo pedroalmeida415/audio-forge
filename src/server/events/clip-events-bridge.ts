@@ -8,13 +8,10 @@ import { clipEvents } from "./clip-events";
 interface ClipData {
   id: string;
   segmentId: string;
-  fileId: string;
+  userId: string;
+  storageKey: string;
+  duration: number;
   createdAt: string;
-  file: {
-    id: string;
-    storageKey: string;
-    duration: number;
-  };
 }
 
 /** Result returned from clip job handlers */
@@ -67,7 +64,12 @@ export function initClipEventsBridge() {
       clipEvents.emitCompletion({
         segmentId: result.segmentId,
         speakerId: result.speakerId,
-        clip: result.clip,
+        clip: {
+          ...result.clip,
+          processingStatus: null,
+          processingError: null,
+          scores: null,
+        },
         status: "completed",
       });
     }

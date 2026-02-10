@@ -148,16 +148,14 @@ export function ScoreCell({ score }: { score: number | null }) {
           : "text-destructive";
 
   return (
-    <div className="flex justify-center">
-      <span
-        className={cn(
-          "font-bold text-2xl tabular-nums tracking-tighter",
-          scoreColor,
-        )}
-      >
-        {score !== null ? score.toFixed(1) : "--"}
-      </span>
-    </div>
+    <span
+      className={cn(
+        "font-bold text-2xl tabular-nums tracking-tighter",
+        scoreColor,
+      )}
+    >
+      {score !== null ? score.toFixed(1) : "--"}
+    </span>
   );
 }
 

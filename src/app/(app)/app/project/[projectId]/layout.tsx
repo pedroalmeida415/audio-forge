@@ -11,7 +11,7 @@ export default async function ProjectLayout({
   const { projectId } = await params;
 
   void api.projects.getById.prefetch({ id: projectId });
-  void api.clippingSession.listByProject.prefetch({ projectId });
+  void api.source.listByProject.prefetch({ projectId });
 
   return (
     <HydrateClient>

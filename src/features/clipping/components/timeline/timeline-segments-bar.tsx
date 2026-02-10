@@ -8,7 +8,6 @@ import {
   getSpeakerName,
 } from "~/features/clipping/utils/segment-utils";
 import { withAlpha } from "~/lib/speaker-colors";
-import type { DataSource } from "~/server/db/schema";
 
 const OVERSCAN_TIME = 20; // seconds of overscan
 
@@ -64,7 +63,7 @@ export function TimelineSegmentsBar() {
 
       // Add/update segments for visible IDs
       for (const segment of segments) {
-        const { id, speakerId, startTime, endTime, source } = segment;
+        const { id, speakerId, startTime, endTime } = segment;
         if (!visibleIds.has(id)) continue;
 
         // Get speaker color and name
@@ -100,8 +99,8 @@ export function TimelineSegmentsBar() {
           span.textContent = name;
         }
 
-        // Update styling based on states and source
-        updateSegmentStyles(el, isActive, isDimmed, color, source);
+        // Update styling based on states
+        updateSegmentStyles(el, isActive, isDimmed, color);
       }
     });
 
@@ -152,18 +151,15 @@ function createSegmentElement(
 }
 
 /**
- * Update segment element styling based on active/dimmed states and source.
- * Local segments get a dashed border to distinguish them from project segments.
+ * Update segment element styling based on active/dimmed states.
  */
 function updateSegmentStyles(
   el: HTMLButtonElement,
   isActive: boolean,
   isDimmed: boolean,
   color: string | undefined,
-  source: DataSource,
 ): void {
   const span = el.firstElementChild as HTMLSpanElement | null;
-  const isLocal = source === "local";
 
   // Base classes
   let className =
@@ -182,8 +178,8 @@ function updateSegmentStyles(
 
   el.className = className;
 
-  // Border style based on source (dashed for local segments)
-  el.style.borderStyle = isLocal ? "dashed" : "solid";
+  // Always solid border
+  el.style.borderStyle = "solid";
 
   // Colors
   if (isDimmed) {

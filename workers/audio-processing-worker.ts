@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import IORedis from "ioredis";
 
 import { env } from "../src/env";
-import { clips, files, segments, speakers } from "../src/server/db/schema";
+import { clips, segments, sources, speakers } from "../src/server/db/schema";
 import { AppRuntime, disposeRuntime } from "../src/services";
 import { AudioProcessingService } from "../src/services/audio/audio-processing-service";
 import { Database } from "../src/services/infra/database";
@@ -127,13 +127,10 @@ type HandlerRegistry = {
 interface ClipData {
   id: string;
   segmentId: string;
-  fileId: string;
+  userId: string;
+  storageKey: string;
+  duration: number;
   createdAt: string;
-  file: {
-    id: string;
-    storageKey: string;
-    duration: number;
-  };
 }
 
 /** Result of ensureClipExists */
@@ -155,7 +152,6 @@ interface SegmentContext {
   segmentId: string;
   speakerId: string;
   userId: string;
-  projectId: string;
   startTime: number;
   endTime: number;
 }
@@ -179,15 +175,11 @@ const extractSegmentAudio = (segmentId: string) =>
   Effect.gen(function* () {
     const db = yield* Database;
 
-    // Look up segment with session relations (no clip needed)
+    // Look up segment with source relation (no clip needed)
     const segment = yield* db.query.segments.findFirst({
       where: eq(segments.id, segmentId),
       with: {
-        session: {
-          with: {
-            file: true,
-          },
-        },
+        source: true,
         speaker: true,
       },
     });
@@ -196,8 +188,8 @@ const extractSegmentAudio = (segmentId: string) =>
       return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
     }
 
-    const sourceFile = segment.session.file;
-    if (!sourceFile?.storageKey) {
+    const sourceStorageKey = segment.source.storageKey;
+    if (!sourceStorageKey) {
       return yield* Effect.fail(
         new Error(`Source file not found for segment ${segmentId}`),
       );
@@ -212,7 +204,7 @@ const extractSegmentAudio = (segmentId: string) =>
     const endMs = segment.endTime * 1000;
 
     const audioBuffer = yield* fetchSliceFromMediaServer({
-      storageKey: sourceFile.storageKey as string,
+      storageKey: sourceStorageKey,
       startMs,
       endMs,
     });
@@ -221,7 +213,6 @@ const extractSegmentAudio = (segmentId: string) =>
       segmentId,
       speakerId: segment.speakerId,
       userId: segment.speaker.userId,
-      projectId: segment.session.projectId,
       startTime: segment.startTime,
       endTime: segment.endTime,
     };
@@ -230,7 +221,7 @@ const extractSegmentAudio = (segmentId: string) =>
   });
 
 /**
- * Upload an audio buffer to R2 and create file + clip DB records.
+ * Upload an audio buffer to R2 and create a clip DB record.
  * Used after processing (denoising, etc.) to persist the result.
  */
 const createClipFromBuffer = (params: {
@@ -260,30 +251,14 @@ const createClipFromBuffer = (params: {
     // Calculate duration
     const durationSeconds = context.endTime - context.startTime;
 
-    // Create file record
-    const [newClipFile] = yield* db
-      .insert(files)
-      .values({
-        userId: context.userId,
-        projectId: context.projectId,
-        storageKey: clipStorageKey,
-        name: `clip-${context.segmentId.slice(0, 8)}.${extension}`,
-        duration: durationSeconds,
-      })
-      .returning();
-
-    if (!newClipFile) {
-      return yield* Effect.fail(
-        new Error(`Failed to create file record for clip`),
-      );
-    }
-
-    // Create clip record
+    // Create clip record (self-contained with storageKey and duration)
     const [newClip] = yield* db
       .insert(clips)
       .values({
         segmentId: context.segmentId,
-        fileId: newClipFile.id,
+        userId: context.userId,
+        storageKey: clipStorageKey,
+        duration: durationSeconds,
       })
       .returning();
 
@@ -305,13 +280,10 @@ const createClipFromBuffer = (params: {
       clip: {
         id: newClip.id,
         segmentId: context.segmentId,
-        fileId: newClipFile.id,
+        userId: context.userId,
+        storageKey: clipStorageKey,
+        duration: durationSeconds,
         createdAt: newClip.createdAt.toISOString(),
-        file: {
-          id: newClipFile.id,
-          storageKey: clipStorageKey,
-          duration: durationSeconds,
-        },
       },
     } satisfies EnsureClipResult;
   });
@@ -320,26 +292,18 @@ const createClipFromBuffer = (params: {
  * Ensures a clip exists for the given segment.
  * If no clip exists, extracts audio from the source file and creates one.
  * Also scores the source audio and stores in segment.scores.
- * Returns the clip's file info for further processing.
+ * Returns the clip info for further processing.
  */
 const ensureClipExists = (segmentId: string) =>
   Effect.gen(function* () {
     const db = yield* Database;
 
-    // Look up segment with clip and session relations
+    // Look up segment with clip and source relations
     const segment = yield* db.query.segments.findFirst({
       where: eq(segments.id, segmentId),
       with: {
-        clip: {
-          with: {
-            file: true,
-          },
-        },
-        session: {
-          with: {
-            file: true,
-          },
-        },
+        clip: true,
+        source: true,
         speaker: true,
       },
     });
@@ -349,27 +313,24 @@ const ensureClipExists = (segmentId: string) =>
     }
 
     // If clip already exists, return its info
-    if (segment.clip?.file?.storageKey) {
+    if (segment.clip?.storageKey) {
       return {
         segmentId,
         speakerId: segment.speakerId,
         clip: {
           id: segment.clip.id,
           segmentId,
-          fileId: segment.clip.fileId,
+          userId: segment.clip.userId,
+          storageKey: segment.clip.storageKey,
+          duration: segment.clip.duration,
           createdAt: segment.clip.createdAt.toISOString(),
-          file: {
-            id: segment.clip.file.id,
-            storageKey: segment.clip.file.storageKey,
-            duration: segment.clip.file.duration ?? 0,
-          },
         },
       } satisfies EnsureClipResult;
     }
 
     // No clip exists - need to create one
-    const sourceFile = segment.session.file;
-    if (!sourceFile?.storageKey) {
+    const sourceStorageKey = segment.source.storageKey;
+    if (!sourceStorageKey) {
       return yield* Effect.fail(
         new Error(`Source file not found for segment ${segmentId}`),
       );
@@ -380,7 +341,6 @@ const ensureClipExists = (segmentId: string) =>
     );
 
     // Fetch slice directly from media server (no need for temp files)
-    const sourceStorageKey = sourceFile.storageKey as string;
     const startMs = segment.startTime * 1000;
     const endMs = segment.endTime * 1000;
 
@@ -403,30 +363,14 @@ const ensureClipExists = (segmentId: string) =>
     // Calculate duration
     const durationSeconds = segment.endTime - segment.startTime;
 
-    // Create file record
-    const [newClipFile] = yield* db
-      .insert(files)
-      .values({
-        userId: segment.speaker.userId,
-        projectId: segment.session.projectId,
-        storageKey: clipStorageKey,
-        name: `clip-${segmentId.slice(0, 8)}.flac`,
-        duration: durationSeconds,
-      })
-      .returning();
-
-    if (!newClipFile) {
-      return yield* Effect.fail(
-        new Error(`Failed to create file record for clip`),
-      );
-    }
-
-    // Create clip record
+    // Create clip record (self-contained)
     const [newClip] = yield* db
       .insert(clips)
       .values({
         segmentId,
-        fileId: newClipFile.id,
+        userId: segment.speaker.userId,
+        storageKey: clipStorageKey,
+        duration: durationSeconds,
       })
       .returning();
 
@@ -480,13 +424,10 @@ const ensureClipExists = (segmentId: string) =>
       clip: {
         id: newClip.id,
         segmentId,
-        fileId: newClipFile.id,
+        userId: segment.speaker.userId,
+        storageKey: clipStorageKey,
+        duration: durationSeconds,
         createdAt: newClip.createdAt.toISOString(),
-        file: {
-          id: newClipFile.id,
-          storageKey: clipStorageKey,
-          duration: durationSeconds,
-        },
       },
     } satisfies EnsureClipResult;
   });
@@ -496,19 +437,19 @@ const ensureClipExists = (segmentId: string) =>
 // ============================================================================
 
 /**
- * Generate waveform data for an audio file.
- * entryId = fileId
+ * Generate waveform data for an audio source.
+ * entryId = sourceId
  * Downloads audio from R2, generates waveform .dat file, uploads back to R2.
  */
 const handleGenerateWaveform: JobHandler = async (job) => {
-  const fileId = job.data.entryId;
+  const sourceId = job.data.entryId;
 
   await AppRuntime.runPromise(
     Effect.acquireUseRelease(
       // Acquire: Create temp directory
       Effect.sync(() => {
-        const tempDir = mkdtempSync(join(tmpdir(), `waveform-${fileId}-`));
-        console.log(`[GenerateWaveform] Processing file ${fileId}`);
+        const tempDir = mkdtempSync(join(tmpdir(), `waveform-${sourceId}-`));
+        console.log(`[GenerateWaveform] Processing source ${sourceId}`);
         return tempDir;
       }),
 
@@ -517,27 +458,27 @@ const handleGenerateWaveform: JobHandler = async (job) => {
         Effect.gen(function* () {
           const db = yield* Database;
 
-          // Look up file to get storageKey
-          const file = yield* db.query.files.findFirst({
-            where: eq(files.id, fileId),
+          // Look up source to get storageKey
+          const source = yield* db.query.sources.findFirst({
+            where: eq(sources.id, sourceId),
           });
 
-          if (!file?.storageKey) {
+          if (!source?.storageKey) {
             return yield* Effect.fail(
-              new Error(`File ${fileId} not found or has no storageKey`),
+              new Error(`Source ${sourceId} not found or has no storageKey`),
             );
           }
 
-          const audioStorageKey = file.storageKey;
+          const audioStorageKey = source.storageKey;
           const audioLocalPath = join(tempDir, "audio.flac");
           const waveformLocalPath = join(tempDir, "waveform.dat");
           const waveformStorageKey = `${audioStorageKey}.dat`;
 
-          // Update file status to processing
+          // Update source status to processing
           yield* db
-            .update(files)
+            .update(sources)
             .set({ waveformStatus: "processing" })
-            .where(eq(files.id, fileId));
+            .where(eq(sources.id, sourceId));
 
           // Download source audio from media server (benefits from caching)
           console.log(
@@ -566,36 +507,36 @@ const handleGenerateWaveform: JobHandler = async (job) => {
             contentType: "application/octet-stream",
           });
 
-          // Update file record with waveform info
+          // Update source record with waveform info
           yield* db
-            .update(files)
+            .update(sources)
             .set({
               waveformStatus: "completed",
               waveformStorageKey,
               waveformError: null,
             })
-            .where(eq(files.id, fileId));
+            .where(eq(sources.id, sourceId));
 
-          console.log(`[GenerateWaveform] File ${fileId} completed`);
+          console.log(`[GenerateWaveform] Source ${sourceId} completed`);
         }).pipe(
-          // Handle errors - update file status to failed
+          // Handle errors - update source status to failed
           Effect.catchAll((error) =>
             Effect.gen(function* () {
               const db = yield* Database;
               const errorMessage =
                 error instanceof Error ? error.message : "Unknown error";
               console.error(
-                `[GenerateWaveform] File ${fileId} failed:`,
+                `[GenerateWaveform] Source ${sourceId} failed:`,
                 errorMessage,
               );
 
               yield* db
-                .update(files)
+                .update(sources)
                 .set({
                   waveformStatus: "failed",
                   waveformError: errorMessage,
                 })
-                .where(eq(files.id, fileId))
+                .where(eq(sources.id, sourceId))
                 .pipe(Effect.catchAll(() => Effect.void));
 
               return yield* Effect.fail(error);
@@ -611,7 +552,7 @@ const handleGenerateWaveform: JobHandler = async (job) => {
     ),
   );
 
-  // Waveform jobs don't return clip data (they're for files, not segments)
+  // Waveform jobs don't return clip data (they're for sources, not segments)
   return undefined;
 };
 
@@ -624,7 +565,7 @@ const handleGenerateWaveform: JobHandler = async (job) => {
  * 2. Extract raw audio from source file (no R2 upload yet)
  * 3. Score source audio → save to segment.scores
  * 4. Denoise audio via speech processing server
- * 5. Upload denoised audio to R2 and create clip records
+ * 5. Upload denoised audio to R2 and create clip record
  * 6. Return result (auto-triggers scoring of processed clip)
  */
 const handleDenoise: JobHandler = async (job) => {
@@ -639,11 +580,7 @@ const handleDenoise: JobHandler = async (job) => {
       const existingSegment = yield* db.query.segments.findFirst({
         where: eq(segments.id, segmentId),
         with: {
-          clip: {
-            with: {
-              file: true,
-            },
-          },
+          clip: true,
           speaker: true,
         },
       });
@@ -653,7 +590,7 @@ const handleDenoise: JobHandler = async (job) => {
       }
 
       // Return early if clip already exists
-      if (existingSegment.clip?.file?.storageKey) {
+      if (existingSegment.clip?.storageKey) {
         console.log(
           `[Denoise] Clip already exists for segment ${segmentId}, skipping`,
         );
@@ -663,13 +600,10 @@ const handleDenoise: JobHandler = async (job) => {
           clip: {
             id: existingSegment.clip.id,
             segmentId,
-            fileId: existingSegment.clip.fileId,
+            userId: existingSegment.clip.userId,
+            storageKey: existingSegment.clip.storageKey,
+            duration: existingSegment.clip.duration,
             createdAt: existingSegment.clip.createdAt.toISOString(),
-            file: {
-              id: existingSegment.clip.file.id,
-              storageKey: existingSegment.clip.file.storageKey,
-              duration: existingSegment.clip.file.duration ?? 0,
-            },
           },
         } satisfies ClipJobResult;
       }
@@ -715,7 +649,7 @@ const handleDenoise: JobHandler = async (job) => {
         `[Denoise] Denoised audio: ${denoisedBuffer.length} bytes (FLAC 48kHz)`,
       );
 
-      // Upload denoised audio to R2 and create clip records
+      // Upload denoised audio to R2 and create clip record
       const result = yield* createClipFromBuffer({
         audioBuffer: denoisedBuffer,
         context,
@@ -723,7 +657,7 @@ const handleDenoise: JobHandler = async (job) => {
         extension: "flac",
       });
 
-      console.log(`[Denoise] Clip created: ${result.clip.file.storageKey}`);
+      console.log(`[Denoise] Clip created: ${result.clip.storageKey}`);
 
       return result satisfies ClipJobResult;
     }),
@@ -744,12 +678,12 @@ const handleRemoveOverlap: JobHandler = async (job) => {
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
       const result = yield* ensureClipExists(segmentId);
-      console.log(`[RemoveOverlap] Clip ready: ${result.clip.file.storageKey}`);
+      console.log(`[RemoveOverlap] Clip ready: ${result.clip.storageKey}`);
 
       // TODO: Implement overlap removal
-      // 1. Download audio from result.clip.file.storageKey
+      // 1. Download audio from result.clip.storageKey
       // 2. Detect and remove overlapping speech regions
-      // 3. Upload processed audio (update file or create new version)
+      // 3. Upload processed audio (update clip or create new version)
       console.log(
         `[RemoveOverlap] Segment ${segmentId} - processing not yet implemented`,
       );
@@ -773,10 +707,10 @@ const handleTranscribe: JobHandler = async (job) => {
     Effect.gen(function* () {
       // Ensure clip exists (creates if needed)
       const result = yield* ensureClipExists(segmentId);
-      console.log(`[Transcribe] Clip ready: ${result.clip.file.storageKey}`);
+      console.log(`[Transcribe] Clip ready: ${result.clip.storageKey}`);
 
       // TODO: Implement transcription
-      // 1. Download audio from result.clip.file.storageKey
+      // 1. Download audio from result.clip.storageKey
       // 2. Send to transcription API (Whisper, etc.)
       // 3. Update segment.transcription with result:
       //    const db = yield* Database;
@@ -910,11 +844,11 @@ const handleCalculateScore: JobHandler = async (job) => {
       // Ensure clip exists (creates if needed)
       const result = yield* ensureClipExists(segmentId);
       console.log(
-        `[CalculateScore] Clip ready: ${result.clip.file.storageKey}`,
+        `[CalculateScore] Clip ready: ${result.clip.storageKey}`,
       );
 
       // Fetch audio from media server
-      const audioBuffer = yield* fetchAudioBuffer(result.clip.file.storageKey);
+      const audioBuffer = yield* fetchAudioBuffer(result.clip.storageKey);
       console.log(
         `[CalculateScore] Fetched ${audioBuffer.length} bytes from media server`,
       );
@@ -983,29 +917,22 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           const segmentResults = yield* db.query.segments.findMany({
             where: eq(segments.speakerId, speakerId),
             with: {
-              clip: {
-                with: {
-                  file: true,
-                },
-              },
+              clip: true,
             },
             orderBy: (segments, { asc }) => [asc(segments.startTime)],
           });
 
           // Filter to only segments with both clip AND transcription
-          // Type guard to narrow the type properly
           type ExportableSegment = (typeof segmentResults)[number] & {
             clip: NonNullable<(typeof segmentResults)[number]["clip"]> & {
-              file: NonNullable<
-                NonNullable<(typeof segmentResults)[number]["clip"]>["file"]
-              > & { storageKey: string };
+              storageKey: string;
             };
             transcription: string;
           };
 
           const exportableSegments = segmentResults.filter(
             (s): s is ExportableSegment =>
-              s.clip?.file?.storageKey != null &&
+              s.clip?.storageKey != null &&
               s.transcription != null &&
               s.transcription.trim().length > 0,
           );
@@ -1040,7 +967,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           // Process each segment
           for (let i = 0; i < exportableSegments.length; i++) {
             const segment = exportableSegments[i];
-            const clipStorageKey = segment.clip.file.storageKey;
+            const clipStorageKey = segment.clip.storageKey;
             const transcription = segment.transcription.trim();
 
             // Report progress

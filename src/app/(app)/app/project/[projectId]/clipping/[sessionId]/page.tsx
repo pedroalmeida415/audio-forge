@@ -15,33 +15,31 @@ export default function ClippingWorkspacePage({
 }) {
   const { projectId, sessionId } = use(params);
 
-  // Fetch session data with file, speakers and segments
-  const [session] = api.clippingSession.getById.useSuspenseQuery(
+  // Fetch source data with speakers and segments
+  const [source] = api.source.getById.useSuspenseQuery(
     { id: sessionId },
     { refetchOnWindowFocus: false },
   );
 
-  const sessionName =
-    session.name ??
-    session.file.name ??
-    session.file.storageKey?.split("/").pop() ??
-    "Untitled Session";
+  const sourceName =
+    source.name ??
+    source.storageKey?.split("/").pop() ??
+    "Untitled Source";
 
   return (
     <ClippingStoreProvider
       initialData={{
-        sessionId: session.id,
-        fileId: session.file.id,
-        projectId: session.projectId,
-        segments: session.segments ?? [],
-        speakers: session.speakers ?? [],
-        storageKey: session.file.storageKey!,
-        playback: { duration: session.file.duration ?? 0 },
+        sourceId: source.id,
+        projectId: source.projectId!,
+        segments: source.segments ?? [],
+        speakers: source.speakers ?? [],
+        storageKey: source.storageKey!,
+        playback: { duration: source.duration ?? 0 },
       }}
     >
       <div className="flex h-screen min-h-0 flex-col overflow-hidden">
-        {/* Outer Header: Back button, session name dropdown, diarize button */}
-        <OuterHeader sessionName={sessionName} projectId={projectId} />
+        {/* Outer Header: Back button, source name dropdown, diarize button */}
+        <OuterHeader sessionName={sourceName} projectId={projectId} />
 
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">

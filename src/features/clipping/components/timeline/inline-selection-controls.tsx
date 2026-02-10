@@ -49,7 +49,7 @@ function formatTimeWithMs(seconds: number): string {
 export function InlineSelectionControls() {
   const $store = useClippingStore();
 
-  const sessionId = useSelector(() => $store.sessionId.get());
+  const sourceId = useSelector(() => $store.sourceId.get());
   const projectId = useSelector(() => $store.projectId.get());
   const mode = useSelector(() => $store.selection.mode.get());
   const range = useSelector(() => $store.selection.getSelectionRange.get());
@@ -104,7 +104,7 @@ export function InlineSelectionControls() {
     if (!range || !selectedSpeakerId) return;
 
     createSegmentMutation.mutate({
-      sessionId,
+      sourceId,
       segment: {
         speakerId: selectedSpeakerId,
         startTime: range.start,

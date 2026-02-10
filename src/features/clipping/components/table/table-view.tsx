@@ -19,7 +19,7 @@ import {
 } from "~/components/ui/tooltip";
 import { CreateSpeakerDialog } from "~/features/clipping/components/dialogs/create-speaker-dialog";
 import { useClippingStore } from "~/features/clipping/context/store.context";
-import type { SpeakerWithSource } from "~/server/db/schema";
+import type { Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 import { SegmentsTable } from "./segments-table";
 
@@ -33,22 +33,14 @@ export function TableView() {
   const $store = useClippingStore();
   const selectedSpeakerId = useValue($store.selectedSpeakerId);
   const speakers = useValue($store.speakers);
-  const sessionId = useValue($store.sessionId);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  // Group speakers by source - computed on each render to track Legend-State mutations
-  const projectSpeakers = speakers.filter((s) => s.source === "project");
-  const localSpeakers = speakers.filter((s) => s.source === "local");
-
   const updateSpeakerMutation = api.speaker.updateSpeaker.useMutation();
-  const updateLocalSpeakerMutation =
-    api.speaker.updateLocalSpeaker.useMutation();
-  const deleteSpeakerMutation =
-    api.speaker.deleteSpeakerFromSession.useMutation();
+  const deleteSpeakerMutation = api.speaker.deleteSpeaker.useMutation();
 
   // Auto-select first speaker on mount if none selected
   useEffect(() => {
@@ -64,34 +56,23 @@ export function TableView() {
     setIsCreateDialogOpen(true);
   };
 
-  const handleStartEdit = (speaker: SpeakerWithSource) => {
+  const handleStartEdit = (speaker: Speaker) => {
     setEditingSpeakerId(speaker.id);
     setEditValue(speaker.name);
   };
 
   const handleConfirmEdit = () => {
     if (editingSpeakerId && editValue.trim()) {
-      // Find the speaker to determine source
-      const speaker = speakers.find((s) => s.id === editingSpeakerId);
-      if (speaker?.source === "local") {
-        updateLocalSpeakerMutation.mutate({
-          sessionId,
-          speakerId: editingSpeakerId,
-          name: editValue.trim(),
-        });
-      } else {
-        updateSpeakerMutation.mutate({
-          speakerId: editingSpeakerId,
-          name: editValue.trim(),
-        });
-      }
+      updateSpeakerMutation.mutate({
+        speakerId: editingSpeakerId,
+        name: editValue.trim(),
+      });
     }
     setEditingSpeakerId(null);
   };
 
-  // Delete only works for local speakers
   const handleDeleteSpeaker = (speakerId: string) => {
-    deleteSpeakerMutation.mutate({ sessionId, speakerId });
+    deleteSpeakerMutation.mutate({ speakerId });
   };
 
   // Empty state when no speakers exist at all
@@ -119,62 +100,22 @@ export function TableView() {
       >
         {/* Speaker list */}
         <div className="flex flex-1 flex-col gap-1 overflow-y-auto py-2">
-          {/* Project Speakers Section */}
-          {projectSpeakers.length > 0 && (
-            <>
-              {isExpanded && (
-                <div className="mb-1 px-3 pt-1 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-                  Project
-                </div>
-              )}
-              {projectSpeakers.map((speaker) => (
-                <SpeakerItem
-                  key={speaker.id}
-                  speaker={speaker}
-                  isSelected={selectedSpeakerId === speaker.id}
-                  isEditing={editingSpeakerId === speaker.id}
-                  isExpanded={isExpanded}
-                  editValue={editValue}
-                  setEditValue={setEditValue}
-                  onSelect={() => $store.selectSpeaker(speaker.id)}
-                  onStartEdit={() => handleStartEdit(speaker)}
-                  onConfirmEdit={handleConfirmEdit}
-                  onCancelEdit={() => setEditingSpeakerId(null)}
-                  onDelete={undefined} // Project speakers cannot be deleted
-                />
-              ))}
-            </>
-          )}
-
-          {/* Local Speakers Section */}
-          {localSpeakers.length > 0 && (
-            <>
-              {isExpanded && (
-                <div className="mt-2 mb-1 border-t px-3 pt-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-                  Local
-                </div>
-              )}
-              {!isExpanded && projectSpeakers.length > 0 && (
-                <div className="mx-auto my-1 h-px w-6 bg-border" />
-              )}
-              {localSpeakers.map((speaker) => (
-                <SpeakerItem
-                  key={speaker.id}
-                  speaker={speaker}
-                  isSelected={selectedSpeakerId === speaker.id}
-                  isEditing={editingSpeakerId === speaker.id}
-                  isExpanded={isExpanded}
-                  editValue={editValue}
-                  setEditValue={setEditValue}
-                  onSelect={() => $store.selectSpeaker(speaker.id)}
-                  onStartEdit={() => handleStartEdit(speaker)}
-                  onConfirmEdit={handleConfirmEdit}
-                  onCancelEdit={() => setEditingSpeakerId(null)}
-                  onDelete={() => handleDeleteSpeaker(speaker.id)}
-                />
-              ))}
-            </>
-          )}
+          {speakers.map((speaker) => (
+            <SpeakerItem
+              key={speaker.id}
+              speaker={speaker}
+              isSelected={selectedSpeakerId === speaker.id}
+              isEditing={editingSpeakerId === speaker.id}
+              isExpanded={isExpanded}
+              editValue={editValue}
+              setEditValue={setEditValue}
+              onSelect={() => $store.selectSpeaker(speaker.id)}
+              onStartEdit={() => handleStartEdit(speaker)}
+              onConfirmEdit={handleConfirmEdit}
+              onCancelEdit={() => setEditingSpeakerId(null)}
+              onDelete={() => handleDeleteSpeaker(speaker.id)}
+            />
+          ))}
         </div>
 
         {/* Bottom actions */}
@@ -243,7 +184,7 @@ export function TableView() {
 
 /**
  * Individual speaker item in the sidebar.
- * Renders differently based on expanded/collapsed state and source type.
+ * Renders differently based on expanded/collapsed state.
  */
 function SpeakerItem({
   speaker,
@@ -258,7 +199,7 @@ function SpeakerItem({
   onCancelEdit,
   onDelete,
 }: {
-  speaker: SpeakerWithSource;
+  speaker: Speaker;
   isSelected: boolean;
   isEditing: boolean;
   isExpanded: boolean;
@@ -268,7 +209,7 @@ function SpeakerItem({
   onStartEdit: () => void;
   onConfirmEdit: () => void;
   onCancelEdit: () => void;
-  onDelete: (() => void) | undefined; // undefined means delete is not allowed
+  onDelete: () => void;
 }) {
   const initial = speaker.name.charAt(0).toUpperCase();
 
@@ -291,11 +232,7 @@ function SpeakerItem({
         >
           {/* Avatar */}
           <div
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
-              speaker.source === "local"
-                ? "ring-1 ring-dashed ring-white/30"
-                : ""
-            }`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs"
             style={{ backgroundColor: speaker.color }}
           >
             {initial}
@@ -330,11 +267,7 @@ function SpeakerItem({
               className="flex h-auto items-center gap-2 p-1.5"
             >
               <div
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs ${
-                  speaker.source === "local"
-                    ? "ring-1 ring-dashed ring-white/30"
-                    : ""
-                }`}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-medium text-white text-xs"
                 style={{ backgroundColor: speaker.color }}
               >
                 {initial}
@@ -361,19 +294,17 @@ function SpeakerItem({
           >
             <Pencil className="h-3 w-3" />
           </Button>
-          {onDelete && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-destructive hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-destructive hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
         </div>
       )}
     </div>

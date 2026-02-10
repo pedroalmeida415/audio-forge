@@ -20,7 +20,7 @@ import { api } from "~/trpc/react";
 export function SegmentActions() {
   const $store = useClippingStore();
 
-  const sessionId = useValue($store.sessionId);
+  const sourceId = useValue($store.sourceId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
   const hasSelection = selectedSegmentIds.size > 0;
 
@@ -31,7 +31,7 @@ export function SegmentActions() {
   const handleDelete = () => {
     if (!hasSelection) return;
     deleteSegmentsMutation.mutate({
-      sessionId,
+      sourceId,
       segmentIds: Array.from(selectedSegmentIds),
     });
   };

@@ -28,43 +28,23 @@ export function ChangeSpeakerDialog({
   const $store = useClippingStore();
 
   const speakers = useValue($store.speakers);
-  const selectedSpeakerId = useValue($store.selectedSpeakerId);
-  const sessionId = useValue($store.sessionId);
+  const sourceId = useValue($store.sourceId);
   const selectedSegmentIds = useValue($store.selectedSegmentIds);
 
   const [isCreateSpeakerOpen, setIsCreateSpeakerOpen] = useState(false);
 
   const updateSegmentsMutation = api.segment.updateSegments.useMutation();
-  const promoteLocalSegmentsMutation =
-    api.segment.promoteLocalSegments.useMutation();
-
-  // Check if current speaker is local - all selected segments belong to this speaker
-  const currentSpeaker = speakers.find((s) => s.id === selectedSpeakerId);
-  const isLocalSpeaker = currentSpeaker?.source === "local";
-
-  // Always show only project speakers as targets
-  const projectSpeakers = speakers.filter((s) => s.source === "project");
 
   const handleSelectSpeaker = (speakerId: string) => {
     // Get current segment IDs at mutation time
     const targetIds = Array.from(selectedSegmentIds);
     if (targetIds.length === 0) return;
 
-    if (isLocalSpeaker) {
-      // Promote local segments to project level
-      promoteLocalSegmentsMutation.mutate({
-        sessionId,
-        localSegmentIds: targetIds,
-        targetSpeakerId: speakerId,
-      });
-    } else {
-      // Update project segments
-      updateSegmentsMutation.mutate({
-        sessionId,
-        segmentIds: targetIds,
-        updates: { speakerId },
-      });
-    }
+    updateSegmentsMutation.mutate({
+      sourceId,
+      segmentIds: targetIds,
+      updates: { speakerId },
+    });
 
     $store.clearAllSelected();
     onOpenChange(false);
@@ -81,32 +61,18 @@ export function ChangeSpeakerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {isLocalSpeaker ? "Assign to Project Speaker" : "Change Speaker"}
-          </DialogTitle>
+          <DialogTitle>Change Speaker</DialogTitle>
           <DialogDescription>
-            {isLocalSpeaker ? (
-              <>
-                Select a project speaker to assign to{" "}
-                {segmentCount === 1
-                  ? "this segment"
-                  : `${segmentCount} segments`}
-                . Local segments will be promoted to project level.
-              </>
-            ) : (
-              <>
-                Select a speaker to assign to{" "}
-                {segmentCount === 1
-                  ? "this segment"
-                  : `${segmentCount} segments`}
-              </>
-            )}
+            Select a speaker to assign to{" "}
+            {segmentCount === 1
+              ? "this segment"
+              : `${segmentCount} segments`}
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[400px]">
           <div className="grid gap-2 py-2 pr-4">
-            {projectSpeakers.map((speaker) => (
+            {speakers.map((speaker) => (
               <Button
                 key={speaker.id}
                 variant="outline"

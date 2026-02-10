@@ -1,6 +1,6 @@
 "use client";
 
-import { useSelector } from "@legendapp/state/react";
+import { useValue } from "@legendapp/state/react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -30,7 +30,7 @@ export function EditableTimeCell({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const $store = useClippingStore();
-  const sessionId = useSelector(() => $store.sessionId.get());
+  const sourceId = useValue($store.sourceId);
 
   const updateSegmentsMutation = api.segment.updateSegments.useMutation();
 
@@ -68,7 +68,7 @@ export function EditableTimeCell({
         field === "startTime" ? { startTime: parsed } : { endTime: parsed };
 
       updateSegmentsMutation.mutate({
-        sessionId,
+        sourceId,
         segmentIds: segmentId,
         updates,
       });

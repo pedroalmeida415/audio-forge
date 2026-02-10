@@ -1,15 +1,9 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Cause, Data, Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
-import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { DEFAULT_LOCAL_SPEAKER_COLOR } from "~/lib/speaker-colors";
-import {
-  clippingSessions,
-  type DiarizationInfo,
-  type LocalSegment,
-  type LocalSpeaker,
-} from "~/server/db/schema";
+import { segments, sources, speakers } from "~/server/db/schema";
 import { diarizationEvents } from "~/server/events/diarization-events";
 import { AppRuntime } from "~/services";
 import { Database } from "~/services/infra/database";
@@ -27,7 +21,7 @@ class ValidationError extends Data.TaggedError("ValidationError")<{
   cause: unknown;
 }> {}
 
-class SessionNotFoundError extends Data.TaggedError("SessionNotFoundError")<{
+class SourceNotFoundError extends Data.TaggedError("SourceNotFoundError")<{
   jobId: string;
 }> {}
 
@@ -78,18 +72,18 @@ const handleWebhook = (request: NextRequest) =>
     }
     const payload = parseResult.data;
 
-    // Find the clipping session by diarization job ID
-    const session = yield* db.query.clippingSessions.findFirst({
-      where: sql`${clippingSessions.diarization}->>'jobId' = ${payload.jobId}`,
+    // Find the source by diarization job ID
+    const source = yield* db.query.sources.findFirst({
+      where: eq(sources.diarizationJobId, payload.jobId),
     });
 
-    if (!session) {
+    if (!source) {
       return yield* Effect.fail(
-        new SessionNotFoundError({ jobId: payload.jobId }),
+        new SourceNotFoundError({ jobId: payload.jobId }),
       );
     }
 
-    const now = new Date().toISOString();
+    const now = new Date();
 
     // Update based on status
     if (payload.status === "succeeded" && payload.output) {
@@ -98,95 +92,74 @@ const handleWebhook = (request: NextRequest) =>
         ...new Set(payload.output.diarization.map((s) => s.speaker)),
       ];
 
-      // Build local speakers with generated UUIDs (NOT inserted into speakers table)
-      // Local speakers start with a neutral grey color - they get a random color on rename
-      const localSpeakers: LocalSpeaker[] = speakerLabels.map((label) => ({
-        id: uuidv4(),
-        label,
-        color: DEFAULT_LOCAL_SPEAKER_COLOR,
-        createdAt: now,
-      }));
+      // Create real speaker rows in DB
+      const speakerRows = yield* db
+        .insert(speakers)
+        .values(
+          speakerLabels.map((label) => ({
+            projectId: source.projectId!,
+            userId: source.userId,
+            name: label,
+            color: DEFAULT_LOCAL_SPEAKER_COLOR,
+            sourceId: source.id,
+            origin: "diarization" as const,
+          })),
+        )
+        .returning();
 
-      // Build speaker map (label -> LocalSpeaker) for segment creation
-      const speakerMap = new Map(localSpeakers.map((s) => [s.label, s]));
+      // Build speaker map (label -> speaker row) for segment creation
+      const speakerMap = new Map(
+        speakerRows.map((s, i) => [speakerLabels[i]!, s]),
+      );
 
-      // Build local segments referencing local speaker IDs
-      const localSegments: LocalSegment[] = payload.output.diarization.map(
-        (seg) => ({
-          id: uuidv4(),
+      // Create real segment rows in DB
+      yield* db.insert(segments).values(
+        payload.output.diarization.map((seg) => ({
+          sourceId: source.id,
           speakerId: speakerMap.get(seg.speaker)!.id,
           startTime: seg.start,
           endTime: seg.end,
-          createdAt: now,
-        }),
+        })),
       );
 
-      // Update diarization info with full output stored in JSONB
-      const diarizationInfo: DiarizationInfo = {
-        ...(session.diarization ?? {
-          jobId: payload.jobId,
-          startedAt: now,
-          completedAt: null,
-          error: null,
-        }),
-        status: "completed",
-        completedAt: now,
-        error: null,
-        speakers: localSpeakers,
-        segments: localSegments,
-      };
-
+      // Update source diarization status
       yield* db
-        .update(clippingSessions)
-        .set({ diarization: diarizationInfo })
-        .where(eq(clippingSessions.id, session.id));
+        .update(sources)
+        .set({
+          diarizationStatus: "completed",
+          diarizationCompletedAt: now,
+          diarizationError: null,
+        })
+        .where(eq(sources.id, source.id));
 
       // Emit completion event for SSE subscribers
-      diarizationEvents.emitCompletion(session.id, "completed");
+      diarizationEvents.emitCompletion(source.id, "completed");
 
       console.log(
-        `[Diarization] Completed for session ${session.id}: ${localSpeakers.length} local speakers, ${localSegments.length} local segments (stored in JSONB)`,
+        `[Diarization] Completed for source ${source.id}: ${speakerRows.length} speakers, ${payload.output.diarization.length} segments`,
       );
     } else if (payload.status === "failed" || payload.status === "canceled") {
-      // Update diarization info with failed status
-      const diarizationInfo: DiarizationInfo = {
-        ...(session.diarization ?? {
-          jobId: payload.jobId,
-          startedAt: now,
-          completedAt: null,
-          error: null,
-        }),
-        status: "failed",
-        completedAt: now,
-        error:
-          payload.status === "canceled"
-            ? "Diarization was canceled"
-            : "Diarization failed",
-      };
-
+      // Update source with failed status
       yield* db
-        .update(clippingSessions)
-        .set({ diarization: diarizationInfo })
-        .where(eq(clippingSessions.id, session.id));
+        .update(sources)
+        .set({
+          diarizationStatus: "failed",
+          diarizationCompletedAt: now,
+          diarizationError:
+            payload.status === "canceled"
+              ? "Diarization was canceled"
+              : "Diarization failed",
+        })
+        .where(eq(sources.id, source.id));
 
       // Emit failure event for SSE subscribers
-      diarizationEvents.emitCompletion(session.id, "failed");
+      diarizationEvents.emitCompletion(source.id, "failed");
     } else if (payload.status === "running") {
       // Update status to running
-      const diarizationInfo: DiarizationInfo = {
-        ...(session.diarization ?? {
-          jobId: payload.jobId,
-          startedAt: now,
-          completedAt: null,
-          error: null,
-        }),
-        status: "running",
-      };
-
       yield* db
-        .update(clippingSessions)
-        .set({ diarization: diarizationInfo })
-        .where(eq(clippingSessions.id, session.id));
+        .update(sources)
+        .set({ diarizationStatus: "running" })
+        .where(eq(sources.id, source.id));
     }
 
     return NextResponse.json({ received: true });
@@ -214,13 +187,13 @@ export async function POST(request: NextRequest) {
             ),
           );
         },
-        SessionNotFoundError: (error) => {
+        SourceNotFoundError: (error) => {
           console.error(
-            `[Diarization Webhook] Session not found for job: ${error.jobId}`,
+            `[Diarization Webhook] Source not found for job: ${error.jobId}`,
           );
           return Effect.succeed(
             NextResponse.json(
-              { error: "Clipping session not found" },
+              { error: "Source not found" },
               { status: 404 },
             ),
           );

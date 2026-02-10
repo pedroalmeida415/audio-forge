@@ -65,7 +65,7 @@ export function trpcMutation<P extends AppProcedurePath>(
  *
  * @example
  * ```ts
- * const handler = trpcSubscription("clippingSession.onDiarizationComplete");
+ * const handler = trpcSubscription("source.onDiarizationComplete");
  * ```
  */
 export function trpcSubscription(path: AppProcedurePath) {

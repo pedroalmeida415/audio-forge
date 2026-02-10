@@ -1,21 +1,17 @@
 import type { Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
-import type { Clip, File, Segment, Speaker } from "~/server/db/schema";
+import type { Clip, Segment, Speaker } from "~/server/db/schema";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type SegmentWithClip = Segment & {
-  clip:
-    | (Clip & {
-        file: Pick<File, "storageKey" | "duration">;
-      })
-    | null;
-  session: {
+  clip: Clip | null;
+  source: {
     id: string;
     name: string | null;
-    file: Pick<File, "name" | "storageKey">;
+    storageKey: string | null;
   };
 };
 

@@ -116,6 +116,36 @@ export interface AudioScores {
 }
 
 // ============================================================================
+// ENUMS
+// ============================================================================
+
+export const waveformStatus = pgEnum("waveform_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+
+export const diarizationStatus = pgEnum("diarization_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+]);
+
+export const speakerOrigin = pgEnum("speaker_origin", [
+  "diarization",
+  "user",
+]);
+
+export const clipProcessingStatus = pgEnum("clip_processing_status", [
+  "pending",
+  "processing",
+  "complete",
+  "failed",
+]);
+
+// ============================================================================
 // MAIN TABLES
 // ============================================================================
 
@@ -141,13 +171,65 @@ export const projects = pgTable(
 );
 
 /**
+ * Sources - Audio source files with diarization metadata
+ *
+ * Replaces the old `files` + `clippingSessions` tables.
+ * Each source is a single audio file that can be diarized and clipped.
+ */
+export const sources = pgTable(
+  "source",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+
+    storageKey: varchar("storage_key", { length: 1024 }),
+    duration: doublePrecision("duration"),
+    name: varchar("name", { length: 255 }),
+    originalFileName: varchar("original_file_name", { length: 255 }),
+
+    // Waveform generation
+    waveformStatus: waveformStatus("waveform_status").default("pending"),
+    waveformStorageKey: varchar("waveform_storage_key", { length: 1024 }),
+    waveformError: text("waveform_error"),
+
+    // Diarization (formerly in clippingSessions JSONB)
+    diarizationJobId: varchar("diarization_job_id", { length: 255 }),
+    diarizationStatus: diarizationStatus("diarization_status"),
+    diarizationStartedAt: timestamp("diarization_started_at", {
+      withTimezone: true,
+    }),
+    diarizationCompletedAt: timestamp("diarization_completed_at", {
+      withTimezone: true,
+    }),
+    diarizationError: text("diarization_error"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("source_project_id_idx").on(table.projectId),
+    index("source_user_id_idx").on(table.userId),
+    index("source_diarization_job_id_idx").on(table.diarizationJobId),
+  ],
+);
+
+/**
  * Speakers - Project-level speaker identities
  *
- * Speakers with names starting with "SPEAKER_" are diarization-generated
- * and are hidden from project-level views. They are immutable (no rename allowed).
+ * Speakers with `origin: "diarization"` are auto-generated from diarization
+ * and linked to a specific source via `sourceId`.
  *
- * Regular speakers (e.g., "John", "Sarah") represent real speaker identities
- * and serve as the target for organizing segments.
+ * Speakers with `origin: "user"` are created manually by the user.
  */
 export const speakers = pgTable(
   "speaker",
@@ -163,6 +245,12 @@ export const speakers = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     color: varchar("color", { length: 50 }).notNull(),
 
+    // Source link (set for diarization speakers)
+    sourceId: uuid("source_id").references(() => sources.id, {
+      onDelete: "set null",
+    }),
+    origin: speakerOrigin("origin").notNull().default("user"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -175,22 +263,22 @@ export const speakers = pgTable(
     index("speaker_project_id_idx").on(table.projectId),
     index("speaker_user_id_idx").on(table.userId),
     index("speaker_name_idx").on(table.name),
+    index("speaker_source_id_idx").on(table.sourceId),
   ],
 );
 
 /**
  * Segments - Normalized time ranges with speaker assignment
  *
- * Segments belong to a clipping session and are always assigned to a speaker.
- * The speaker reference determines which "collection" the segment belongs to.
+ * Segments belong to a source and are always assigned to a speaker.
  */
 export const segments = pgTable(
   "segment",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    sessionId: uuid("session_id")
+    sourceId: uuid("source_id")
       .notNull()
-      .references(() => clippingSessions.id, { onDelete: "cascade" }),
+      .references(() => sources.id, { onDelete: "cascade" }),
     speakerId: uuid("speaker_id")
       .notNull()
       .references(() => speakers.id, { onDelete: "cascade" }),
@@ -198,13 +286,8 @@ export const segments = pgTable(
     startTime: doublePrecision("start_time").notNull(),
     endTime: doublePrecision("end_time").notNull(),
 
-    // User-provided transcription (nullable)
     transcription: text("transcription"),
-
-    // Free-form tags for categorization
     tags: text("tags").array(),
-
-    // Audio quality scores (nullable until calculated)
     scores: jsonb("scores").$type<AudioScores>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -216,149 +299,18 @@ export const segments = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    index("segment_session_id_idx").on(table.sessionId),
+    index("segment_source_id_idx").on(table.sourceId),
     index("segment_speaker_id_idx").on(table.speakerId),
     index("segment_start_time_idx").on(table.startTime),
   ],
 );
 
-export const waveformStatus = pgEnum("waveform_status", [
-  "pending",
-  "processing",
-  "completed",
-  "failed",
-]);
-
 /**
- * Files - Pure storage reference for audio files
- */
-export const files = pgTable(
-  "file",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-
-    // Project association
-    projectId: uuid("project_id").references(() => projects.id, {
-      onDelete: "cascade",
-    }),
-
-    storageKey: varchar("storage_key", { length: 1024 }),
-
-    // Audio duration in seconds (set on upload)
-    duration: doublePrecision("duration"),
-
-    // Display name (editable by user)
-    name: varchar("name", { length: 255 }),
-
-    // Waveform generation
-    waveformStatus: waveformStatus("waveform_status").default("pending"),
-    waveformStorageKey: varchar("waveform_storage_key", { length: 1024 }),
-    waveformError: text("waveform_error"),
-
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [
-    index("file_project_id_idx").on(table.projectId),
-    index("file_user_id_idx").on(table.userId),
-  ],
-);
-
-/**
- * Local speaker - stored in JSONB as part of diarization output
- * These are session-local and not shared across the project.
- */
-export interface LocalSpeaker {
-  id: string; // UUID generated during webhook processing
-  label: string; // Original pyannote label (e.g., "SPEAKER_00")
-  color: string; // HSL color string
-  createdAt: string; // ISO timestamp
-}
-
-/**
- * Local segment - stored in JSONB as part of diarization output
- * These are session-local and reference LocalSpeaker.id.
- */
-export interface LocalSegment {
-  id: string;
-  speakerId: string; // References LocalSpeaker.id
-  startTime: number;
-  endTime: number;
-  createdAt: string; // ISO timestamp
-}
-
-/**
- * Diarization job info - embedded in clipping session
- * Now includes full diarization output (speakers + segments) in JSONB.
- */
-export interface DiarizationInfo {
-  jobId: string;
-  status: "pending" | "running" | "completed" | "failed";
-  startedAt: string;
-  completedAt: string | null;
-  error: string | null;
-  // Full diarization output stored locally
-  speakers?: LocalSpeaker[];
-  segments?: LocalSegment[];
-}
-
-/**
- * Source discriminator for unified speaker/segment types
- */
-export type DataSource = "local" | "project";
-
-/**
- * Clipping Sessions - Workspace state for editing audio
- * One session per file (1:1 relationship)
- */
-export const clippingSessions = pgTable(
-  "clipping_session",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    fileId: uuid("file_id")
-      .notNull()
-      .references(() => files.id, { onDelete: "cascade" })
-      .unique(),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-
-    // Session name (defaults to file name, editable by user)
-    name: varchar("name", { length: 255 }),
-
-    // Embedded diarization job info (metadata only)
-    diarization: jsonb("diarization").$type<DiarizationInfo>(),
-
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [
-    index("clipping_session_file_id_idx").on(table.fileId),
-    index("clipping_session_project_id_idx").on(table.projectId),
-  ],
-);
-
-/**
- * Clips - Processed audio files for segments
+ * Clips - Processed audio from segments
  *
- * 1:1 relationship with segments. Each clip references a file record
- * which holds the storage key and duration.
+ * Self-contained: stores its own storageKey and duration directly
+ * (no longer references a separate file record).
+ * 1:1 relationship with segments.
  */
 export const clips = pgTable(
   "clip",
@@ -367,12 +319,17 @@ export const clips = pgTable(
     segmentId: uuid("segment_id")
       .notNull()
       .references(() => segments.id, { onDelete: "cascade" })
-      .unique(), // 1:1 relationship
-    fileId: uuid("file_id")
+      .unique(),
+    userId: uuid("user_id")
       .notNull()
-      .references(() => files.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade" }),
 
-    // Processed audio quality scores (nullable until calculated)
+    storageKey: varchar("storage_key", { length: 1024 }).notNull(),
+    duration: doublePrecision("duration").notNull(),
+
+    processingStatus: clipProcessingStatus("processing_status"),
+    processingError: text("processing_error"),
+
     scores: jsonb("scores").$type<AudioScores>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -401,8 +358,17 @@ export const sessionRelations = relations(session, ({ one }) => ({
 
 export const projectRelations = relations(projects, ({ many }) => ({
   speakers: many(speakers),
-  clippingSessions: many(clippingSessions),
-  files: many(files),
+  sources: many(sources),
+}));
+
+export const sourceRelations = relations(sources, ({ one, many }) => ({
+  user: one(user, { fields: [sources.userId], references: [user.id] }),
+  project: one(projects, {
+    fields: [sources.projectId],
+    references: [projects.id],
+  }),
+  segments: many(segments),
+  speakers: many(speakers),
 }));
 
 export const speakerRelations = relations(speakers, ({ one, many }) => ({
@@ -414,13 +380,17 @@ export const speakerRelations = relations(speakers, ({ one, many }) => ({
     fields: [speakers.userId],
     references: [user.id],
   }),
+  source: one(sources, {
+    fields: [speakers.sourceId],
+    references: [sources.id],
+  }),
   segments: many(segments),
 }));
 
 export const segmentRelations = relations(segments, ({ one }) => ({
-  session: one(clippingSessions, {
-    fields: [segments.sessionId],
-    references: [clippingSessions.id],
+  source: one(sources, {
+    fields: [segments.sourceId],
+    references: [sources.id],
   }),
   speaker: one(speakers, {
     fields: [segments.speakerId],
@@ -429,43 +399,14 @@ export const segmentRelations = relations(segments, ({ one }) => ({
   clip: one(clips),
 }));
 
-export const clippingSessionRelations = relations(
-  clippingSessions,
-  ({ one, many }) => ({
-    file: one(files, {
-      fields: [clippingSessions.fileId],
-      references: [files.id],
-    }),
-    project: one(projects, {
-      fields: [clippingSessions.projectId],
-      references: [projects.id],
-    }),
-    user: one(user, {
-      fields: [clippingSessions.userId],
-      references: [user.id],
-    }),
-    segments: many(segments),
-  }),
-);
-
-export const fileRelations = relations(files, ({ one }) => ({
-  user: one(user, { fields: [files.userId], references: [user.id] }),
-  project: one(projects, {
-    fields: [files.projectId],
-    references: [projects.id],
-  }),
-  clippingSession: one(clippingSessions),
-  clip: one(clips),
-}));
-
 export const clipRelations = relations(clips, ({ one }) => ({
   segment: one(segments, {
     fields: [clips.segmentId],
     references: [segments.id],
   }),
-  file: one(files, {
-    fields: [clips.fileId],
-    references: [files.id],
+  user: one(user, {
+    fields: [clips.userId],
+    references: [user.id],
   }),
 }));
 
@@ -473,25 +414,8 @@ export const clipRelations = relations(clips, ({ one }) => ({
 // TYPE EXPORTS
 // ============================================================================
 
-export type ClippingSession = typeof clippingSessions.$inferSelect;
-export type File = typeof files.$inferSelect;
+export type Source = typeof sources.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Speaker = typeof speakers.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
 export type Clip = typeof clips.$inferSelect;
-
-/**
- * Speaker with source discrimination for unified API responses.
- * Local speakers come from diarization JSONB, project speakers from the speakers table.
- */
-export interface SpeakerWithSource extends Speaker {
-  source: DataSource;
-}
-
-/**
- * Segment with source discrimination for unified API responses.
- * Local segments come from diarization JSONB, project segments from the segments table.
- */
-export interface SegmentWithSource extends Segment {
-  source: DataSource;
-}

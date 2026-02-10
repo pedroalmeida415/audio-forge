@@ -1,8 +1,8 @@
-import { clippingSessionRouter } from "~/server/api/routers/clipping-session";
 import { exportRouter } from "~/server/api/routers/export";
 import { fileRouter } from "~/server/api/routers/file";
 import { projectRouter } from "~/server/api/routers/project";
 import { segmentRouter } from "~/server/api/routers/segment";
+import { sourceRouter } from "~/server/api/routers/source";
 import { speakerRouter } from "~/server/api/routers/speaker";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
@@ -13,7 +13,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  */
 export const appRouter = createTRPCRouter({
   projects: projectRouter,
-  clippingSession: clippingSessionRouter,
+  source: sourceRouter,
   segment: segmentRouter,
   speaker: speakerRouter,
   file: fileRouter,
@@ -27,7 +27,7 @@ export type AppRouter = typeof appRouter;
  * Create a server-side caller for the tRPC API.
  * @example
  * const trpc = createCaller(createContext);
- * const res = await trpc.project.list();
+ * const res = await trpc.projects.list();
  *       ^? Project[]
  */
 export const createCaller = createCallerFactory(appRouter);

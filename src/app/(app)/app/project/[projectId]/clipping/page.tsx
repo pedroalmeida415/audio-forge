@@ -49,15 +49,15 @@ export default function ClippingEmptyStatePage({
   const [isExtracting, setIsExtracting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const [existingSessions] = api.clippingSession.listByProject.useSuspenseQuery(
+  const [existingSessions] = api.source.listByProject.useSuspenseQuery(
     { projectId },
     { refetchOnWindowFocus: false },
   );
 
   const getUploadUrl = api.file.getUploadUrl.useMutation();
   const createFile = api.file.create.useMutation({
-    onSuccess: ({ session }) => {
-      router.push(`/app/project/${projectId}/clipping/${session.id}`);
+    onSuccess: ({ source }) => {
+      router.push(`/app/project/${projectId}/clipping/${source.id}`);
     },
   });
 
@@ -145,8 +145,8 @@ export default function ClippingEmptyStatePage({
         },
       );
 
-      // Navigate to the new session
-      router.push(`/app/project/${projectId}/clipping/${result.session.id}`);
+      // Navigate to the new source
+      router.push(`/app/project/${projectId}/clipping/${result.source.id}`);
     } catch (error) {
       console.error("Video upload failed:", error);
       setUploadError(
@@ -334,8 +334,7 @@ export default function ClippingEmptyStatePage({
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium text-sm">
                           {session.name ??
-                            session.file?.name ??
-                            session.file?.storageKey?.split("/").pop() ??
+                            session.storageKey?.split("/").pop() ??
                             "Untitled"}
                         </p>
                         <p className="text-muted-foreground text-xs">
@@ -425,8 +424,7 @@ async function uploadWithProgress(
 
 // Helper function for video upload with progress to tRPC endpoint
 interface VideoUploadResult {
-  file: { id: string };
-  session: { id: string };
+  source: { id: string };
 }
 
 async function uploadVideoWithProgress(
@@ -458,7 +456,7 @@ async function uploadVideoWithProgress(
           // tRPC with superjson wraps data in result.data.json
           const data = response.result?.data?.json ?? response.result?.data;
 
-          if (data?.session?.id) {
+          if (data?.source?.id) {
             resolve(data);
           } else if (response.error) {
             const errorMessage =

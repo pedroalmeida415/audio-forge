@@ -1,7 +1,7 @@
 "use client";
 
 import { observe } from "@legendapp/state";
-import { useSelector } from "@legendapp/state/react";
+import { useValue } from "@legendapp/state/react";
 import { scaleLinear } from "d3-scale";
 import { select } from "d3-selection";
 import { area, curveLinear } from "d3-shape";
@@ -53,12 +53,12 @@ export function TimelineWaveform() {
   const waveformRef = useRef<WaveformData | null>(null);
   const peakAmplitudeRef = useRef<number>(1);
 
-  // Get fileId from store
-  const fileId = useSelector(() => $store.fileId.get());
+  // Get sourceId from store
+  const sourceId = useValue($store.sourceId);
 
   // Load waveform data from R2 via API
   const { waveform, isLoading, status, error } = useWaveformData({
-    fileId,
+    sourceId,
   });
 
   // Store waveform and calculate actual peak amplitude for normalization
@@ -70,9 +70,7 @@ export function TimelineWaveform() {
   }, [waveform]);
 
   // Subscribe to container width for SVG sizing
-  const containerWidth = useSelector(() =>
-    $store.timeline.containerWidth.get(),
-  );
+  const containerWidth = useValue($store.timeline.containerWidth);
 
   // Reactive rendering via observe()
   useEffect(() => {

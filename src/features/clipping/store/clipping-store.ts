@@ -1,6 +1,6 @@
 import { batch, type Observable } from "@legendapp/state";
 import { useObservable } from "@legendapp/state/react";
-import type { SegmentWithSource, SpeakerWithSource } from "~/server/db/schema";
+import type { Segment, Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
 import { setupMutationDefaults } from "./mutations";
@@ -24,8 +24,7 @@ export { TIMELINE_CONSTANTS } from "./constants";
  */
 export type RootStateData = Pick<
   ClippingStoreState,
-  | "sessionId"
-  | "fileId"
+  | "sourceId"
   | "projectId"
   | "segments"
   | "speakers"
@@ -49,12 +48,12 @@ const ROOT_DEFAULTS: Pick<
 
 /**
  * Initial data for the clipping store.
- * Required: core data fields (sessionId, fileId, etc).
+ * Required: core data fields (sourceId, etc).
  * Optional: UI state and slice state overrides.
  */
 export type ClippingStoreInitialData = Pick<
   RootStateData,
-  "sessionId" | "fileId" | "projectId" | "segments" | "speakers" | "storageKey"
+  "sourceId" | "projectId" | "segments" | "speakers" | "storageKey"
 > &
   Partial<
     Pick<
@@ -99,7 +98,7 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
 
           return acc;
         },
-        new Map() as Map<string, Observable<SegmentWithSource>[]>,
+        new Map() as Map<string, Observable<Segment>[]>,
       ),
 
     // Actions
@@ -195,8 +194,8 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
 
     // Replace session data with server state (used when diarization completes)
     replaceSessionData: (
-      newSegments: SegmentWithSource[],
-      newSpeakers: SpeakerWithSource[],
+      newSegments: Segment[],
+      newSpeakers: Speaker[],
     ) => {
       batch(() => {
         $store.segments.set(newSegments);
@@ -209,11 +208,11 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
     },
 
     // Speaker CRUD actions (optimistic updates handled by mutations.ts)
-    addSpeaker: (speaker: SpeakerWithSource) => {
+    addSpeaker: (speaker: Speaker) => {
       $store.speakers.push(speaker);
     },
 
-    updateSpeaker: (speakerId: string, updates: Partial<SpeakerWithSource>) => {
+    updateSpeaker: (speakerId: string, updates: Partial<Speaker>) => {
       const index = $store.speakers.peek().findIndex((s) => s.id === speakerId);
       if (index !== -1) {
         $store.speakers[index]?.assign(updates);
@@ -247,12 +246,11 @@ export function createClippingStore(initialData: ClippingStoreInitialData) {
 
 interface ClippingStoreState {
   // Core data
-  sessionId: string;
-  fileId: string;
+  sourceId: string;
   projectId: string;
 
-  segments: SegmentWithSource[];
-  speakers: SpeakerWithSource[];
+  segments: Segment[];
+  speakers: Speaker[];
 
   selectedSpeakerId: string | null;
   selectedSegmentIds: Set<string>;
@@ -262,7 +260,7 @@ interface ClippingStoreState {
   storageKey: string;
 
   // Computed values
-  segmentsBySpeaker: () => Map<string, Observable<SegmentWithSource>[]>;
+  segmentsBySpeaker: () => Map<string, Observable<Segment>[]>;
 
   // Speaker selection
   selectSpeaker: (speakerId: string | null) => void;
@@ -277,15 +275,15 @@ interface ClippingStoreState {
 
   // Replace session data with server state (for diarization completion)
   replaceSessionData: (
-    segments: SegmentWithSource[],
-    speakers: SpeakerWithSource[],
+    segments: Segment[],
+    speakers: Speaker[],
   ) => void;
 
   // Speaker CRUD
-  addSpeaker: (speaker: SpeakerWithSource) => void;
+  addSpeaker: (speaker: Speaker) => void;
   updateSpeaker: (
     speakerId: string,
-    updates: Partial<SpeakerWithSource>,
+    updates: Partial<Speaker>,
   ) => void;
   removeSpeaker: (speakerId: string) => void;
 

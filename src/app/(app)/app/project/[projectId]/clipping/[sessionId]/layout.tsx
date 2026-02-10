@@ -11,7 +11,7 @@ export default async function ClippingWorkspaceLayout({
 
   // Prefetch session data for the workspace
   // Note: audio URL prefetch needs session data first, so we only prefetch session here
-  void api.clippingSession.getById.prefetch({ id: sessionId });
+  void api.source.getById.prefetch({ id: sessionId });
 
   return <HydrateClient>{children}</HydrateClient>;
 }

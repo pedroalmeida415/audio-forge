@@ -7,18 +7,18 @@ import { api } from "~/trpc/react";
 
 interface ClipStudioTimelineProps {
   projectId: string;
-  sessionId: string | null;
+  sourceId: string | null;
 }
 
 export function ClipStudioTimeline({
   projectId,
-  sessionId,
+  sourceId,
 }: ClipStudioTimelineProps) {
-  if (!sessionId) {
+  if (!sourceId) {
     return (
       <div className="flex h-56 items-center justify-center text-muted-foreground">
         <p className="text-sm">
-          Select a clipping session to view the timeline
+          Select a source to view the timeline
         </p>
       </div>
     );
@@ -26,26 +26,26 @@ export function ClipStudioTimeline({
 
   return (
     <ClipStudioTimelineInner
-      key={sessionId}
-      sessionId={sessionId}
+      key={sourceId}
+      sourceId={sourceId}
       projectId={projectId}
     />
   );
 }
 
 function ClipStudioTimelineInner({
-  sessionId,
+  sourceId,
   projectId,
 }: {
-  sessionId: string;
+  sourceId: string;
   projectId: string;
 }) {
   const {
-    data: session,
+    data: source,
     isLoading,
     error,
-  } = api.clippingSession.getById.useQuery(
-    { id: sessionId },
+  } = api.source.getById.useQuery(
+    { id: sourceId },
     { refetchOnWindowFocus: false },
   );
 
@@ -59,10 +59,10 @@ function ClipStudioTimelineInner({
     );
   }
 
-  if (error || !session) {
+  if (error || !source) {
     return (
       <div className="flex h-56 items-center justify-center text-muted-foreground">
-        <p className="text-sm">Failed to load session data</p>
+        <p className="text-sm">Failed to load source data</p>
       </div>
     );
   }
@@ -70,13 +70,12 @@ function ClipStudioTimelineInner({
   return (
     <ClippingStoreProvider
       initialData={{
-        sessionId: session.id,
-        fileId: session.file.id,
+        sourceId: source.id,
         projectId: projectId,
-        segments: session.segments ?? [],
-        speakers: session.speakers ?? [],
-        storageKey: session.file.storageKey!,
-        playback: { duration: session.file.duration ?? 0 },
+        segments: source.segments ?? [],
+        speakers: source.speakers ?? [],
+        storageKey: source.storageKey!,
+        playback: { duration: source.duration ?? 0 },
       }}
     >
       <TimelineContainer />

@@ -5,14 +5,13 @@ import type { AudioScores } from "~/server/db/schema";
 export interface ClipEventData {
   id: string;
   segmentId: string;
-  fileId: string;
+  userId: string;
+  storageKey: string;
+  duration: number;
+  processingStatus: string | null;
+  processingError: string | null;
   scores: AudioScores | null;
   createdAt: string;
-  file: {
-    id: string;
-    storageKey: string;
-    duration: number;
-  };
 }
 
 export interface ClipEvent {

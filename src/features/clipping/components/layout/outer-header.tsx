@@ -1,6 +1,6 @@
 "use client";
 
-import { useSelector } from "@legendapp/state/react";
+import { useValue } from "@legendapp/state/react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -29,23 +29,23 @@ interface OuterHeaderProps {
 
 export function OuterHeader({ sessionName, projectId }: OuterHeaderProps) {
   const $store = useClippingStore();
-  const sessionId = useSelector(() => $store.sessionId.get());
+  const sourceId = useValue($store.sourceId);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(sessionName);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch other sessions in project for dropdown
-  const { data: sessions } = api.clippingSession.listByProject.useQuery(
+  // Fetch other sources in project for dropdown
+  const { data: sources } = api.source.listByProject.useQuery(
     { projectId },
     { refetchOnWindowFocus: false },
   );
 
-  const renameMutation = api.clippingSession.rename.useMutation({
+  const renameMutation = api.source.rename.useMutation({
     onSuccess: () => setIsEditing(false),
   });
 
-  const diarizeMutation = api.clippingSession.startDiarization.useMutation();
+  const diarizeMutation = api.source.startDiarization.useMutation();
   const isDiarizing = diarizeMutation.isPending;
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export function OuterHeader({ sessionName, projectId }: OuterHeaderProps) {
 
   const handleConfirmEdit = () => {
     if (editValue.trim() && editValue !== sessionName) {
-      renameMutation.mutate({ id: sessionId, name: editValue.trim() });
+      renameMutation.mutate({ id: sourceId, name: editValue.trim() });
     } else {
       setIsEditing(false);
     }
@@ -76,7 +76,7 @@ export function OuterHeader({ sessionName, projectId }: OuterHeaderProps) {
     }
   };
 
-  const otherSessions = sessions?.filter((s) => s.id !== sessionId) ?? [];
+  const otherSources = sources?.filter((s) => s.id !== sourceId) ?? [];
 
   return (
     <header className="flex h-12 items-center justify-between border-b bg-background px-3">
@@ -118,22 +118,21 @@ export function OuterHeader({ sessionName, projectId }: OuterHeaderProps) {
                 Rename session
               </DropdownMenuItem>
 
-              {otherSessions.length > 0 && (
+              {otherSources.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
                   <div className="px-2 py-1.5 text-muted-foreground text-xs">
-                    Switch to another session
+                    Switch to another source
                   </div>
-                  {otherSessions.map((session) => (
-                    <DropdownMenuItem key={session.id} asChild>
+                  {otherSources.map((source) => (
+                    <DropdownMenuItem key={source.id} asChild>
                       <Link
-                        href={`/app/project/${projectId}/clipping/${session.id}`}
+                        href={`/app/project/${projectId}/clipping/${source.id}`}
                         className="cursor-pointer"
                       >
                         <span className="truncate">
-                          {session.name ??
-                            session.file?.name ??
-                            session.file?.storageKey?.split("/").pop()}
+                          {source.name ??
+                            source.storageKey?.split("/").pop()}
                         </span>
                       </Link>
                     </DropdownMenuItem>
@@ -162,7 +161,7 @@ export function OuterHeader({ sessionName, projectId }: OuterHeaderProps) {
           variant="outline"
           className="h-8 gap-1.5"
           disabled={isDiarizing}
-          onClick={() => diarizeMutation.mutate({ sessionId })}
+          onClick={() => diarizeMutation.mutate({ sourceId })}
         >
           {isDiarizing ? (
             <>
