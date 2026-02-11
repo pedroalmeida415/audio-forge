@@ -1,3 +1,4 @@
+import { ClipStudioPanel } from "~/features/speaker/components/clip-studio-panel";
 import { api, HydrateClient } from "~/trpc/server";
 
 export default async function ProjectLayout({
@@ -10,6 +11,12 @@ export default async function ProjectLayout({
   const { projectId } = await params;
 
   void api.projects.getById.prefetch({ id: projectId });
+  void api.source.listByProject.prefetch({ projectId });
 
-  return <HydrateClient>{children}</HydrateClient>;
+  return (
+    <HydrateClient>
+      {children}
+      <ClipStudioPanel />
+    </HydrateClient>
+  );
 }

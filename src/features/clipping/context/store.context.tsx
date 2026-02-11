@@ -102,28 +102,28 @@ function PlaybackInitializer() {
 
 function DiarizationSubscriber() {
   const $store = useClippingStore();
-  const sessionId = useValue($store.sessionId);
+  const sourceId = useValue($store.sourceId);
   const trpcUtils = api.useUtils();
 
-  api.clippingSession.onDiarizationComplete.useSubscription(
-    { sessionId },
+  api.source.onDiarizationComplete.useSubscription(
+    { sourceId },
     {
       onData: async (event) => {
         if (event.status === "completed") {
-          // Refetch session data from server
-          const session = await trpcUtils.clippingSession.getById.fetch({
-            id: sessionId,
+          // Refetch source data from server
+          const source = await trpcUtils.source.getById.fetch({
+            id: sourceId,
           });
 
           // Replace store state with server data
           $store.replaceSessionData(
-            session.segments ?? [],
-            session.speakers ?? [],
+            source.segments ?? [],
+            source.speakers ?? [],
           );
         }
         // For failed status, we could show a toast, but for now just log
         if (event.status === "failed") {
-          console.error("Diarization failed for session:", sessionId);
+          console.error("Diarization failed for source:", sourceId);
         }
       },
       onError: (error) => {

@@ -10,7 +10,7 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 /**
  * Extracts all procedure paths from RouterInputs.
- * e.g., "file.getWaveformUrl" | "clippingSession.onDiarizationComplete" | ...
+ * e.g., "file.getWaveformUrl" | "source.onDiarizationComplete" | ...
  */
 export type AppProcedurePath = {
   [K in keyof RouterInputs]: keyof RouterInputs[K] extends string
@@ -22,7 +22,10 @@ export type AppProcedurePath = {
  * Split a dot-separated path into tuple segments.
  * "file.getWaveformUrl" -> ["file", "getWaveformUrl"]
  */
-type Split<S extends string, D extends string = "."> = S extends `${infer Head}${D}${infer Tail}`
+type Split<
+  S extends string,
+  D extends string = ".",
+> = S extends `${infer Head}${D}${infer Tail}`
   ? [Head, ...Split<Tail, D>]
   : [S];
 
@@ -30,7 +33,10 @@ type Split<S extends string, D extends string = "."> = S extends `${infer Head}$
  * Navigate a nested object type by path segments.
  * GetByPath<{ file: { get: number } }, ["file", "get"]> -> number
  */
-type GetByPath<T, Path extends string[]> = Path extends [infer First, ...infer Rest]
+type GetByPath<T, Path extends string[]> = Path extends [
+  infer First,
+  ...infer Rest,
+]
   ? First extends keyof T
     ? Rest extends string[]
       ? GetByPath<T[First], Rest>
@@ -39,10 +45,16 @@ type GetByPath<T, Path extends string[]> = Path extends [infer First, ...infer R
   : T;
 
 /** Get the input type for a procedure path */
-export type ProcedureInput<P extends AppProcedurePath> = GetByPath<RouterInputs, Split<P>>;
+export type ProcedureInput<P extends AppProcedurePath> = GetByPath<
+  RouterInputs,
+  Split<P>
+>;
 
 /** Get the output type for a procedure path */
-export type ProcedureOutput<P extends AppProcedurePath> = GetByPath<RouterOutputs, Split<P>>;
+export type ProcedureOutput<P extends AppProcedurePath> = GetByPath<
+  RouterOutputs,
+  Split<P>
+>;
 
 export type ProcedureCall<P extends AppProcedurePath = AppProcedurePath> = {
   path: P;

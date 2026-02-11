@@ -1,17 +1,316 @@
+import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clippingSessions, segments, speakers } from "~/server/db/schema";
+import { segments, sources, speakers } from "~/server/db/schema";
+import { type ClipEvent, clipEvents } from "~/server/events/clip-events";
+import { initClipEventsBridge } from "~/server/events/clip-events-bridge";
 import { Database } from "~/services/infra/database";
+import {
+  type AudioJobPayload,
+  AudioJobs,
+  QueueService,
+  Queues,
+} from "~/services/queue/queue-service";
 
 export const segmentRouter = createTRPCRouter({
+  // Get all segment IDs for a speaker (lightweight ID index for windowed fetching)
+  getIdsBySpeaker: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+      }),
+    )
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            // Verify speaker exists and belongs to user
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            const aggResult = yield* db
+              .select({
+                ids: sql<string[]>`
+                  array_agg(${segments.id} order by ${segments.startTime} asc)
+                `,
+              })
+              .from(segments)
+              .where(eq(segments.speakerId, input.speakerId));
+
+            if (!aggResult[0])
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+
+            return aggResult[0].ids;
+          }),
+        ),
+    ),
+
+  getByIds: protectedProcedure
+    .input(
+      z.object({
+        segmentIds: z.array(z.string().uuid()).max(100),
+      }),
+    )
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            if (input.segmentIds.length === 0) {
+              return [];
+            }
+
+            // Fetch segments with relations
+            const segmentResults = yield* db.query.segments.findMany({
+              where: inArray(segments.id, input.segmentIds),
+              with: {
+                clip: {
+                  columns: {
+                    id: true,
+                    segmentId: true,
+                    storageKey: true,
+                    duration: true,
+                    scores: true,
+                    createdAt: true,
+                  },
+                },
+                source: {
+                  columns: { id: true, name: true, storageKey: true },
+                },
+                speaker: {
+                  columns: { userId: true },
+                },
+              },
+            });
+
+            // Verify all segments belong to this user
+            const unauthorized = segmentResults.filter(
+              (s) => s.speaker.userId !== ctx.session.user.id,
+            );
+
+            if (unauthorized.length > 0) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to some segments",
+                }),
+              );
+            }
+
+            // Strip speaker.userId from response and preserve order
+            const segmentMap = new Map(
+              segmentResults.map((s) => {
+                const { speaker: _speaker, ...rest } = s;
+                return [s.id, rest];
+              }),
+            );
+
+            return input.segmentIds
+              .map((id) => segmentMap.get(id))
+              .filter((s) => s !== undefined);
+          }),
+        ),
+    ),
+
+  // Update segment transcription
+  updateTranscription: protectedProcedure
+    .input(
+      z.object({
+        segmentId: z.string().uuid(),
+        transcription: z.string().nullable(),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            const segment = yield* db.query.segments.findFirst({
+              where: eq(segments.id, input.segmentId),
+              with: {
+                speaker: true,
+              },
+            });
+
+            if (!segment) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Segment not found",
+                }),
+              );
+            }
+
+            if (segment.speaker.userId !== ctx.session.user.id) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to this segment",
+                }),
+              );
+            }
+
+            yield* db
+              .update(segments)
+              .set({ transcription: input.transcription })
+              .where(eq(segments.id, input.segmentId));
+
+            return { success: true };
+          }),
+        ),
+    ),
+
+  // Update segment tags
+  updateTags: protectedProcedure
+    .input(
+      z.object({
+        segmentId: z.string().uuid(),
+        tags: z.array(z.string()),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            const segment = yield* db.query.segments.findFirst({
+              where: eq(segments.id, input.segmentId),
+              with: {
+                speaker: true,
+              },
+            });
+
+            if (!segment) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Segment not found",
+                }),
+              );
+            }
+
+            if (segment.speaker.userId !== ctx.session.user.id) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to this segment",
+                }),
+              );
+            }
+
+            yield* db
+              .update(segments)
+              .set({ tags: input.tags.length > 0 ? input.tags : null })
+              .where(eq(segments.id, input.segmentId));
+
+            return { success: true };
+          }),
+        ),
+    ),
+
+  // Queue a processing operation for segments
+  queueProcessing: protectedProcedure
+    .input(
+      z.object({
+        segmentIds: z.array(z.string().uuid()).min(1),
+        operation: z.enum(["denoise", "remove_overlap", "transcribe"]),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            const segmentResults = yield* db.query.segments.findMany({
+              where: inArray(segments.id, input.segmentIds),
+              with: {
+                speaker: true,
+                clip: true,
+                source: true,
+              },
+            });
+
+            // Verify ownership
+            const unauthorizedSegments = segmentResults.filter(
+              (s) => s.speaker.userId !== ctx.session.user.id,
+            );
+
+            if (unauthorizedSegments.length > 0) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "FORBIDDEN",
+                  message: "You do not have access to some segments",
+                }),
+              );
+            }
+
+            if (segmentResults.length !== input.segmentIds.length) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Some segments were not found",
+                }),
+              );
+            }
+
+            const jobName = {
+              denoise: AudioJobs.Denoise,
+              remove_overlap: AudioJobs.RemoveOverlap,
+              transcribe: AudioJobs.Transcribe,
+            }[input.operation];
+
+            const payloads: AudioJobPayload[] = segmentResults.map((seg) => ({
+              entryId: seg.id,
+            }));
+
+            const results = yield* QueueService.enqueueJobBatch(
+              Queues.AudioProcessing,
+              jobName,
+              payloads,
+            );
+
+            return {
+              success: true,
+              jobIds: results.map((r) => r.jobId),
+              operation: input.operation,
+              segmentCount: input.segmentIds.length,
+            };
+          }),
+        ),
+    ),
+
   // Create a new segment
   createSegment: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
+        sourceId: z.string().uuid(),
         segment: z.object({
           speakerId: z.string().uuid(),
           startTime: z.number().min(0),
@@ -24,23 +323,22 @@ export const segmentRouter = createTRPCRouter({
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
-            const session = yield* db.query.clippingSessions.findFirst({
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(clippingSessions.id, input.sessionId),
-                eq(clippingSessions.userId, ctx.session.user.id),
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
               ),
             });
 
-            if (!session) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "Clipping session not found",
+                  message: "Source not found",
                 }),
               );
             }
 
-            // Validate time constraints
             if (input.segment.endTime <= input.segment.startTime) {
               return yield* Effect.fail(
                 new TRPCError({
@@ -50,7 +348,6 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            // Validate speaker exists
             const speaker = yield* db.query.speakers.findFirst({
               where: eq(speakers.id, input.segment.speakerId),
             });
@@ -64,11 +361,10 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            // Insert new segment
             const [newSegment] = yield* db
               .insert(segments)
               .values({
-                sessionId: input.sessionId,
+                sourceId: input.sourceId,
                 speakerId: input.segment.speakerId,
                 startTime: input.segment.startTime,
                 endTime: input.segment.endTime,
@@ -83,12 +379,11 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Update one or many segments (project segments only)
-  // Local segments cannot be modified directly - use promoteLocalSegments for speaker changes
+  // Update one or many segments
   updateSegments: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
+        sourceId: z.string().uuid(),
         segmentIds: z.union([z.string().uuid(), z.array(z.string().uuid())]),
         updates: z.object({
           startTime: z.number().min(0).optional(),
@@ -103,45 +398,26 @@ export const segmentRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify session ownership
-            const session = yield* db.query.clippingSessions.findFirst({
+            // Verify source ownership
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(clippingSessions.id, input.sessionId),
-                eq(clippingSessions.userId, ctx.session.user.id),
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
               ),
             });
 
-            if (!session) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "Clipping session not found",
+                  message: "Source not found",
                 }),
               );
             }
 
-            // Normalize to array
             const segmentIds = Array.isArray(input.segmentIds)
               ? input.segmentIds
               : [input.segmentIds];
-
-            // Check if any segments are local (stored in diarization JSONB)
-            const localSegmentIds = new Set(
-              session.diarization?.segments?.map((s) => s.id) ?? [],
-            );
-            const localSegmentsInRequest = segmentIds.filter((id) =>
-              localSegmentIds.has(id),
-            );
-
-            if (localSegmentsInRequest.length > 0) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "BAD_REQUEST",
-                  message:
-                    "Local segments cannot be modified directly. Use promoteLocalSegments to change speaker.",
-                }),
-              );
-            }
 
             // Validate time constraints if times are being updated
             if (
@@ -158,7 +434,6 @@ export const segmentRouter = createTRPCRouter({
               }
             }
 
-            // Update project segments in the table
             yield* db
               .update(segments)
               .set({
@@ -175,7 +450,7 @@ export const segmentRouter = createTRPCRouter({
               .where(
                 and(
                   inArray(segments.id, segmentIds),
-                  eq(segments.sessionId, input.sessionId),
+                  eq(segments.sourceId, input.sourceId),
                 ),
               );
 
@@ -184,12 +459,11 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Split a segment at a specific time (project segments only)
-  // Local segments cannot be split
+  // Split a segment at a specific time
   splitSegment: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
+        sourceId: z.string().uuid(),
         segmentId: z.string().uuid(),
         splitTime: z.number().min(0),
       }),
@@ -200,42 +474,27 @@ export const segmentRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify session ownership
-            const session = yield* db.query.clippingSessions.findFirst({
+            // Verify source ownership
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(clippingSessions.id, input.sessionId),
-                eq(clippingSessions.userId, ctx.session.user.id),
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
               ),
             });
 
-            if (!session) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "Clipping session not found",
+                  message: "Source not found",
                 }),
               );
             }
 
-            // Check if segment is local (stored in diarization JSONB)
-            const localSegmentIds = new Set(
-              session.diarization?.segments?.map((s) => s.id) ?? [],
-            );
-
-            if (localSegmentIds.has(input.segmentId)) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "BAD_REQUEST",
-                  message: "Local segments cannot be split",
-                }),
-              );
-            }
-
-            // Get the project segment to split
             const segment = yield* db.query.segments.findFirst({
               where: and(
                 eq(segments.id, input.segmentId),
-                eq(segments.sessionId, input.sessionId),
+                eq(segments.sourceId, input.sourceId),
               ),
             });
 
@@ -248,7 +507,6 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            // Validate split time is within segment bounds
             if (
               input.splitTime <= segment.startTime ||
               input.splitTime >= segment.endTime
@@ -261,17 +519,15 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            // Update original segment (keep same ID, update end time)
             yield* db
               .update(segments)
               .set({ endTime: input.splitTime })
               .where(eq(segments.id, input.segmentId));
 
-            // Create second segment (from split time to original end)
             const [secondSegment] = yield* db
               .insert(segments)
               .values({
-                sessionId: input.sessionId,
+                sourceId: input.sourceId,
                 speakerId: segment.speakerId,
                 startTime: input.splitTime,
                 endTime: segment.endTime,
@@ -296,12 +552,11 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Delete segments (project segments only)
-  // Local segments cannot be deleted
+  // Delete segments
   deleteSegments: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
+        sourceId: z.string().uuid(),
         segmentIds: z.array(z.string().uuid()).min(1),
       }),
     )
@@ -311,47 +566,29 @@ export const segmentRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify session ownership
-            const session = yield* db.query.clippingSessions.findFirst({
+            // Verify source ownership
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(clippingSessions.id, input.sessionId),
-                eq(clippingSessions.userId, ctx.session.user.id),
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
               ),
             });
 
-            if (!session) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "Clipping session not found",
+                  message: "Source not found",
                 }),
               );
             }
 
-            // Check if any segments are local (stored in diarization JSONB)
-            const localSegmentIds = new Set(
-              session.diarization?.segments?.map((s) => s.id) ?? [],
-            );
-            const localSegmentsInRequest = input.segmentIds.filter((id) =>
-              localSegmentIds.has(id),
-            );
-
-            if (localSegmentsInRequest.length > 0) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "BAD_REQUEST",
-                  message: "Local segments cannot be deleted",
-                }),
-              );
-            }
-
-            // Delete project segments
             yield* db
               .delete(segments)
               .where(
                 and(
                   inArray(segments.id, input.segmentIds),
-                  eq(segments.sessionId, input.sessionId),
+                  eq(segments.sourceId, input.sourceId),
                 ),
               );
 
@@ -360,14 +597,12 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Promote local segments to project level with a new speaker
-  // This is used when changing a local segment's speaker to a project speaker
-  promoteLocalSegments: protectedProcedure
+  // Delete segments by speaker (for speaker page)
+  deleteSegmentsBySpeaker: protectedProcedure
     .input(
       z.object({
-        sessionId: z.string().uuid(),
-        localSegmentIds: z.array(z.string().uuid()).min(1),
-        targetSpeakerId: z.string().uuid(), // Must be a project speaker
+        speakerId: z.string().uuid(),
+        segmentIds: z.array(z.string().uuid()).min(1),
       }),
     )
     .mutation(
@@ -376,24 +611,68 @@ export const segmentRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify session ownership
-            const session = yield* db.query.clippingSessions.findFirst({
+            const speaker = yield* db.query.speakers.findFirst({
               where: and(
-                eq(clippingSessions.id, input.sessionId),
-                eq(clippingSessions.userId, ctx.session.user.id),
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
               ),
             });
 
-            if (!session) {
+            if (!speaker) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "Clipping session not found",
+                  message: "Speaker not found",
                 }),
               );
             }
 
-            // Validate target speaker exists in speakers table (project speaker)
+            const result = yield* db
+              .delete(segments)
+              .where(
+                and(
+                  inArray(segments.id, input.segmentIds),
+                  eq(segments.speakerId, input.speakerId),
+                ),
+              )
+              .returning({ id: segments.id });
+
+            return { success: true, deletedCount: result.length };
+          }),
+        ),
+    ),
+
+  // Change speaker for segments
+  changeSpeaker: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+        segmentIds: z.array(z.string().uuid()).min(1),
+        targetSpeakerId: z.string().uuid(),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            const currentSpeaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!currentSpeaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Current speaker not found",
+                }),
+              );
+            }
+
             const targetSpeaker = yield* db.query.speakers.findFirst({
               where: and(
                 eq(speakers.id, input.targetSpeakerId),
@@ -405,66 +684,41 @@ export const segmentRouter = createTRPCRouter({
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "Target speaker not found or not a project speaker",
+                  message: "Target speaker not found",
                 }),
               );
             }
 
-            // Find local segments in diarization JSONB
-            const localSegmentsMap = new Map(
-              (session.diarization?.segments ?? []).map((s) => [s.id, s]),
-            );
-            const localSegmentIdsSet = new Set(input.localSegmentIds);
-
-            // Validate all requested segments exist in local segments
-            const segmentsToPromote = input.localSegmentIds
-              .map((id) => localSegmentsMap.get(id))
-              .filter((s) => s !== undefined);
-
-            if (segmentsToPromote.length !== input.localSegmentIds.length) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "BAD_REQUEST",
-                  message: "One or more segments are not local segments",
-                }),
-              );
-            }
-
-            // Create new project segments in the segments table
-            const newProjectSegments = yield* db
-              .insert(segments)
-              .values(
-                segmentsToPromote.map((seg) => ({
-                  sessionId: input.sessionId,
-                  speakerId: input.targetSpeakerId,
-                  startTime: seg.startTime,
-                  endTime: seg.endTime,
-                })),
+            const result = yield* db
+              .update(segments)
+              .set({ speakerId: input.targetSpeakerId })
+              .where(
+                and(
+                  inArray(segments.id, input.segmentIds),
+                  eq(segments.speakerId, input.speakerId),
+                ),
               )
-              .returning();
+              .returning({ id: segments.id });
 
-            // Remove promoted segments from JSONB
-            const updatedSegments = (
-              session.diarization?.segments ?? []
-            ).filter((s) => !localSegmentIdsSet.has(s.id));
-
-            // Update session with modified diarization
-            yield* db
-              .update(clippingSessions)
-              .set({
-                diarization: {
-                  ...session.diarization!,
-                  segments: updatedSegments,
-                },
-              })
-              .where(eq(clippingSessions.id, input.sessionId));
-
-            return {
-              success: true,
-              promotedCount: newProjectSegments.length,
-              newSegments: newProjectSegments,
-            };
+            return { success: true, updatedCount: result.length };
           }),
         ),
     ),
+
+  // SSE subscription for clip completion events
+  onClipCreated: protectedProcedure
+    .input(z.object({ speakerId: z.string().uuid() }))
+    .subscription(async function* (opts) {
+      const { speakerId } = opts.input;
+
+      initClipEventsBridge();
+
+      const eventName = `clip:speaker:${speakerId}`;
+
+      for await (const [event] of on(clipEvents, eventName, {
+        signal: opts.signal,
+      })) {
+        yield event as ClipEvent;
+      }
+    }),
 });

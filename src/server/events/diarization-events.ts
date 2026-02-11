@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 
 export interface DiarizationEvent {
-  sessionId: string;
+  sourceId: string;
   status: "completed" | "failed";
   timestamp: string;
 }
@@ -30,15 +30,15 @@ class DiarizationEventEmitter extends EventEmitter {
   }
 
   /**
-   * Emit a diarization completion event for a specific session.
+   * Emit a diarization completion event for a specific source.
    */
-  emitCompletion(sessionId: string, status: "completed" | "failed") {
+  emitCompletion(sourceId: string, status: "completed" | "failed") {
     const event: DiarizationEvent = {
-      sessionId,
+      sourceId,
       status,
       timestamp: new Date().toISOString(),
     };
-    this.emit(`diarization:${sessionId}`, event);
+    this.emit(`diarization:${sourceId}`, event);
   }
 }
 

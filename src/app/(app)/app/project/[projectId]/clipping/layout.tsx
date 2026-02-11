@@ -10,7 +10,7 @@ export default async function ClippingLayout({
   const { projectId } = await params;
 
   // Prefetch session list for the project
-  void api.clippingSession.listByProject.prefetch({ projectId });
+  void api.source.listByProject.prefetch({ projectId });
 
   return <HydrateClient>{children}</HydrateClient>;
 }

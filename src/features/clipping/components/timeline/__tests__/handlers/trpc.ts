@@ -1,9 +1,6 @@
 import { HttpResponse, http } from "msw";
 import SuperJSON from "superjson";
-import type {
-  AppProcedurePath,
-  ProcedureOutput,
-} from "~/trpc/__mocks__/types";
+import type { AppProcedurePath, ProcedureOutput } from "~/trpc/__mocks__/types";
 
 /**
  * Creates a type-safe MSW handler for a tRPC query procedure.
@@ -68,7 +65,7 @@ export function trpcMutation<P extends AppProcedurePath>(
  *
  * @example
  * ```ts
- * const handler = trpcSubscription("clippingSession.onDiarizationComplete");
+ * const handler = trpcSubscription("source.onDiarizationComplete");
  * ```
  */
 export function trpcSubscription(path: AppProcedurePath) {

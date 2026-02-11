@@ -49,15 +49,15 @@ export default function ClippingEmptyStatePage({
   const [isExtracting, setIsExtracting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const [existingSessions] = api.clippingSession.listByProject.useSuspenseQuery(
+  const [existingSessions] = api.source.listByProject.useSuspenseQuery(
     { projectId },
     { refetchOnWindowFocus: false },
   );
 
   const getUploadUrl = api.file.getUploadUrl.useMutation();
   const createFile = api.file.create.useMutation({
-    onSuccess: ({ session }) => {
-      router.push(`/app/project/${projectId}/clipping/${session.id}`);
+    onSuccess: ({ source }) => {
+      router.push(`/app/project/${projectId}/clipping/${source.id}`);
     },
   });
 
@@ -145,8 +145,8 @@ export default function ClippingEmptyStatePage({
         },
       );
 
-      // Navigate to the new session
-      router.push(`/app/project/${projectId}/clipping/${result.session.id}`);
+      // Navigate to the new source
+      router.push(`/app/project/${projectId}/clipping/${result.source.id}`);
     } catch (error) {
       console.error("Video upload failed:", error);
       setUploadError(
@@ -320,28 +320,28 @@ export default function ClippingEmptyStatePage({
               <ScrollArea className="h-48">
                 <div className="space-y-2">
                   {existingSessions.map((session) => (
-                    <button
+                    <Button
                       key={session.id}
+                      variant="outline"
                       onClick={() =>
                         router.push(
                           `/app/project/${projectId}/clipping/${session.id}`,
                         )
                       }
-                      className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                      className="flex h-auto w-full items-center justify-start gap-3 p-3 text-left"
                     >
                       <Music className="h-5 w-5 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium text-sm">
                           {session.name ??
-                            session.file?.name ??
-                            session.file?.storageKey?.split("/").pop() ??
+                            session.storageKey?.split("/").pop() ??
                             "Untitled"}
                         </p>
                         <p className="text-muted-foreground text-xs">
                           {new Date(session.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </ScrollArea>
@@ -424,8 +424,7 @@ async function uploadWithProgress(
 
 // Helper function for video upload with progress to tRPC endpoint
 interface VideoUploadResult {
-  file: { id: string };
-  session: { id: string };
+  source: { id: string };
 }
 
 async function uploadVideoWithProgress(
@@ -457,7 +456,7 @@ async function uploadVideoWithProgress(
           // tRPC with superjson wraps data in result.data.json
           const data = response.result?.data?.json ?? response.result?.data;
 
-          if (data?.session?.id) {
+          if (data?.source?.id) {
             resolve(data);
           } else if (response.error) {
             const errorMessage =

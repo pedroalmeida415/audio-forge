@@ -34,13 +34,11 @@ export function ActiveSegmentActions() {
   const $store = useClippingStore();
 
   const activeSegmentId = useValue($store.activeSegmentId);
-  const sessionId = useValue($store.sessionId);
+  const sourceId = useValue($store.sourceId);
   const speakers = useValue($store.speakers);
 
   const splitSegmentMutation = api.segment.splitSegment.useMutation();
   const updateSegmentsMutation = api.segment.updateSegments.useMutation();
-  const promoteLocalSegmentsMutation =
-    api.segment.promoteLocalSegments.useMutation();
   const deleteSegmentsMutation = api.segment.deleteSegments.useMutation();
 
   // Track if split is possible (playhead inside active segment)
@@ -84,39 +82,22 @@ export function ActiveSegmentActions() {
   // Don't render if no active segment
   if (!activeSegmentId || !activeSegment) return null;
 
-  // Check if segment is local (from diarization, not yet promoted to project)
-  const isLocalSegment = activeSegment.source === "local";
-
   const handleSplit = () => {
-    if (!canSplit || isLocalSegment) return;
+    if (!canSplit) return;
     const splitTime = $store.playback.currentTime.peek();
     splitSegmentMutation.mutate({
-      sessionId,
+      sourceId,
       segmentId: activeSegmentId,
       splitTime,
     });
   };
 
   const handleChangeSpeaker = (speakerId: string) => {
-    // Get the target speaker to check its source
-    const targetSpeaker = speakers.find((s) => s.id === speakerId);
-
-    if (isLocalSegment && targetSpeaker?.source === "project") {
-      // Local segment being assigned to a project speaker -> promote
-      promoteLocalSegmentsMutation.mutate({
-        sessionId,
-        localSegmentIds: [activeSegmentId],
-        targetSpeakerId: speakerId,
-      });
-    } else if (!isLocalSegment) {
-      // Project segment speaker change
-      updateSegmentsMutation.mutate({
-        sessionId,
-        segmentIds: [activeSegmentId],
-        updates: { speakerId },
-      });
-    }
-    // Note: Local segment to local speaker is not allowed by the design
+    updateSegmentsMutation.mutate({
+      sourceId,
+      segmentIds: [activeSegmentId],
+      updates: { speakerId },
+    });
   };
 
   const handleSpeakerCreated = (newSpeakerId: string) => {
@@ -125,18 +106,14 @@ export function ActiveSegmentActions() {
   };
 
   const handleDelete = () => {
-    if (isLocalSegment) return; // Local segments cannot be deleted
     deleteSegmentsMutation.mutate({
-      sessionId,
+      sourceId,
       segmentIds: [activeSegmentId],
     });
     $store.setActiveSegment(null);
   };
 
   const currentSpeaker = speakers.find((s) => s.id === activeSegment.speakerId);
-
-  // Always show only project speakers as change targets
-  const projectSpeakers = speakers.filter((s) => s.source === "project");
 
   return (
     <div
@@ -149,9 +126,7 @@ export function ActiveSegmentActions() {
           <span>
             <Button
               aria-label="Split segment"
-              disabled={
-                isLocalSegment || !canSplit || splitSegmentMutation.isPending
-              }
+              disabled={!canSplit || splitSegmentMutation.isPending}
               onClick={handleSplit}
               size="icon"
               variant="ghost"
@@ -162,11 +137,9 @@ export function ActiveSegmentActions() {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {isLocalSegment
-            ? "Local segments cannot be split"
-            : canSplit
-              ? "Split segment at playhead"
-              : "Move playhead inside segment to split"}
+          {canSplit
+            ? "Split segment at playhead"
+            : "Move playhead inside segment to split"}
         </TooltipContent>
       </Tooltip>
 
@@ -180,10 +153,7 @@ export function ActiveSegmentActions() {
                 size="icon"
                 variant="ghost"
                 className="h-8 w-8"
-                disabled={
-                  updateSegmentsMutation.isPending ||
-                  promoteLocalSegmentsMutation.isPending
-                }
+                disabled={updateSegmentsMutation.isPending}
               >
                 <User className="h-4 w-4" />
               </Button>
@@ -192,7 +162,7 @@ export function ActiveSegmentActions() {
           <TooltipContent>Change speaker</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start">
-          {projectSpeakers.map((speaker) => (
+          {speakers.map((speaker) => (
             <DropdownMenuItem
               key={speaker.id}
               onClick={() => handleChangeSpeaker(speaker.id)}
@@ -208,7 +178,7 @@ export function ActiveSegmentActions() {
               )}
             </DropdownMenuItem>
           ))}
-          {projectSpeakers.length > 0 && <DropdownMenuSeparator />}
+          {speakers.length > 0 && <DropdownMenuSeparator />}
           <DropdownMenuItem
             onClick={() => setIsCreateSpeakerOpen(true)}
             className="flex items-center gap-2"
@@ -229,15 +199,13 @@ export function ActiveSegmentActions() {
               variant="ghost"
               className="h-8 w-8 text-destructive hover:text-destructive"
               onClick={handleDelete}
-              disabled={isLocalSegment || deleteSegmentsMutation.isPending}
+              disabled={deleteSegmentsMutation.isPending}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </span>
         </TooltipTrigger>
-        <TooltipContent>
-          {isLocalSegment ? "Local segments cannot be deleted" : "Delete segment"}
-        </TooltipContent>
+        <TooltipContent>Delete segment</TooltipContent>
       </Tooltip>
 
       {/* Speaker indicator */}

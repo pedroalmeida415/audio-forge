@@ -14,7 +14,7 @@ interface WaveformDataState {
 }
 
 interface UseWaveformDataOptions {
-  fileId: string;
+  sourceId: string;
 }
 
 /**
@@ -24,7 +24,7 @@ interface UseWaveformDataOptions {
  * Uses waveform-data.js to parse BBC audiowaveform binary format.
  */
 export function useWaveformData({
-  fileId,
+  sourceId,
 }: UseWaveformDataOptions): WaveformDataState {
   const [state, setState] = useState<WaveformDataState>({
     waveform: null,
@@ -35,7 +35,7 @@ export function useWaveformData({
 
   // Query waveform URL with polling for pending/processing states
   const { data, error: queryError } = api.file.getWaveformUrl.useQuery(
-    { fileId },
+    { sourceId },
     {
       // Poll every 2 seconds while pending or processing
       refetchInterval: (query) => {

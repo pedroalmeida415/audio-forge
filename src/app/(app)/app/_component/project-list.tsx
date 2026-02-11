@@ -11,10 +11,7 @@ export function ProjectList() {
 
   if (projects.length === 0) {
     return (
-      <div
-        className="flex flex-1 animate-fade-up items-center justify-center opacity-0"
-        style={{ animationDelay: "0.2s" }}
-      >
+      <div className="fade-in slide-in-from-bottom-3 flex flex-1 animate-in items-center justify-center fill-mode-both delay-200">
         <div className="flex max-w-md flex-col items-center rounded-2xl border border-border/50 border-dashed bg-card/50 px-8 py-16 text-center">
           <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-primary/10">
             <SparklesIcon className="size-8 text-primary" />
@@ -41,7 +38,7 @@ export function ProjectList() {
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {projects.map((project, index) => (
         <div
-          className="animate-fade-up opacity-0"
+          className="fade-in slide-in-from-bottom-3 animate-in fill-mode-both"
           key={project.id}
           style={{ animationDelay: `${0.15 + index * 0.05}s` }}
         >

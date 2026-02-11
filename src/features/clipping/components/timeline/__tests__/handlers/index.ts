@@ -25,7 +25,7 @@ export const getWaveformUrlHandler = trpcQuery("file.getWaveformUrl", () => ({
  * Handler for diarization subscription - SSE stream that stays open.
  */
 export const diarizationSubscriptionHandler = trpcSubscription(
-  "clippingSession.onDiarizationComplete",
+  "source.onDiarizationComplete",
 );
 
 /**
@@ -62,10 +62,13 @@ export const createSegmentHandler = trpcMutation(
     success: true,
     segment: {
       id: crypto.randomUUID(),
-      sessionId: "mock-session",
+      sourceId: "mock-source",
       speakerId: "speaker-1",
       startTime: 0,
       endTime: 5,
+      transcription: null,
+      tags: null,
+      scores: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     },
@@ -83,6 +86,8 @@ export const createSpeakerHandler = trpcMutation(
     userId: "mock-user",
     name: "NEW_SPEAKER",
     color: "hsl(0, 70%, 50%)",
+    sourceId: null,
+    origin: "user",
     createdAt: new Date(),
     updatedAt: new Date(),
   }),

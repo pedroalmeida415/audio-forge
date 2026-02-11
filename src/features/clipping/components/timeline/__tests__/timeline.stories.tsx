@@ -75,7 +75,7 @@ export const Interactive: Story = {
     // Assert that the waveform URL procedure was called
     await expect(procedureSpy["file.getWaveformUrl"].wasCalled).toBe(true);
     await expect(
-      procedureSpy["file.getWaveformUrl"].calls[0]?.input.fileId,
+      procedureSpy["file.getWaveformUrl"].calls[0]?.input.sourceId,
     ).toBe("mock-file");
 
     await waitFor(() => {

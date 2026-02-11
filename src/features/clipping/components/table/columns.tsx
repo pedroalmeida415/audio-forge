@@ -159,8 +159,8 @@ function DurationCell({ $segment }: { $segment: Observable<Segment> }) {
       className={cn(
         "inline-flex rounded px-2 py-0.5 font-mono text-xs",
         variant === "normal" && "bg-muted text-muted-foreground",
-        variant === "warning" && "bg-amber-500/20 text-amber-500",
-        variant === "danger" && "bg-red-500/20 text-red-500",
+        variant === "warning" && "bg-accent text-accent-foreground",
+        variant === "danger" && "bg-destructive/20 text-destructive",
       )}
     >
       {formatDuration(duration)}

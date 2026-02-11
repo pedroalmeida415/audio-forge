@@ -9,10 +9,14 @@ import { Effect } from "effect";
 import { z } from "zod";
 import { isVideoMimeType } from "~/lib/video-types";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { clippingSessions, files } from "~/server/db/schema";
+import { sources } from "~/server/db/schema";
 import { AudioProcessingService } from "~/services/audio/audio-processing-service";
 import { Database } from "~/services/infra/database";
-import { QueueService, Queues } from "~/services/queue/queue-service";
+import {
+  AudioJobs,
+  QueueService,
+  Queues,
+} from "~/services/queue/queue-service";
 import { StorageService } from "~/services/storage/storage-service";
 
 export const fileRouter = createTRPCRouter({
@@ -35,7 +39,7 @@ export const fileRouter = createTRPCRouter({
         ),
     ),
 
-  // Create file record and clipping session after upload
+  // Create source record after upload
   create: protectedProcedure
     .input(
       z.object({
@@ -53,52 +57,34 @@ export const fileRouter = createTRPCRouter({
             const fileName =
               input.name ?? input.storageKey.split("/").pop() ?? "Untitled";
 
-            // Create file record
-            const [file] = yield* db
-              .insert(files)
+            // Create source record
+            const [source] = yield* db
+              .insert(sources)
               .values({
                 userId: ctx.session.user.id,
                 projectId: input.projectId,
                 storageKey: input.storageKey,
                 name: fileName,
+                originalFileName: fileName,
                 duration: input.duration,
               })
               .returning();
 
-            if (!file) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "INTERNAL_SERVER_ERROR",
-                  message: "Failed to create file record",
-                }),
-              );
-            }
-
-            // Create clipping session
-            const [session] = yield* db
-              .insert(clippingSessions)
-              .values({
-                fileId: file.id,
-                projectId: input.projectId,
-                userId: ctx.session.user.id,
-                name: fileName,
-              })
-              .returning();
-
-            if (!session) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "INTERNAL_SERVER_ERROR",
-                  message: "Failed to create clipping session",
+                  message: "Failed to create source record",
                 }),
               );
             }
 
             // Enqueue waveform generation (fire and forget)
-            yield* QueueService.enqueue(Queues.WaveformGeneration, {
-              fileId: file.id,
-              audioStorageKey: input.storageKey,
-            }).pipe(
+            yield* QueueService.enqueueJob(
+              Queues.AudioProcessing,
+              AudioJobs.GenerateWaveform,
+              { entryId: source.id },
+            ).pipe(
               Effect.catchAll((error) =>
                 Effect.sync(() =>
                   console.error(
@@ -107,39 +93,38 @@ export const fileRouter = createTRPCRouter({
                   ),
                 ),
               ),
-              Effect.fork,
             );
 
-            return { file, session };
+            return { source };
           }),
         ),
     ),
 
   // Get presigned URL for audio playback
   getAudioUrl: protectedProcedure
-    .input(z.object({ fileId: z.string().uuid() }))
+    .input(z.object({ sourceId: z.string().uuid() }))
     .query(
       async ({ ctx, input }) =>
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
-            const file = yield* db.query.files.findFirst({
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(files.id, input.fileId),
-                eq(files.userId, ctx.session.user.id),
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
               ),
             });
 
-            if (!file) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "File not found",
+                  message: "Source not found",
                 }),
               );
             }
 
-            const storageKey = file.storageKey;
+            const storageKey = source.storageKey;
             if (!storageKey) {
               return yield* Effect.fail(
                 new TRPCError({
@@ -157,7 +142,7 @@ export const fileRouter = createTRPCRouter({
         ),
     ),
 
-  // Delete a file (cascade will handle session and segments)
+  // Delete a source (cascade will handle segments and clips)
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(
@@ -165,43 +150,43 @@ export const fileRouter = createTRPCRouter({
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
-            const file = yield* db.query.files.findFirst({
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(files.id, input.id),
-                eq(files.userId, ctx.session.user.id),
+                eq(sources.id, input.id),
+                eq(sources.userId, ctx.session.user.id),
               ),
             });
 
-            if (!file) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "File not found",
+                  message: "Source not found",
                 }),
               );
             }
 
-            // Delete from storage if file exists (ignore errors)
-            const storageKey = file.storageKey;
+            // Delete from storage if source exists (ignore errors)
+            const storageKey = source.storageKey;
             if (storageKey) {
               yield* StorageService.deleteObject({ key: storageKey }).pipe(
                 Effect.catchAll(() =>
                   Effect.sync(() =>
-                    console.error("Failed to delete file from storage"),
+                    console.error("Failed to delete source from storage"),
                   ),
                 ),
               );
             }
 
-            // Delete file record (cascade handles related records)
-            yield* db.delete(files).where(eq(files.id, input.id));
+            // Delete source record (cascade handles related records)
+            yield* db.delete(sources).where(eq(sources.id, input.id));
 
             return { success: true };
           }),
         ),
     ),
 
-  // Upload video, extract audio to FLAC, and create file/session
+  // Upload video, extract audio to FLAC, and create source
   uploadVideo: protectedProcedure
     .input(octetInputParser)
     .mutation(async ({ ctx, input }) => {
@@ -301,52 +286,34 @@ export const fileRouter = createTRPCRouter({
                 ),
               );
 
-              // 4. Create file record
-              const [file] = yield* db
-                .insert(files)
+              // 4. Create source record
+              const [source] = yield* db
+                .insert(sources)
                 .values({
                   userId: ctx.session.user.id,
                   projectId: validProjectId,
                   storageKey,
                   name: `${baseFilename}.flac`,
+                  originalFileName: `${baseFilename}.flac`,
                   duration: extractionResult.durationSeconds || null,
                 })
                 .returning();
 
-              if (!file) {
+              if (!source) {
                 return yield* Effect.fail(
                   new TRPCError({
                     code: "INTERNAL_SERVER_ERROR",
-                    message: "Failed to create file record",
+                    message: "Failed to create source record",
                   }),
                 );
               }
 
-              // 5. Create clipping session
-              const [session] = yield* db
-                .insert(clippingSessions)
-                .values({
-                  fileId: file.id,
-                  projectId: validProjectId,
-                  userId: ctx.session.user.id,
-                  name: `${baseFilename}.flac`,
-                })
-                .returning();
-
-              if (!session) {
-                return yield* Effect.fail(
-                  new TRPCError({
-                    code: "INTERNAL_SERVER_ERROR",
-                    message: "Failed to create clipping session",
-                  }),
-                );
-              }
-
-              // 6. Enqueue waveform generation (fire and forget)
-              yield* QueueService.enqueue(Queues.WaveformGeneration, {
-                fileId: file.id,
-                audioStorageKey: storageKey,
-              }).pipe(
+              // 5. Enqueue waveform generation (fire and forget)
+              yield* QueueService.enqueueJob(
+                Queues.AudioProcessing,
+                AudioJobs.GenerateWaveform,
+                { entryId: source.id },
+              ).pipe(
                 Effect.catchAll((error) =>
                   Effect.sync(() =>
                     console.error(
@@ -355,10 +322,9 @@ export const fileRouter = createTRPCRouter({
                     ),
                   ),
                 ),
-                Effect.fork,
               );
 
-              return { file, session };
+              return { source };
             }),
 
           // Release: Always cleanup temp directory
@@ -379,16 +345,16 @@ export const fileRouter = createTRPCRouter({
 
   // Get waveform status and URL
   getWaveformUrl: protectedProcedure
-    .input(z.object({ fileId: z.string().uuid() }))
+    .input(z.object({ sourceId: z.string().uuid() }))
     .query(
       async ({ ctx, input }) =>
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
-            const file = yield* db.query.files.findFirst({
+            const source = yield* db.query.sources.findFirst({
               where: and(
-                eq(files.id, input.fileId),
-                eq(files.userId, ctx.session.user.id),
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
               ),
               columns: {
                 waveformStatus: true,
@@ -397,30 +363,30 @@ export const fileRouter = createTRPCRouter({
               },
             });
 
-            if (!file) {
+            if (!source) {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "NOT_FOUND",
-                  message: "File not found",
+                  message: "Source not found",
                 }),
               );
             }
 
             // Return status info if not completed
             if (
-              file.waveformStatus !== "completed" ||
-              !file.waveformStorageKey
+              source.waveformStatus !== "completed" ||
+              !source.waveformStorageKey
             ) {
               return {
-                status: file.waveformStatus ?? "pending",
+                status: source.waveformStatus ?? "pending",
                 url: null,
-                error: file.waveformError,
+                error: source.waveformError,
               };
             }
 
             // Generate presigned URL for completed waveform
             const url = yield* StorageService.generatePresignedDownloadUrl({
-              key: file.waveformStorageKey,
+              key: source.waveformStorageKey,
               expiresIn: 3600,
             });
 
