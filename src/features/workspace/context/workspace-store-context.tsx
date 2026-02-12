@@ -11,20 +11,20 @@ export function WorkspaceStoreProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const store = useRef(proxy(new WorkspaceStore())).current;
+  const $store = useRef(proxy(new WorkspaceStore())).current;
   return (
-    <WorkspaceStoreContext value={store}>{children}</WorkspaceStoreContext>
+    <WorkspaceStoreContext value={$store}>{children}</WorkspaceStoreContext>
   );
 }
 
 export function useWorkspaceStore() {
-  const store = use(WorkspaceStoreContext);
+  const $store = use(WorkspaceStoreContext);
 
-  if (!store) {
+  if (!$store) {
     throw new Error(
       "useWorkspaceStore must be used within WorkspaceStoreProvider",
     );
   }
 
-  return store;
+  return $store;
 }

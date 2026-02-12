@@ -10,15 +10,15 @@ function PickerFallback() {
   return <Skeleton className="h-9 w-32 rounded-lg" />;
 }
 
-export function WorkspaceHeader({ projectId }: { projectId: string }) {
+export function WorkspaceHeader() {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-border border-b px-4">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-border border-b bg-background px-4">
       <div className="flex items-center gap-1">
         <Suspense fallback={<PickerFallback />}>
-          <SourcePicker projectId={projectId} />
+          <SourcePicker />
         </Suspense>
         <Suspense fallback={<PickerFallback />}>
-          <SpeakerPicker projectId={projectId} />
+          <SpeakerPicker />
         </Suspense>
       </div>
 

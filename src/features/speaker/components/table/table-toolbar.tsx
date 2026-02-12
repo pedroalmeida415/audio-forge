@@ -4,7 +4,6 @@ import { useValue } from "@legendapp/state/react";
 import {
   Loader2,
   MessageSquare,
-  Scissors,
   Trash2,
   UserRoundCog,
   Volume2,
@@ -199,6 +198,13 @@ export function TableToolbar() {
         open={showChangeSpeakerDialog}
         onOpenChange={setShowChangeSpeakerDialog}
         segmentIds={Array.from(selectedIds)}
+        projectId={speaker.projectId}
+        speakerId={speaker.id}
+        speakerName={speaker.name}
+        onSuccess={() => {
+          $store.removeSegments(Array.from(selectedIds));
+          $store.clearSelection();
+        }}
       />
     </>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import {
   NavigationMenu,
@@ -15,7 +16,9 @@ import { workspaceParams } from "~/features/workspace/search-params";
 import type { Speaker } from "~/server/db/schema";
 import { api } from "~/trpc/react";
 
-export function SpeakerPicker({ projectId }: { projectId: string }) {
+export function SpeakerPicker() {
+  const { projectId } = useParams<{ projectId: string }>();
+
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId, setSpeakerId] = useQueryState(
     "speakerId",

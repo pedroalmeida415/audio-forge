@@ -1,6 +1,8 @@
 "use client";
 
 import { use } from "react";
+import { ClipStudioPanel } from "~/features/speaker/components/clip-studio-panel";
+import { WorkspaceContent } from "~/features/workspace/components/workspace-content";
 import { WorkspaceHeader } from "~/features/workspace/components/workspace-header";
 import { WorkspaceStoreProvider } from "~/features/workspace/context/workspace-store-context";
 
@@ -13,13 +15,9 @@ export default function WorkspacePage({
 
   return (
     <WorkspaceStoreProvider>
-      <div className="flex h-screen min-h-0 flex-col overflow-hidden">
-        <WorkspaceHeader projectId={projectId} />
-
-        <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
-          Select a source and speaker to get started.
-        </div>
-      </div>
+      <WorkspaceHeader />
+      <WorkspaceContent />
+      <ClipStudioPanel />
     </WorkspaceStoreProvider>
   );
 }

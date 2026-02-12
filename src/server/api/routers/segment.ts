@@ -85,53 +85,15 @@ export const segmentRouter = createTRPCRouter({
             }
 
             // Fetch segments with relations
-            const segmentResults = yield* db.query.segments.findMany({
+            return yield* db.query.segments.findMany({
               where: inArray(segments.id, input.segmentIds),
               with: {
-                clip: {
-                  columns: {
-                    id: true,
-                    segmentId: true,
-                    storageKey: true,
-                    duration: true,
-                    scores: true,
-                    createdAt: true,
-                  },
-                },
+                clip: true,
                 source: {
                   columns: { id: true, name: true, storageKey: true },
                 },
-                speaker: {
-                  columns: { userId: true },
-                },
               },
             });
-
-            // Verify all segments belong to this user
-            const unauthorized = segmentResults.filter(
-              (s) => s.speaker.userId !== ctx.session.user.id,
-            );
-
-            if (unauthorized.length > 0) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "FORBIDDEN",
-                  message: "You do not have access to some segments",
-                }),
-              );
-            }
-
-            // Strip speaker.userId from response and preserve order
-            const segmentMap = new Map(
-              segmentResults.map((s) => {
-                const { speaker: _speaker, ...rest } = s;
-                return [s.id, rest];
-              }),
-            );
-
-            return input.segmentIds
-              .map((id) => segmentMap.get(id))
-              .filter((s) => s !== undefined);
           }),
         ),
     ),

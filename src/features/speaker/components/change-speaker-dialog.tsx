@@ -1,8 +1,6 @@
 "use client";
 
-import { useValue } from "@legendapp/state/react";
 import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
-import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import {
@@ -26,7 +24,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
-import { useSpeakerPageStore } from "~/features/speaker/context/store.context";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
@@ -34,21 +31,21 @@ interface ChangeSpeakerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   segmentIds: string[];
+  projectId: string;
+  speakerId: string;
+  speakerName: string;
+  onSuccess: (data: { updatedCount: number }) => void;
 }
 
 export function ChangeSpeakerDialog({
   open,
   onOpenChange,
   segmentIds,
+  projectId,
+  speakerId,
+  speakerName,
+  onSuccess,
 }: ChangeSpeakerDialogProps) {
-  const { projectId, speakerId } = useParams<{
-    projectId: string;
-    speakerId: string;
-  }>();
-
-  const $store = useSpeakerPageStore();
-  const currentSpeaker = useValue($store.speaker);
-
   const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(
     null,
   );
@@ -61,10 +58,7 @@ export function ChangeSpeakerDialog({
   // Change speaker mutation
   const changeSpeakerMutation = api.segment.changeSpeaker.useMutation({
     onSuccess: (data) => {
-      console.log("Changed speaker for", data.updatedCount, "segments");
-      // Remove segments from store since they now belong to a different speaker
-      $store.removeSegments(segmentIds);
-      $store.clearSelection();
+      onSuccess(data);
       onOpenChange(false);
       setSelectedSpeakerId(null);
     },
@@ -101,8 +95,8 @@ export function ChangeSpeakerDialog({
           <DialogTitle>Change Speaker</DialogTitle>
           <DialogDescription>
             Move {segmentIds.length} segment{segmentIds.length !== 1 ? "s" : ""}{" "}
-            from <span className="font-medium">{currentSpeaker.name}</span> to
-            another speaker.
+            from <span className="font-medium">{speakerName}</span> to another
+            speaker.
           </DialogDescription>
         </DialogHeader>
 

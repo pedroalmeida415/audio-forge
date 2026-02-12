@@ -1,5 +1,6 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import {
   NavigationMenu,
@@ -12,7 +13,9 @@ import {
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
-export function SourcePicker({ projectId }: { projectId: string }) {
+export function SourcePicker() {
+  const { projectId } = useParams<{ projectId: string }>();
+
   const [sourceId, setSourceId] = useQueryState(
     "sourceId",
     workspaceParams.sourceId,
