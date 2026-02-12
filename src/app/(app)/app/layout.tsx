@@ -2,6 +2,7 @@ import "~/styles/globals.css";
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ReactScan } from "~/components/react-scan";
 import { ThemeProvider } from "~/components/theme-provider";
 import { getSession } from "~/server/better-auth/server";
@@ -33,9 +34,11 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <TRPCReactProvider>
-            <main className="flex min-h-screen flex-1 flex-col">
-              {children}
-            </main>
+            <NuqsAdapter>
+              <main className="flex min-h-screen flex-1 flex-col">
+                {children}
+              </main>
+            </NuqsAdapter>
           </TRPCReactProvider>
         </ThemeProvider>
       </body>

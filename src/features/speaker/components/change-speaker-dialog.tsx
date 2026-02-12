@@ -54,12 +54,9 @@ export function ChangeSpeakerDialog({
   );
   const [comboboxOpen, setComboboxOpen] = useState(false);
 
-  // Fetch project speakers (exclude diarization speakers like SPEAKER_*)
+  // Fetch project speakers (excludes source-linked diarization speakers)
   const { data: speakers, isLoading: isLoadingSpeakers } =
-    api.speaker.getProjectSpeakers.useQuery(
-      { projectId, includeDiarization: false },
-      { enabled: open },
-    );
+    api.speaker.getAllByProjectId.useQuery({ projectId }, { enabled: open });
 
   // Change speaker mutation
   const changeSpeakerMutation = api.segment.changeSpeaker.useMutation({

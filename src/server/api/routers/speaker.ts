@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { generateSpeakerColor } from "~/lib/speaker-colors";
@@ -167,42 +167,48 @@ export const speakerRouter = createTRPCRouter({
               );
             }
 
-            yield* db
-              .delete(speakers)
-              .where(eq(speakers.id, input.speakerId));
+            yield* db.delete(speakers).where(eq(speakers.id, input.speakerId));
 
             return { success: true };
           }),
         ),
     ),
 
-  // Get all speakers for a project (for speaker picker)
-  getProjectSpeakers: protectedProcedure
-    .input(
-      z.object({
-        projectId: z.string().uuid(),
-        includeDiarization: z.boolean().default(true),
-      }),
-    )
+  // Get project-level speakers (excludes source-linked diarization speakers)
+  getAllByProjectId: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
     .query(
       async ({ ctx, input }) =>
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
-            const allSpeakers = yield* db.query.speakers.findMany({
+            return yield* db.query.speakers.findMany({
               where: and(
                 eq(speakers.projectId, input.projectId),
+                eq(speakers.userId, ctx.session.user.id),
+                isNull(speakers.sourceId),
+              ),
+              orderBy: (sp, { asc }) => [asc(sp.name)],
+            });
+          }),
+        ),
+    ),
+
+  // Get diarization speakers linked to a specific source
+  getAllBySourceId: protectedProcedure
+    .input(z.object({ sourceId: z.string().uuid() }))
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            return yield* db.query.speakers.findMany({
+              where: and(
+                eq(speakers.sourceId, input.sourceId),
                 eq(speakers.userId, ctx.session.user.id),
               ),
               orderBy: (sp, { asc }) => [asc(sp.name)],
             });
-
-            // Filter out SPEAKER_* if not including diarization speakers
-            if (!input.includeDiarization) {
-              return allSpeakers.filter((s) => !s.name.startsWith("SPEAKER_"));
-            }
-
-            return allSpeakers;
           }),
         ),
     ),
