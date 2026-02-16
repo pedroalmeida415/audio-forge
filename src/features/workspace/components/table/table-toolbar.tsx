@@ -18,7 +18,10 @@ import {
 import { Button } from "~/components/ui/button";
 import { ChangeSpeakerDialog } from "~/features/speaker/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
-import { workspaceParams } from "~/features/workspace/search-params";
+import {
+  SEGMENTS_PAGE_LIMIT,
+  workspaceParams,
+} from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
 function filterOutSegments(
@@ -26,13 +29,14 @@ function filterOutSegments(
   ids: Set<string>,
   utils: ReturnType<typeof api.useUtils>,
 ) {
-  utils.segment.getBySpeaker.setInfiniteData({ speakerId }, (old) => {
+  const input = { speakerId, limit: SEGMENTS_PAGE_LIMIT };
+  utils.segment.getBySpeaker.setInfiniteData(input, (old) => {
     if (!old) return old;
     return {
       ...old,
       pages: old.pages.map((page) => ({
         ...page,
-        items: page.items.filter((item) => !ids.has(item.id)),
+        segments: page.segments.filter((item) => !ids.has(item.id)),
         totalCount: page.totalCount - ids.size,
       })),
     };
@@ -44,18 +48,23 @@ export function TableToolbar() {
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
   const $store = useWorkspaceStore();
-  const { isAllSelected, selectedSegmentIds } = useSnapshot($store);
-
-  const hasSelection = isAllSelected || selectedSegmentIds.size > 0;
+  const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
+    useSnapshot($store);
 
   const utils = api.useUtils();
 
-  // Read totalCount from the query cache for display when isAllSelected
+  // Imperative cache read - update to custom useSegmentsBySpeaker custom hook to react to changes and avoid duplicate hook declarations that might get desynced
   const totalCount = speakerId
-    ? (utils.segment.getBySpeaker.getInfiniteData({ speakerId })?.pages[0]
-        ?.totalCount ?? 0)
+    ? (utils.segment.getBySpeaker.getInfiniteData({
+        speakerId,
+        limit: SEGMENTS_PAGE_LIMIT,
+      })?.pages[0]?.totalCount ?? 0)
     : 0;
-  const selectedCount = isAllSelected ? totalCount : selectedSegmentIds.size;
+
+  const selectedCount = isAllSelected
+    ? totalCount - excludedSegmentIds.size
+    : selectedSegmentIds.size;
+  const hasSelection = selectedCount > 0;
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showChangeSpeakerDialog, setShowChangeSpeakerDialog] = useState(false);
@@ -91,7 +100,11 @@ export function TableToolbar() {
     setIsDeleting(true);
 
     if (isAllSelected) {
-      deleteMutation.mutate({ speakerId });
+      const excludeIds =
+        excludedSegmentIds.size > 0
+          ? Array.from(excludedSegmentIds)
+          : undefined;
+      deleteMutation.mutate({ speakerId, excludeSegmentIds: excludeIds });
     } else {
       deleteMutation.mutate({
         speakerId,
@@ -106,7 +119,7 @@ export function TableToolbar() {
         <div className="text-muted-foreground text-sm">
           {hasSelection ? (
             <span>
-              {isAllSelected ? (
+              {isAllSelected && excludedSegmentIds.size === 0 ? (
                 <>
                   <span className="font-medium text-foreground">All</span>{" "}
                   segments selected ({totalCount})
@@ -186,6 +199,11 @@ export function TableToolbar() {
           onOpenChange={setShowChangeSpeakerDialog}
           segmentIds={
             isAllSelected ? undefined : Array.from(selectedSegmentIds)
+          }
+          excludeSegmentIds={
+            isAllSelected && excludedSegmentIds.size > 0
+              ? Array.from(excludedSegmentIds)
+              : undefined
           }
           segmentCount={selectedCount}
           projectId={projectId}

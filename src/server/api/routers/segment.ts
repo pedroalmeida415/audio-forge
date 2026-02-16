@@ -1,6 +1,6 @@
 import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, not, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
@@ -628,6 +628,7 @@ export const segmentRouter = createTRPCRouter({
       z.object({
         speakerId: z.string().uuid(),
         segmentIds: z.array(z.string().uuid()).min(1).optional(),
+        excludeSegmentIds: z.array(z.string().uuid()).min(1).optional(),
       }),
     )
     .mutation(
@@ -652,16 +653,19 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            const whereClause = input.segmentIds
-              ? and(
-                  inArray(segments.id, input.segmentIds),
-                  eq(segments.speakerId, input.speakerId),
-                )
-              : eq(segments.speakerId, input.speakerId);
+            const conditions = [eq(segments.speakerId, input.speakerId)];
+            if (input.segmentIds) {
+              conditions.push(inArray(segments.id, input.segmentIds));
+            }
+            if (input.excludeSegmentIds) {
+              conditions.push(
+                not(inArray(segments.id, input.excludeSegmentIds)),
+              );
+            }
 
             const result = yield* db
               .delete(segments)
-              .where(whereClause)
+              .where(and(...conditions))
               .returning({ id: segments.id });
 
             return { success: true, deletedCount: result.length };
@@ -675,6 +679,7 @@ export const segmentRouter = createTRPCRouter({
       z.object({
         speakerId: z.string().uuid(),
         segmentIds: z.array(z.string().uuid()).min(1).optional(),
+        excludeSegmentIds: z.array(z.string().uuid()).min(1).optional(),
         targetSpeakerId: z.string().uuid(),
       }),
     )
@@ -716,17 +721,20 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            const whereClause = input.segmentIds
-              ? and(
-                  inArray(segments.id, input.segmentIds),
-                  eq(segments.speakerId, input.speakerId),
-                )
-              : eq(segments.speakerId, input.speakerId);
+            const conditions = [eq(segments.speakerId, input.speakerId)];
+            if (input.segmentIds) {
+              conditions.push(inArray(segments.id, input.segmentIds));
+            }
+            if (input.excludeSegmentIds) {
+              conditions.push(
+                not(inArray(segments.id, input.excludeSegmentIds)),
+              );
+            }
 
             const result = yield* db
               .update(segments)
               .set({ speakerId: input.targetSpeakerId })
-              .where(whereClause)
+              .where(and(...conditions))
               .returning({ id: segments.id });
 
             return { success: true, updatedCount: result.length };

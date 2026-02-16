@@ -31,6 +31,7 @@ interface ChangeSpeakerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   segmentIds?: string[];
+  excludeSegmentIds?: string[];
   segmentCount: number;
   projectId: string;
   speakerId: string;
@@ -42,6 +43,7 @@ export function ChangeSpeakerDialog({
   open,
   onOpenChange,
   segmentIds,
+  excludeSegmentIds,
   segmentCount,
   projectId,
   speakerId,
@@ -79,6 +81,7 @@ export function ChangeSpeakerDialog({
     changeSpeakerMutation.mutate({
       speakerId,
       segmentIds,
+      excludeSegmentIds,
       targetSpeakerId: selectedSpeakerId,
     });
   };

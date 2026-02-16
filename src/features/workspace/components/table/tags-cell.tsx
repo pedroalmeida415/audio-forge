@@ -16,7 +16,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import { workspaceParams } from "~/features/workspace/search-params";
+import {
+  SEGMENTS_PAGE_LIMIT,
+  workspaceParams,
+} from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
 interface TagsCellProps {
@@ -35,18 +38,17 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
   const updateTagsMutation = api.segment.updateTags.useMutation({
     onMutate: async ({ tags: newTags }) => {
       if (!speakerId) return;
-      await utils.segment.getBySpeaker.cancel({ speakerId });
-      const previous = utils.segment.getBySpeaker.getInfiniteData({
-        speakerId,
-      });
+      const input = { speakerId, limit: SEGMENTS_PAGE_LIMIT };
+      await utils.segment.getBySpeaker.cancel(input);
+      const previous = utils.segment.getBySpeaker.getInfiniteData(input);
 
-      utils.segment.getBySpeaker.setInfiniteData({ speakerId }, (old) => {
+      utils.segment.getBySpeaker.setInfiniteData(input, (old) => {
         if (!old) return old;
         return {
           ...old,
           pages: old.pages.map((page) => ({
             ...page,
-            items: page.items.map((item) =>
+            segments: page.segments.map((item) =>
               item.id === segmentId
                 ? { ...item, tags: newTags.length > 0 ? newTags : null }
                 : item,
@@ -60,7 +62,7 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
     onError: (_err, _vars, context) => {
       if (context?.previous && speakerId) {
         utils.segment.getBySpeaker.setInfiniteData(
-          { speakerId },
+          { speakerId, limit: SEGMENTS_PAGE_LIMIT },
           context.previous,
         );
       }

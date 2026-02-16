@@ -16,7 +16,6 @@ const LOAD_MORE_THRESHOLD = 10;
 
 interface SegmentsTableProps {
   segments: SegmentWithClip[];
-  totalCount: number;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;

@@ -5,7 +5,7 @@ import { useQueryState } from "nuqs";
 import { useEffect } from "react";
 import { api } from "~/trpc/react";
 import { useWorkspaceStore } from "../context/workspace-store-context";
-import { workspaceParams } from "../search-params";
+import { SEGMENTS_PAGE_LIMIT, workspaceParams } from "../search-params";
 import { SegmentsTable } from "./table/segments-table";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
@@ -16,7 +16,7 @@ export function WorkspaceContent() {
 
   const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
     api.segment.getBySpeaker.useInfiniteQuery(
-      { speakerId: speakerId ?? "", limit: 50 },
+      { speakerId: speakerId ?? "", limit: SEGMENTS_PAGE_LIMIT },
       {
         enabled: !!speakerId,
         getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -24,7 +24,6 @@ export function WorkspaceContent() {
     );
 
   const segments = data?.pages.flatMap((p) => p.segments) ?? [];
-  const totalCount = data?.pages[0]?.totalCount ?? 0;
 
   // Clear selection when switching speakers
   useEffect(() => {
@@ -61,7 +60,6 @@ export function WorkspaceContent() {
       <div className="min-w-0 flex-1 p-4">
         <SegmentsTable
           segments={segments}
-          totalCount={totalCount}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           fetchNextPage={fetchNextPage}

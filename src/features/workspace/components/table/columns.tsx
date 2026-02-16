@@ -26,13 +26,15 @@ import { cn } from "~/lib/utils";
 
 export function SelectAllCheckbox() {
   const $store = useWorkspaceStore();
-  const { isAllSelected, selectedSegmentIds } = useSnapshot($store);
+  const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
+    useSnapshot($store);
 
-  const checked: boolean | "indeterminate" = isAllSelected
-    ? true
-    : selectedSegmentIds.size > 0
-      ? "indeterminate"
-      : false;
+  const checked: boolean | "indeterminate" =
+    isAllSelected && excludedSegmentIds.size === 0
+      ? true
+      : isAllSelected || selectedSegmentIds.size > 0
+        ? "indeterminate"
+        : false;
 
   return (
     <div className="flex justify-center">
@@ -53,9 +55,12 @@ export function SelectAllCheckbox() {
 
 export function SelectCell({ segmentId }: { segmentId: string }) {
   const $store = useWorkspaceStore();
-  const { isAllSelected, selectedSegmentIds } = useSnapshot($store);
+  const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
+    useSnapshot($store);
 
-  const isSelected = isAllSelected || selectedSegmentIds.has(segmentId);
+  const isSelected = isAllSelected
+    ? !excludedSegmentIds.has(segmentId)
+    : selectedSegmentIds.has(segmentId);
 
   return (
     <div className="flex justify-center">
