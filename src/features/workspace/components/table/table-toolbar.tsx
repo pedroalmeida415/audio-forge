@@ -21,15 +21,41 @@ import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
+function filterOutSegments(
+  speakerId: string,
+  ids: Set<string>,
+  utils: ReturnType<typeof api.useUtils>,
+) {
+  utils.segment.getBySpeaker.setInfiniteData({ speakerId }, (old) => {
+    if (!old) return old;
+    return {
+      ...old,
+      pages: old.pages.map((page) => ({
+        ...page,
+        items: page.items.filter((item) => !ids.has(item.id)),
+        totalCount: page.totalCount - ids.size,
+      })),
+    };
+  });
+}
+
 export function TableToolbar() {
   const { projectId } = useParams<{ projectId: string }>();
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
   const $store = useWorkspaceStore();
-  const { selectedSegmentIds } = useSnapshot($store);
+  const { isAllSelected, selectedSegmentIds } = useSnapshot($store);
 
-  const selectedCount = selectedSegmentIds.size;
-  const hasSelection = selectedCount > 0;
+  const hasSelection = isAllSelected || selectedSegmentIds.size > 0;
+
+  const utils = api.useUtils();
+
+  // Read totalCount from the query cache for display when isAllSelected
+  const totalCount = speakerId
+    ? (utils.segment.getBySpeaker.getInfiniteData({ speakerId })?.pages[0]
+        ?.totalCount ?? 0)
+    : 0;
+  const selectedCount = isAllSelected ? totalCount : selectedSegmentIds.size;
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showChangeSpeakerDialog, setShowChangeSpeakerDialog] = useState(false);
@@ -43,9 +69,14 @@ export function TableToolbar() {
   const currentSpeaker = speakers?.find((s) => s.id === speakerId);
 
   const deleteMutation = api.segment.deleteSegmentsBySpeaker.useMutation({
-    onSuccess: (data) => {
-      console.log("Deleted:", data.deletedCount, "segments");
-      $store.removeSegments(Array.from(selectedSegmentIds));
+    onSuccess: () => {
+      if (speakerId) {
+        if (isAllSelected) {
+          utils.segment.getBySpeaker.invalidate({ speakerId });
+        } else {
+          filterOutSegments(speakerId, selectedSegmentIds, utils);
+        }
+      }
       $store.clearSelection();
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -58,10 +89,15 @@ export function TableToolbar() {
   const handleDelete = () => {
     if (!hasSelection || !speakerId) return;
     setIsDeleting(true);
-    deleteMutation.mutate({
-      speakerId,
-      segmentIds: Array.from(selectedSegmentIds),
-    });
+
+    if (isAllSelected) {
+      deleteMutation.mutate({ speakerId });
+    } else {
+      deleteMutation.mutate({
+        speakerId,
+        segmentIds: Array.from(selectedSegmentIds),
+      });
+    }
   };
 
   return (
@@ -70,10 +106,19 @@ export function TableToolbar() {
         <div className="text-muted-foreground text-sm">
           {hasSelection ? (
             <span>
-              <span className="font-medium text-foreground">
-                {selectedCount}
-              </span>{" "}
-              segment{selectedCount !== 1 ? "s" : ""} selected
+              {isAllSelected ? (
+                <>
+                  <span className="font-medium text-foreground">All</span>{" "}
+                  segments selected ({totalCount})
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">
+                    {selectedCount}
+                  </span>{" "}
+                  segment{selectedCount !== 1 ? "s" : ""} selected
+                </>
+              )}
             </span>
           ) : (
             <span>No segments selected</span>
@@ -109,7 +154,8 @@ export function TableToolbar() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete segments?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete {selectedCount} segment
+              This will permanently delete{" "}
+              {isAllSelected ? "all" : selectedCount} segment
               {selectedCount !== 1 ? "s" : ""} and their associated clips. This
               action cannot be undone.
             </AlertDialogDescription>
@@ -138,12 +184,19 @@ export function TableToolbar() {
         <ChangeSpeakerDialog
           open={showChangeSpeakerDialog}
           onOpenChange={setShowChangeSpeakerDialog}
-          segmentIds={Array.from(selectedSegmentIds)}
+          segmentIds={
+            isAllSelected ? undefined : Array.from(selectedSegmentIds)
+          }
+          segmentCount={selectedCount}
           projectId={projectId}
           speakerId={speakerId}
           speakerName={currentSpeaker?.name ?? "Unknown"}
           onSuccess={() => {
-            $store.removeSegments(Array.from(selectedSegmentIds));
+            if (isAllSelected) {
+              utils.segment.getBySpeaker.invalidate({ speakerId });
+            } else {
+              filterOutSegments(speakerId, selectedSegmentIds, utils);
+            }
             $store.clearSelection();
           }}
         />

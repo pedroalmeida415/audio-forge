@@ -30,7 +30,8 @@ import { api } from "~/trpc/react";
 interface ChangeSpeakerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  segmentIds: string[];
+  segmentIds?: string[];
+  segmentCount: number;
   projectId: string;
   speakerId: string;
   speakerName: string;
@@ -41,6 +42,7 @@ export function ChangeSpeakerDialog({
   open,
   onOpenChange,
   segmentIds,
+  segmentCount,
   projectId,
   speakerId,
   speakerName,
@@ -75,7 +77,7 @@ export function ChangeSpeakerDialog({
     if (!selectedSpeakerId) return;
 
     changeSpeakerMutation.mutate({
-      speakerId: speakerId,
+      speakerId,
       segmentIds,
       targetSpeakerId: selectedSpeakerId,
     });
@@ -94,8 +96,8 @@ export function ChangeSpeakerDialog({
         <DialogHeader>
           <DialogTitle>Change Speaker</DialogTitle>
           <DialogDescription>
-            Move {segmentIds.length} segment{segmentIds.length !== 1 ? "s" : ""}{" "}
-            from <span className="font-medium">{speakerName}</span> to another
+            Move {segmentCount} segment{segmentCount !== 1 ? "s" : ""} from{" "}
+            <span className="font-medium">{speakerName}</span> to another
             speaker.
           </DialogDescription>
         </DialogHeader>

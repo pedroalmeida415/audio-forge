@@ -17,6 +17,7 @@ import {
 } from "~/features/speaker/components/table/compact-audio-cell";
 import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { cn } from "~/lib/utils";
 
 // ============================================================================
@@ -25,23 +26,25 @@ import { cn } from "~/lib/utils";
 
 export function SelectAllCheckbox() {
   const $store = useWorkspaceStore();
-  const { segments, selectedSegmentIds } = useSnapshot($store);
+  const { isAllSelected, selectedSegmentIds } = useSnapshot($store);
 
-  const isAllSelected = segments.size === selectedSegmentIds.size;
-
-  const handleToggleAll = (selectAll: boolean) => {
-    if (selectAll) {
-      $store.selectAll();
-    } else {
-      $store.clearSelection();
-    }
-  };
+  const checked: boolean | "indeterminate" = isAllSelected
+    ? true
+    : selectedSegmentIds.size > 0
+      ? "indeterminate"
+      : false;
 
   return (
     <div className="flex justify-center">
       <Checkbox
-        checked={isAllSelected}
-        onCheckedChange={(value) => handleToggleAll(!!value)}
+        checked={checked}
+        onCheckedChange={(value) => {
+          if (value) {
+            $store.selectAll();
+          } else {
+            $store.clearSelection();
+          }
+        }}
         aria-label="Select all"
       />
     </div>
@@ -50,9 +53,9 @@ export function SelectAllCheckbox() {
 
 export function SelectCell({ segmentId }: { segmentId: string }) {
   const $store = useWorkspaceStore();
-  const { selectedSegmentIds } = useSnapshot($store);
+  const { isAllSelected, selectedSegmentIds } = useSnapshot($store);
 
-  const isSelected = selectedSegmentIds.has(segmentId);
+  const isSelected = isAllSelected || selectedSegmentIds.has(segmentId);
 
   return (
     <div className="flex justify-center">
@@ -221,7 +224,7 @@ export function TranscriptionCell({
 
 export const GRID_COLUMNS = "40px 60px 48px 48px 60px 80px 1fr 200px 48px";
 
-export function createColumns(): ColumnDef<string>[] {
+export function createColumns(): ColumnDef<SegmentWithClip>[] {
   return [
     {
       id: "select",

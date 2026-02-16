@@ -1,7 +1,6 @@
 import type { Row } from "@tanstack/react-table";
-import { useSnapshot } from "valtio";
 import { Skeleton } from "~/components/ui/skeleton";
-import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
 import {
   ActionsCell,
   DurationCell,
@@ -16,20 +15,11 @@ import {
 import { TagsCell } from "./tags-cell";
 
 interface TableRowProps {
-  row: Row<string>;
+  row: Row<SegmentWithClip>;
 }
 
 export function SegmentsTableRow({ row }: TableRowProps) {
-  const $store = useWorkspaceStore();
-  const segmentId = row.original;
-  const { segments } = useSnapshot($store);
-  const entry = segments.get(segmentId);
-
-  if (entry?.status !== "loaded" || !entry.data) {
-    return <SegmentsTableRowSkeleton />;
-  }
-
-  const segment = entry.data;
+  const segment = row.original;
   const duration = segment.endTime - segment.startTime;
 
   return (
@@ -40,7 +30,7 @@ export function SegmentsTableRow({ row }: TableRowProps) {
       data-segment-id={row.id}
     >
       <div role="cell" className="px-2 py-2">
-        <SelectCell segmentId={segmentId} />
+        <SelectCell segmentId={segment.id} />
       </div>
       <div role="cell" className="px-2 py-2">
         <IndexCell index={row.index} />
@@ -69,16 +59,16 @@ export function SegmentsTableRow({ row }: TableRowProps) {
         <TranscriptionCell transcription={segment.transcription} />
       </div>
       <div role="cell" className="px-2 py-2">
-        <TagsCell tags={segment.tags} segmentId={segmentId} />
+        <TagsCell tags={segment.tags} segmentId={segment.id} />
       </div>
       <div role="cell" className="px-2 py-2">
-        <ActionsCell segmentId={segmentId} />
+        <ActionsCell segmentId={segment.id} />
       </div>
     </div>
   );
 }
 
-function SegmentsTableRowSkeleton() {
+export function SegmentsTableRowSkeleton() {
   return (
     <div
       role="row"

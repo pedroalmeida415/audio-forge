@@ -1,6 +1,6 @@
 import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
@@ -16,6 +16,69 @@ import {
 } from "~/services/queue/queue-service";
 
 export const segmentRouter = createTRPCRouter({
+  // Paginated segments for a speaker (offset-based cursor)
+  getBySpeaker: protectedProcedure
+    .input(
+      z.object({
+        speakerId: z.string().uuid(),
+        cursor: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(100).default(50),
+      }),
+    )
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            const [countResult, items] = yield* Effect.all([
+              db
+                .select({ count: sql<number>`count(*)::int` })
+                .from(segments)
+                .where(eq(segments.speakerId, input.speakerId)),
+              db.query.segments.findMany({
+                where: eq(segments.speakerId, input.speakerId),
+                orderBy: [asc(segments.startTime)],
+                offset: input.cursor,
+                limit: input.limit + 1,
+                with: {
+                  clip: true,
+                  source: {
+                    columns: { id: true, name: true, storageKey: true },
+                  },
+                },
+              }),
+            ]);
+
+            const totalCount = countResult[0]?.count ?? 0;
+            const hasMore = items.length > input.limit;
+            const pageItems = hasMore ? items.slice(0, input.limit) : items;
+
+            return {
+              segments: pageItems,
+              totalCount,
+              nextCursor: hasMore ? input.cursor + input.limit : undefined,
+            };
+          }),
+        ),
+    ),
+
   // Get all segment IDs for a speaker (lightweight ID index for windowed fetching)
   getIdsBySpeaker: protectedProcedure
     .input(
@@ -559,12 +622,12 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Delete segments by speaker (for speaker page)
+  // Delete segments by speaker. Omit segmentIds to delete all.
   deleteSegmentsBySpeaker: protectedProcedure
     .input(
       z.object({
         speakerId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).min(1),
+        segmentIds: z.array(z.string().uuid()).min(1).optional(),
       }),
     )
     .mutation(
@@ -589,14 +652,16 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            const result = yield* db
-              .delete(segments)
-              .where(
-                and(
+            const whereClause = input.segmentIds
+              ? and(
                   inArray(segments.id, input.segmentIds),
                   eq(segments.speakerId, input.speakerId),
-                ),
-              )
+                )
+              : eq(segments.speakerId, input.speakerId);
+
+            const result = yield* db
+              .delete(segments)
+              .where(whereClause)
               .returning({ id: segments.id });
 
             return { success: true, deletedCount: result.length };
@@ -604,12 +669,12 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Change speaker for segments
+  // Change speaker for segments. Omit segmentIds to move all.
   changeSpeaker: protectedProcedure
     .input(
       z.object({
         speakerId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).min(1),
+        segmentIds: z.array(z.string().uuid()).min(1).optional(),
         targetSpeakerId: z.string().uuid(),
       }),
     )
@@ -651,15 +716,17 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
+            const whereClause = input.segmentIds
+              ? and(
+                  inArray(segments.id, input.segmentIds),
+                  eq(segments.speakerId, input.speakerId),
+                )
+              : eq(segments.speakerId, input.speakerId);
+
             const result = yield* db
               .update(segments)
               .set({ speakerId: input.targetSpeakerId })
-              .where(
-                and(
-                  inArray(segments.id, input.segmentIds),
-                  eq(segments.speakerId, input.speakerId),
-                ),
-              )
+              .where(whereClause)
               .returning({ id: segments.id });
 
             return { success: true, updatedCount: result.length };

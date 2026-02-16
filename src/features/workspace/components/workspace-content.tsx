@@ -3,7 +3,6 @@
 import { Loader2 } from "lucide-react";
 import { useQueryState } from "nuqs";
 import { useEffect } from "react";
-import { useSnapshot } from "valtio";
 import { api } from "~/trpc/react";
 import { useWorkspaceStore } from "../context/workspace-store-context";
 import { workspaceParams } from "../search-params";
@@ -12,24 +11,25 @@ import { WorkspaceSidebar } from "./workspace-sidebar";
 
 export function WorkspaceContent() {
   const $store = useWorkspaceStore();
-  const { segments } = useSnapshot($store);
 
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
-  const {
-    data: segmentIds,
-    isLoading,
-    isFetching,
-  } = api.segment.getIdsBySpeaker.useQuery(
-    { speakerId: speakerId! },
-    { enabled: !!speakerId },
-  );
+  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    api.segment.getBySpeaker.useInfiniteQuery(
+      { speakerId: speakerId ?? "", limit: 50 },
+      {
+        enabled: !!speakerId,
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+      },
+    );
 
+  const segments = data?.pages.flatMap((p) => p.segments) ?? [];
+  const totalCount = data?.pages[0]?.totalCount ?? 0;
+
+  // Clear selection when switching speakers
   useEffect(() => {
-    if (segmentIds) {
-      $store.initializeSegments(segmentIds);
-    }
-  }, [segmentIds]);
+    $store.clearSelection();
+  }, [speakerId]);
 
   if (!speakerId) {
     return (
@@ -39,8 +39,7 @@ export function WorkspaceContent() {
     );
   }
 
-  // TODO: fix race condition between query success and store update in effect happening after query succeed, causing the table to render with prior segments when switching between speakers. Should either clear segments state right when switching speakers or synchronize effect state update with query success or handle loading directly through state.
-  if (isLoading || isFetching) {
+  if (isLoading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 size-4 animate-spin" />
@@ -49,7 +48,7 @@ export function WorkspaceContent() {
     );
   }
 
-  if (!segments.size) {
+  if (segments.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
         No segments found for this speaker.
@@ -60,7 +59,13 @@ export function WorkspaceContent() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="min-w-0 flex-1 p-4">
-        <SegmentsTable />
+        <SegmentsTable
+          segments={segments}
+          totalCount={totalCount}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          fetchNextPage={fetchNextPage}
+        />
       </div>
       <WorkspaceSidebar />
     </div>

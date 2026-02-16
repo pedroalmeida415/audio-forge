@@ -198,6 +198,7 @@ export function TableToolbar() {
         open={showChangeSpeakerDialog}
         onOpenChange={setShowChangeSpeakerDialog}
         segmentIds={Array.from(selectedIds)}
+        segmentCount={selectedIds.size}
         projectId={speaker.projectId}
         speakerId={speaker.id}
         speakerName={speaker.name}

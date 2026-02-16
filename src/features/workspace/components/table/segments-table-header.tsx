@@ -1,8 +1,13 @@
 import { flexRender, type Table } from "@tanstack/react-table";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { GRID_COLUMNS } from "./columns";
 import { TableToolbar } from "./table-toolbar";
 
-export function SegmentsTableHeader({ table }: { table: Table<string> }) {
+export function SegmentsTableHeader({
+  table,
+}: {
+  table: Table<SegmentWithClip>;
+}) {
   return (
     <div className="sticky top-14 z-10 rounded-t-lg bg-card">
       <TableToolbar />

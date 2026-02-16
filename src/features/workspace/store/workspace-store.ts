@@ -1,54 +1,17 @@
-import { proxyMap, proxySet } from "valtio/utils";
-import type { SegmentEntry, SegmentWithClip } from "./types";
+import { proxySet } from "valtio/utils";
 
 export class WorkspaceStore {
-  segments: Map<string, SegmentEntry> = proxyMap();
   selectedSegmentIds: Set<string> = proxySet();
-
-  // Lifecycle
-
-  initializeSegments(ids: string[]) {
-    this.selectedSegmentIds.clear();
-    this.segments.clear();
-    for (const id of ids) {
-      this.segments.set(id, { id, status: "pending" as const, data: null });
-    }
-  }
-
-  clearSegments() {
-    this.segments.clear();
-    this.selectedSegmentIds.clear();
-  }
-
-  // Fetching lifecycle
-
-  markSegmentsLoading(ids: string[]) {
-    for (const id of ids) {
-      const entry = this.segments.get(id);
-      if (entry?.status === "pending") {
-        entry.status = "loading";
-      }
-    }
-  }
-
-  setSegmentData(segments: SegmentWithClip[]) {
-    for (const seg of segments) {
-      this.segments.set(seg.id, { id: seg.id, status: "loaded", data: seg });
-    }
-  }
-
-  markSegmentsError(ids: string[]) {
-    for (const id of ids) {
-      const entry = this.segments.get(id);
-      if (entry) {
-        entry.status = "error";
-      }
-    }
-  }
-
-  // Selection
+  isAllSelected = false;
 
   toggleSelection(id: string) {
+    if (this.isAllSelected) {
+      // Exit select-all mode; only this segment stays selected
+      this.isAllSelected = false;
+      this.selectedSegmentIds.clear();
+      this.selectedSegmentIds.add(id);
+      return;
+    }
     if (this.selectedSegmentIds.has(id)) {
       this.selectedSegmentIds.delete(id);
     } else {
@@ -57,37 +20,12 @@ export class WorkspaceStore {
   }
 
   selectAll() {
-    for (const id of this.segments.keys()) {
-      this.selectedSegmentIds.add(id);
-    }
-  }
-
-  clearSelection() {
+    this.isAllSelected = true;
     this.selectedSegmentIds.clear();
   }
 
-  // Data updates (for optimistic mutations)
-
-  updateTranscription(id: string, text: string | null) {
-    const entry = this.segments.get(id);
-    if (entry?.data) {
-      entry.data.transcription = text;
-    }
-  }
-
-  updateSegmentTags(id: string, tags: string[]) {
-    const entry = this.segments.get(id);
-    if (entry?.data) {
-      entry.data.tags = tags;
-    }
-  }
-
-  // Removal
-
-  removeSegments(ids: string[]) {
-    for (const id of ids) {
-      this.segments.delete(id);
-      this.selectedSegmentIds.delete(id);
-    }
+  clearSelection() {
+    this.isAllSelected = false;
+    this.selectedSegmentIds.clear();
   }
 }

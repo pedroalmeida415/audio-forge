@@ -1,6 +1,7 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
+import { useQueryState } from "nuqs";
 import { useRef, useState } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -15,7 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
 interface TagsCellProps {
@@ -24,17 +25,45 @@ interface TagsCellProps {
 }
 
 export function TagsCell({ tags, segmentId }: TagsCellProps) {
-  const $store = useWorkspaceStore();
+  const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const utils = api.useUtils();
+
   const updateTagsMutation = api.segment.updateTags.useMutation({
     onMutate: async ({ tags: newTags }) => {
-      $store.updateSegmentTags(segmentId, newTags);
+      if (!speakerId) return;
+      await utils.segment.getBySpeaker.cancel({ speakerId });
+      const previous = utils.segment.getBySpeaker.getInfiniteData({
+        speakerId,
+      });
+
+      utils.segment.getBySpeaker.setInfiniteData({ speakerId }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) =>
+              item.id === segmentId
+                ? { ...item, tags: newTags.length > 0 ? newTags : null }
+                : item,
+            ),
+          })),
+        };
+      });
+
+      return { previous };
     },
-    onError: () => {
-      $store.updateSegmentTags(segmentId, tags ?? []);
+    onError: (_err, _vars, context) => {
+      if (context?.previous && speakerId) {
+        utils.segment.getBySpeaker.setInfiniteData(
+          { speakerId },
+          context.previous,
+        );
+      }
     },
   });
 

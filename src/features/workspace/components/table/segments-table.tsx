@@ -1,14 +1,10 @@
 "use client";
 
 import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import {
-  useWindowVirtualizer,
-  type Virtualizer,
-} from "@tanstack/react-virtual";
-import { useRef, useState } from "react";
-import { useSnapshot } from "valtio";
-import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
-import { useWindowedSegments } from "~/features/workspace/hooks/use-windowed-segments";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { Loader2 } from "lucide-react";
+import { useRef } from "react";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { createColumns } from "./columns";
 import { SegmentsTableHeader } from "./segments-table-header";
 import { SegmentsTableRow } from "./segments-table-row";
@@ -16,66 +12,54 @@ import { TableToolbar } from "./table-toolbar";
 
 const columns = createColumns();
 const ROW_HEIGHT = 48;
+const LOAD_MORE_THRESHOLD = 10;
 
-export function SegmentsTable() {
-  const $store = useWorkspaceStore();
-  const { segments } = useSnapshot($store);
+interface SegmentsTableProps {
+  segments: SegmentWithClip[];
+  totalCount: number;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => void;
+}
 
-  const [data, _setData] = useState(() => Array.from(segments.keys()));
-
-  // useEffect(
-  //   () =>
-  //     subscribe($store.segments, () => {
-  //       console.log("subscribe: $store.segments", $store.segments);
-  //       setData(Array.from($store.segments.keys()));
-  //     }),
-  //   [],
-  // );
-
+export function SegmentsTable({
+  segments,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+}: SegmentsTableProps) {
   const table = useReactTable({
-    data,
+    data: segments,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getRowId: (row) => row,
+    getRowId: (row) => row.id,
   });
 
   const { rows } = table.getRowModel();
 
   const listRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const virtualizer = useWindowVirtualizer({
     count: rows.length,
     estimateSize: () => ROW_HEIGHT,
     overscan: 5,
     scrollMargin: listRef.current?.offsetTop ?? 0,
-    onChange: handleVirtualizerChange,
-  });
-
-  const { onRangeChange } = useWindowedSegments();
-
-  function handleVirtualizerChange(
-    instance: Virtualizer<Window, Element>,
-    sync: boolean,
-  ) {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
-
-    if (sync) return;
-
-    debounceRef.current = setTimeout(() => {
+    onChange: (instance) => {
       const items = instance.getVirtualItems();
-      if (items.length > 0) {
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (first && last) {
-          onRangeChange(first.index, last.index);
-        }
+      if (items.length === 0) return;
+
+      const lastItem = items[items.length - 1];
+      if (!lastItem) return;
+
+      if (
+        lastItem.index >= rows.length - LOAD_MORE_THRESHOLD &&
+        hasNextPage &&
+        !isFetchingNextPage
+      ) {
+        fetchNextPage();
       }
-    }, 50);
-  }
+    },
+  });
 
   if (rows.length === 0) {
     return (
@@ -125,6 +109,14 @@ export function SegmentsTable() {
           );
         })}
       </div>
+      {isFetchingNextPage && (
+        <div className="flex items-center justify-center border-border border-t py-3">
+          <Loader2 className="mr-2 size-4 animate-spin text-muted-foreground" />
+          <span className="text-muted-foreground text-sm">
+            Loading more segments...
+          </span>
+        </div>
+      )}
     </div>
   );
 }
