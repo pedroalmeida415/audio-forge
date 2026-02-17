@@ -9,7 +9,7 @@ export default async function WorkspaceLayout({
 }) {
   const { projectId } = await params;
 
-  void api.speaker.getAllByProjectId.prefetch({ projectId });
+  void api.speaker.getByProject.prefetch({ projectId });
 
   return <HydrateClient>{children}</HydrateClient>;
 }

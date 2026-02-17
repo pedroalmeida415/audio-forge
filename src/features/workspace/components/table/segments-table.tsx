@@ -2,7 +2,6 @@
 
 import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Loader2 } from "lucide-react";
 import { useRef } from "react";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { createColumns } from "./columns";
@@ -12,21 +11,12 @@ import { TableToolbar } from "./table-toolbar";
 
 const columns = createColumns();
 const ROW_HEIGHT = 48;
-const LOAD_MORE_THRESHOLD = 10;
 
 interface SegmentsTableProps {
   segments: SegmentWithClip[];
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  fetchNextPage: () => void;
 }
 
-export function SegmentsTable({
-  segments,
-  hasNextPage,
-  isFetchingNextPage,
-  fetchNextPage,
-}: SegmentsTableProps) {
+export function SegmentsTable({ segments }: SegmentsTableProps) {
   const table = useReactTable({
     data: segments,
     columns,
@@ -43,21 +33,6 @@ export function SegmentsTable({
     estimateSize: () => ROW_HEIGHT,
     overscan: 5,
     scrollMargin: listRef.current?.offsetTop ?? 0,
-    onChange: (instance) => {
-      const items = instance.getVirtualItems();
-      if (items.length === 0) return;
-
-      const lastItem = items[items.length - 1];
-      if (!lastItem) return;
-
-      if (
-        lastItem.index >= rows.length - LOAD_MORE_THRESHOLD &&
-        hasNextPage &&
-        !isFetchingNextPage
-      ) {
-        fetchNextPage();
-      }
-    },
   });
 
   if (rows.length === 0) {
@@ -108,14 +83,6 @@ export function SegmentsTable({
           );
         })}
       </div>
-      {isFetchingNextPage && (
-        <div className="flex items-center justify-center border-border border-t py-3">
-          <Loader2 className="mr-2 size-4 animate-spin text-muted-foreground" />
-          <span className="text-muted-foreground text-sm">
-            Loading more segments...
-          </span>
-        </div>
-      )}
     </div>
   );
 }

@@ -16,15 +16,8 @@ import {
 } from "~/services/queue/queue-service";
 
 export const segmentRouter = createTRPCRouter({
-  // Paginated segments for a speaker (offset-based cursor)
   getBySpeaker: protectedProcedure
-    .input(
-      z.object({
-        speakerId: z.string().uuid(),
-        cursor: z.number().int().min(0).default(0),
-        limit: z.number().int().min(1).max(100).default(50),
-      }),
-    )
+    .input(z.object({ speakerId: z.string().uuid() }))
     .query(
       async ({ ctx, input }) =>
         await ctx.runtime.runPromise(
@@ -47,34 +40,41 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
-            const [countResult, items] = yield* Effect.all([
-              db
-                .select({ count: sql<number>`count(*)::int` })
-                .from(segments)
-                .where(eq(segments.speakerId, input.speakerId)),
-              db.query.segments.findMany({
-                where: eq(segments.speakerId, input.speakerId),
-                orderBy: [asc(segments.startTime)],
-                offset: input.cursor,
-                limit: input.limit + 1,
-                with: {
-                  clip: true,
-                  source: {
-                    columns: { id: true, name: true, storageKey: true },
-                  },
+            const items = yield* db.query.segments.findMany({
+              where: eq(segments.speakerId, input.speakerId),
+              orderBy: [asc(segments.startTime)],
+              with: {
+                clip: true,
+                source: {
+                  columns: { id: true, name: true, storageKey: true },
                 },
-              }),
-            ]);
+              },
+            });
 
-            const totalCount = countResult[0]?.count ?? 0;
-            const hasMore = items.length > input.limit;
-            const pageItems = hasMore ? items.slice(0, input.limit) : items;
+            return { segments: items };
+          }),
+        ),
+    ),
 
-            return {
-              segments: pageItems,
-              totalCount,
-              nextCursor: hasMore ? input.cursor + input.limit : undefined,
-            };
+  getBySource: protectedProcedure
+    .input(z.object({ sourceId: z.string().uuid() }))
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const results = yield* db.query.segments.findMany({
+              where: eq(segments.sourceId, input.sourceId),
+              orderBy: [asc(segments.startTime)],
+              with: {
+                clip: true,
+                source: {
+                  columns: { id: true, name: true, storageKey: true },
+                },
+              },
+            });
+
+            return { segments: results };
           }),
         ),
     ),

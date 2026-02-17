@@ -18,33 +18,37 @@ import {
 import { Button } from "~/components/ui/button";
 import { ChangeSpeakerDialog } from "~/features/speaker/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
-import {
-  SEGMENTS_PAGE_LIMIT,
-  workspaceParams,
-} from "~/features/workspace/search-params";
+import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
 function filterOutSegments(
-  speakerId: string,
   ids: Set<string>,
   utils: ReturnType<typeof api.useUtils>,
+  sourceId: string | null,
+  speakerId: string,
 ) {
-  const input = { speakerId, limit: SEGMENTS_PAGE_LIMIT };
-  utils.segment.getBySpeaker.setInfiniteData(input, (old) => {
-    if (!old) return old;
-    return {
-      ...old,
-      pages: old.pages.map((page) => ({
-        ...page,
-        segments: page.segments.filter((item) => !ids.has(item.id)),
-        totalCount: page.totalCount - ids.size,
-      })),
-    };
-  });
+  if (sourceId) {
+    utils.segment.getBySource.setData({ sourceId }, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        segments: old.segments.filter((item) => !ids.has(item.id)),
+      };
+    });
+  } else {
+    utils.segment.getBySpeaker.setData({ speakerId }, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        segments: old.segments.filter((item) => !ids.has(item.id)),
+      };
+    });
+  }
 }
 
 export function TableToolbar() {
   const { projectId } = useParams<{ projectId: string }>();
+  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
   const $store = useWorkspaceStore();
@@ -53,13 +57,17 @@ export function TableToolbar() {
 
   const utils = api.useUtils();
 
-  // Imperative cache read - update to custom useSegmentsBySpeaker custom hook to react to changes and avoid duplicate hook declarations that might get desynced
-  const totalCount = speakerId
-    ? (utils.segment.getBySpeaker.getInfiniteData({
-        speakerId,
-        limit: SEGMENTS_PAGE_LIMIT,
-      })?.pages[0]?.totalCount ?? 0)
-    : 0;
+  const cachedSegments = sourceId
+    ? (utils.segment.getBySource.getData({ sourceId })?.segments ?? [])
+    : speakerId
+      ? (utils.segment.getBySpeaker.getData({ speakerId })?.segments ?? [])
+      : [];
+
+  // When viewing a source, we only count segments for the active speaker
+  const totalCount =
+    sourceId && speakerId
+      ? cachedSegments.filter((s) => s.speakerId === speakerId).length
+      : cachedSegments.length;
 
   const selectedCount = isAllSelected
     ? totalCount - excludedSegmentIds.size
@@ -71,7 +79,7 @@ export function TableToolbar() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch current speaker for the dialog description
-  const { data: speakers } = api.speaker.getAllByProjectId.useQuery(
+  const { data: speakers } = api.speaker.getByProject.useQuery(
     { projectId },
     { enabled: showChangeSpeakerDialog },
   );
@@ -81,9 +89,13 @@ export function TableToolbar() {
     onSuccess: () => {
       if (speakerId) {
         if (isAllSelected) {
-          utils.segment.getBySpeaker.invalidate({ speakerId });
+          if (sourceId) {
+            utils.segment.getBySource.invalidate({ sourceId });
+          } else {
+            utils.segment.getBySpeaker.invalidate({ speakerId });
+          }
         } else {
-          filterOutSegments(speakerId, selectedSegmentIds, utils);
+          filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
         }
       }
       $store.clearSelection();
@@ -211,9 +223,13 @@ export function TableToolbar() {
           speakerName={currentSpeaker?.name ?? "Unknown"}
           onSuccess={() => {
             if (isAllSelected) {
-              utils.segment.getBySpeaker.invalidate({ speakerId });
+              if (sourceId) {
+                utils.segment.getBySource.invalidate({ sourceId });
+              } else {
+                utils.segment.getBySpeaker.invalidate({ speakerId });
+              }
             } else {
-              filterOutSegments(speakerId, selectedSegmentIds, utils);
+              filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
             }
             $store.clearSelection();
           }}

@@ -25,13 +25,13 @@ export function SpeakerPicker() {
     workspaceParams.speakerId,
   );
 
-  const [projectSpeakers] = api.speaker.getAllByProjectId.useSuspenseQuery(
+  const [projectSpeakers] = api.speaker.getByProject.useSuspenseQuery(
     { projectId },
     { refetchOnWindowFocus: false },
   );
 
   const { data: sourceSpeakers, isLoading: isLoadingSourceSpeakers } =
-    api.speaker.getAllBySourceId.useQuery(
+    api.speaker.getBySource.useQuery(
       { sourceId: sourceId ?? "" },
       { enabled: !!sourceId, refetchOnWindowFocus: false },
     );

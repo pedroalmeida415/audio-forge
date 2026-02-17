@@ -175,7 +175,7 @@ export const speakerRouter = createTRPCRouter({
     ),
 
   // Get project-level speakers (excludes source-linked diarization speakers)
-  getAllByProjectId: protectedProcedure
+  getByProject: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(
       async ({ ctx, input }) =>
@@ -195,7 +195,7 @@ export const speakerRouter = createTRPCRouter({
     ),
 
   // Get diarization speakers linked to a specific source
-  getAllBySourceId: protectedProcedure
+  getBySource: protectedProcedure
     .input(z.object({ sourceId: z.string().uuid() }))
     .query(
       async ({ ctx, input }) =>

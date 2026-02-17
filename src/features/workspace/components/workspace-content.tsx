@@ -5,30 +5,38 @@ import { useQueryState } from "nuqs";
 import { useEffect } from "react";
 import { api } from "~/trpc/react";
 import { useWorkspaceStore } from "../context/workspace-store-context";
-import { SEGMENTS_PAGE_LIMIT, workspaceParams } from "../search-params";
+import { workspaceParams } from "../search-params";
 import { SegmentsTable } from "./table/segments-table";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
 export function WorkspaceContent() {
   const $store = useWorkspaceStore();
 
+  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
-  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    api.segment.getBySpeaker.useInfiniteQuery(
-      { speakerId: speakerId ?? "", limit: SEGMENTS_PAGE_LIMIT },
-      {
-        enabled: !!speakerId,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-    );
+  const bySpeaker = api.segment.getBySpeaker.useQuery(
+    { speakerId: speakerId ?? "" },
+    { enabled: !!speakerId && !sourceId },
+  );
 
-  const segments = data?.pages.flatMap((p) => p.segments) ?? [];
+  const bySource = api.segment.getBySource.useQuery(
+    { sourceId: sourceId ?? "" },
+    { enabled: !!sourceId },
+  );
 
-  // Clear selection when switching speakers
+  const activeQuery = sourceId ? bySource : bySpeaker;
+
+  const allSegments = activeQuery.data?.segments ?? [];
+  const segments =
+    sourceId && speakerId
+      ? allSegments.filter((s) => s.speakerId === speakerId)
+      : allSegments;
+
+  // Clear selection when switching speakers or sources
   useEffect(() => {
     $store.clearSelection();
-  }, [speakerId]);
+  }, [speakerId, sourceId]);
 
   if (!speakerId) {
     return (
@@ -38,7 +46,7 @@ export function WorkspaceContent() {
     );
   }
 
-  if (isLoading) {
+  if (activeQuery.isLoading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 size-4 animate-spin" />
@@ -58,12 +66,7 @@ export function WorkspaceContent() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="min-w-0 flex-1 p-4">
-        <SegmentsTable
-          segments={segments}
-          hasNextPage={hasNextPage}
-          isFetchingNextPage={isFetchingNextPage}
-          fetchNextPage={fetchNextPage}
-        />
+        <SegmentsTable segments={segments} />
       </div>
       <WorkspaceSidebar />
     </div>

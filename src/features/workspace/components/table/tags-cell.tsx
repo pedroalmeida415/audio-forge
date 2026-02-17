@@ -16,10 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import {
-  SEGMENTS_PAGE_LIMIT,
-  workspaceParams,
-} from "~/features/workspace/search-params";
+import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
 interface TagsCellProps {
@@ -28,6 +25,7 @@ interface TagsCellProps {
 }
 
 export function TagsCell({ tags, segmentId }: TagsCellProps) {
+  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -37,34 +35,41 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
 
   const updateTagsMutation = api.segment.updateTags.useMutation({
     onMutate: async ({ tags: newTags }) => {
-      if (!speakerId) return;
-      const input = { speakerId, limit: SEGMENTS_PAGE_LIMIT };
-      await utils.segment.getBySpeaker.cancel(input);
-      const previous = utils.segment.getBySpeaker.getInfiniteData(input);
+      const updateSegmentTags = (
+        segments: { id: string; tags: string[] | null }[],
+      ) =>
+        segments.map((item) =>
+          item.id === segmentId
+            ? { ...item, tags: newTags.length > 0 ? newTags : null }
+            : item,
+        );
 
-      utils.segment.getBySpeaker.setInfiniteData(input, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          pages: old.pages.map((page) => ({
-            ...page,
-            segments: page.segments.map((item) =>
-              item.id === segmentId
-                ? { ...item, tags: newTags.length > 0 ? newTags : null }
-                : item,
-            ),
-          })),
-        };
-      });
+      if (sourceId) {
+        await utils.segment.getBySource.cancel({ sourceId });
+        const previous = utils.segment.getBySource.getData({ sourceId });
+        utils.segment.getBySource.setData({ sourceId }, (old) => {
+          if (!old) return old;
+          return { ...old, segments: updateSegmentTags(old.segments) };
+        });
+        return { previous, source: "bySource" as const };
+      }
 
-      return { previous };
+      if (speakerId) {
+        await utils.segment.getBySpeaker.cancel({ speakerId });
+        const previous = utils.segment.getBySpeaker.getData({ speakerId });
+        utils.segment.getBySpeaker.setData({ speakerId }, (old) => {
+          if (!old) return old;
+          return { ...old, segments: updateSegmentTags(old.segments) };
+        });
+        return { previous, source: "bySpeaker" as const };
+      }
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous && speakerId) {
-        utils.segment.getBySpeaker.setInfiniteData(
-          { speakerId, limit: SEGMENTS_PAGE_LIMIT },
-          context.previous,
-        );
+      if (!context?.previous) return;
+      if (context.source === "bySource" && sourceId) {
+        utils.segment.getBySource.setData({ sourceId }, context.previous);
+      } else if (context.source === "bySpeaker" && speakerId) {
+        utils.segment.getBySpeaker.setData({ speakerId }, context.previous);
       }
     },
   });
