@@ -1,7 +1,12 @@
 "use client";
 
-import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { useMemo } from "react";
+import {
+  getCoreRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { createColumns } from "./columns";
 import { SegmentsTableBody } from "./segments-table-body";
@@ -13,10 +18,14 @@ interface SegmentsTableProps {
 
 export function SegmentsTable({ segments }: SegmentsTableProps) {
   const columns = useMemo(() => createColumns(), []);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const table = useReactTable({
     data: segments,
     columns,
+    state: { sorting },
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     getRowId: (row) => row.id,
   });
 

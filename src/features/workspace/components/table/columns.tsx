@@ -297,27 +297,27 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     },
     {
       id: "score",
+      accessorFn: (row) => row.clip?.scores?.DNSMOS?.P808_MOS ?? -1,
       header: "Score",
       cell: ({ row }) => (
         <ScoreCell
           score={row.original.clip?.scores?.DNSMOS?.P808_MOS ?? null}
         />
       ),
-      size: 64,
-
+      size: 74,
       meta: {
         center: true,
       },
     },
     {
       id: "duration",
+      accessorFn: (row) => row.endTime - row.startTime,
       header: "Duration",
       cell: ({ row }) => {
         const duration = row.original.endTime - row.original.startTime;
         return <DurationCell duration={duration} />;
       },
-      size: 80,
-
+      size: 96,
       meta: {
         center: true,
       },
