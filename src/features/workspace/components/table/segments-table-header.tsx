@@ -1,39 +1,48 @@
+"use client";
+
 import { flexRender, type Table } from "@tanstack/react-table";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
-import { GRID_COLUMNS } from "./columns";
+import { cn } from "~/lib/utils";
 import { TableToolbar } from "./table-toolbar";
 
-export function SegmentsTableHeader({
-  table,
-}: {
+interface SegmentsTableHeaderProps {
   table: Table<SegmentWithClip>;
-}) {
+}
+
+export function SegmentsTableHeader({ table }: SegmentsTableHeaderProps) {
   return (
-    <div className="sticky top-14 z-10 rounded-t-lg bg-card">
-      <TableToolbar />
-      <div role="rowgroup" className="bg-muted/95">
-        {table.getHeaderGroups().map((headerGroup) => (
-          <div
-            key={headerGroup.id}
-            role="row"
-            className="grid items-center border-b"
-            style={{ gridTemplateColumns: GRID_COLUMNS }}
-          >
-            {headerGroup.headers.map((header) => (
-              <div
-                key={header.id}
-                role="columnheader"
-                className="px-2 py-2 font-medium text-muted-foreground text-xs uppercase tracking-wide"
-              >
-                {flexRender(
-                  header.column.columnDef.header,
-                  header.getContext(),
-                )}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
+    <thead className="sticky top-14 z-10 grid rounded-t-lg bg-card">
+      <tr style={{ display: "block" }}>
+        <th className="block p-0 text-left font-normal">
+          <TableToolbar />
+        </th>
+      </tr>
+      {table.getHeaderGroups().map((headerGroup) => (
+        <tr
+          key={headerGroup.id}
+          className="flex w-full items-center border-b bg-muted/95"
+        >
+          {headerGroup.headers.map((header) => (
+            <th
+              key={header.id}
+              className={cn(
+                "px-2 py-2 text-left font-medium text-muted-foreground text-xs uppercase tracking-wide",
+                header.column.columnDef.meta?.center && "text-center",
+              )}
+              style={
+                header.column.columnDef.meta?.flex
+                  ? { flex: 1, minWidth: 0 }
+                  : { width: header.getSize() }
+              }
+            >
+              {flexRender(
+                header.column.columnDef.header,
+                header.getContext(),
+              )}
+            </th>
+          ))}
+        </tr>
+      ))}
+    </thead>
   );
 }

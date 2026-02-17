@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, RowData } from "@tanstack/react-table";
 import { PencilIcon } from "lucide-react";
 import { useSnapshot } from "valtio";
 import { Badge } from "~/components/ui/badge";
@@ -19,12 +19,25 @@ import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { cn } from "~/lib/utils";
+import { TagsCell } from "./tags-cell";
+
+// ============================================================================
+// Column Meta Augmentation
+// ============================================================================
+
+declare module "@tanstack/react-table" {
+  // biome-ignore lint/correctness/noUnusedVariables: required for module augmentation
+  interface ColumnMeta<TData extends RowData, TValue> {
+    flex?: boolean;
+    center?: boolean;
+  }
+}
 
 // ============================================================================
 // Cell Components
 // ============================================================================
 
-export function SelectAllCheckbox() {
+function SelectAllCheckbox() {
   const $store = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
     useSnapshot($store);
@@ -53,7 +66,7 @@ export function SelectAllCheckbox() {
   );
 }
 
-export function SelectCell({ segmentId }: { segmentId: string }) {
+function SelectCell({ segmentId }: { segmentId: string }) {
   const $store = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
     useSnapshot($store);
@@ -74,7 +87,7 @@ export function SelectCell({ segmentId }: { segmentId: string }) {
   );
 }
 
-export function OriginalAudioCell({
+function OriginalAudioCell({
   storageKey,
   startTime,
   endTime,
@@ -103,7 +116,7 @@ export function OriginalAudioCell({
   );
 }
 
-export function ProcessedAudioCell({
+function ProcessedAudioCell({
   clipStorageKey,
   clipDuration,
   fallbackDuration,
@@ -136,7 +149,7 @@ export function ProcessedAudioCell({
   );
 }
 
-export function ScoreCell({ score }: { score: number | null }) {
+function ScoreCell({ score }: { score: number | null }) {
   const scoreColor =
     score === null
       ? "text-muted-foreground/50"
@@ -158,7 +171,7 @@ export function ScoreCell({ score }: { score: number | null }) {
   );
 }
 
-export function DurationCell({ duration }: { duration: number }) {
+function DurationCell({ duration }: { duration: number }) {
   return (
     <div className="flex justify-center">
       <Badge variant="secondary" className="font-mono text-xs">
@@ -168,7 +181,7 @@ export function DurationCell({ duration }: { duration: number }) {
   );
 }
 
-export function IndexCell({ index }: { index: number }) {
+function IndexCell({ index }: { index: number }) {
   return (
     <span className="font-mono text-muted-foreground text-xs">
       #{String(index + 1).padStart(4, "0")}
@@ -176,7 +189,7 @@ export function IndexCell({ index }: { index: number }) {
   );
 }
 
-export function ActionsCell({ segmentId }: { segmentId: string }) {
+function ActionsCell({ segmentId }: { segmentId: string }) {
   const handleEdit = () => {
     console.log("Edit segment:", segmentId);
   };
@@ -196,7 +209,7 @@ export function ActionsCell({ segmentId }: { segmentId: string }) {
   );
 }
 
-export function TranscriptionCell({
+function TranscriptionCell({
   transcription,
 }: {
   transcription: string | null;
@@ -227,47 +240,109 @@ export function TranscriptionCell({
 // Column Definitions
 // ============================================================================
 
-export const GRID_COLUMNS = "40px 60px 48px 48px 60px 80px 1fr 200px 48px";
-
 export function createColumns(): ColumnDef<SegmentWithClip>[] {
   return [
     {
       id: "select",
       header: () => <SelectAllCheckbox />,
+      cell: ({ row }) => <SelectCell segmentId={row.original.id} />,
+      size: 40,
       enableSorting: false,
       enableHiding: false,
+      meta: {
+        center: true,
+      },
     },
     {
       id: "index",
       header: "#",
+      cell: ({ row }) => <IndexCell index={row.index} />,
+      size: 60,
     },
     {
       id: "segment",
-      header: "Seg.",
+      header: "Segment",
+      cell: ({ row }) => (
+        <OriginalAudioCell
+          storageKey={row.original.source.storageKey ?? ""}
+          startTime={row.original.startTime}
+          endTime={row.original.endTime}
+        />
+      ),
+      size: 76,
+
+      meta: {
+        center: true,
+      },
     },
     {
       id: "clip",
       header: "Clip",
+      cell: ({ row }) => {
+        const segment = row.original;
+        const duration = segment.endTime - segment.startTime;
+        return (
+          <ProcessedAudioCell
+            clipStorageKey={segment.clip?.storageKey ?? null}
+            clipDuration={segment.clip?.duration ?? null}
+            fallbackDuration={duration}
+          />
+        );
+      },
+      size: 48,
+
+      meta: {
+        center: true,
+      },
     },
     {
       id: "score",
-      header: () => <span className="w-full text-center">Score</span>,
+      header: "Score",
+      cell: ({ row }) => (
+        <ScoreCell
+          score={row.original.clip?.scores?.DNSMOS?.P808_MOS ?? null}
+        />
+      ),
+      size: 64,
+
+      meta: {
+        center: true,
+      },
     },
     {
       id: "duration",
-      header: () => <span className="w-full text-center">Duration</span>,
+      header: "Duration",
+      cell: ({ row }) => {
+        const duration = row.original.endTime - row.original.startTime;
+        return <DurationCell duration={duration} />;
+      },
+      size: 80,
+
+      meta: {
+        center: true,
+      },
     },
     {
       id: "transcription",
       header: "Transcription",
+      cell: ({ row }) => (
+        <TranscriptionCell transcription={row.original.transcription} />
+      ),
+      meta: { flex: true },
     },
     {
       id: "tags",
       header: "Tags",
+      cell: ({ row }) => (
+        <TagsCell tags={row.original.tags} segmentId={row.original.id} />
+      ),
+      size: 200,
     },
     {
       id: "actions",
       header: () => null,
+      cell: ({ row }) => <ActionsCell segmentId={row.original.id} />,
+      size: 48,
       enableSorting: false,
       enableHiding: false,
     },
