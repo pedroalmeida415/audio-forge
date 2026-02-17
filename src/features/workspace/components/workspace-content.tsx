@@ -55,14 +55,6 @@ export function WorkspaceContent() {
     );
   }
 
-  if (segments.length === 0) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
-        No segments found for this speaker.
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-0 flex-1">
       <div className="min-w-0 flex-1 p-4">
