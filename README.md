@@ -1,162 +1,98 @@
 # Audio Forge
 
-A streamlined tool for creating speech datasets (like LJSpeech) from audio files. Upload audio, diarize speakers, curate segments, and export datasets with transcriptions.
+A tool for creating high-quality speech datasets (LJSpeech format) from audio files. Upload audio, diarize speakers, curate segments in a workspace, and export datasets with transcriptions for TTS and ASR training.
 
-## Product Overview
+## How It Works
 
-Audio Forge helps you transform raw audio into structured speech datasets by:
-1. Uploading audio files
-2. Running speaker diarization to identify speakers and segment audio
-3. Curating segments in a clipping workspace (review, delete, adjust boundaries)
-4. Assigning segments to project-level speakers
-5. Processing segments into clips with transcriptions
-6. Exporting datasets in standard formats (LJSpeech, etc.)
+1. **Upload audio** (or video, which gets audio extracted)
+2. **Run speaker diarization** to automatically identify speakers and segment audio
+3. **Curate segments** in the workspace: review, delete, adjust boundaries, add transcriptions
+4. **Reassign segments** from diarization speakers (`SPEAKER_XX`) to real project-level speakers
+5. **Process segments** into clips with denoising and quality scoring
+6. **Export datasets** in LJSpeech format per speaker
 
 ## Core Concepts
 
-### Clipping Sessions
-A workspace for processing a single audio file. Each session contains:
-- Reference to the source audio file
-- Segments (time ranges) belonging to project-level speakers
-- Diarization job metadata (status, completion time, errors)
+### Projects
+
+Top-level container. Everything (sources, speakers, segments) is project-scoped.
+
+### Sources
+
+An uploaded audio file with its processing metadata. Each source tracks:
+- The original audio file in cloud storage
+- Waveform generation status (for timeline visualization)
+- Diarization job status (pending, running, completed, failed)
+
+Sources replace the old separate "files" and "clipping sessions" concepts.
 
 ### Speakers
-Project-level speaker identities that organize segments. Key rules:
-- Speakers are **project-scoped** - they persist across sessions
-- Diarization creates speakers with `SPEAKER_XX` naming convention
-- `SPEAKER_*` speakers are **immutable** (no rename allowed) and hidden from project views
-- Regular speakers (e.g., "John", "Sarah") represent real speaker identities
-- Segments reference speakers directly - speakers ARE the "collections"
+
+Project-level speaker identities that organize segments. Two origins:
+- **Diarization speakers** (`origin: "diarization"`): auto-created during diarization with `SPEAKER_XX` naming. Linked to a specific source. Hidden from project-level views.
+- **User speakers** (`origin: "user"`): manually created by the user (e.g., "John", "Sarah"). Persist across sources. These are the real speaker identities.
 
 ### Segments
-Normalized time-range references within source audio. Key rules:
-- Segments belong to a clipping session and reference a project-level speaker
-- Segments are the **single source of truth** - no duplication across tables
-- Editing a segment (start/end time, speaker assignment) propagates everywhere
-- Deleting a segment is a **hard delete** - removed from database entirely
-- Segments can be created via diarization or manually
+
+Time ranges within a source audio file, always assigned to one speaker. Segments are the single source of truth for time boundaries. They can carry:
+- Transcription text
+- Tags (array of strings)
+- Audio quality scores (DNSMOS)
+
+Created via diarization or manually via the timeline drag-to-select UI.
 
 ### Clips
-Processed outputs ready for dataset export. Key rules:
-- Clips are created by processing segments
-- Each clip references its **source segment** (speaker derived via segment → speaker)
-- Clips have an **actual audio file** (nullable until processing completes)
-- Clips include **transcription text** (required for speech datasets)
-- Clips may include quality metrics (MOS score)
+
+Processed audio outputs from segments (1:1 relationship). Created when a segment is processed through the denoising pipeline. Clips get their own audio file in storage and carry quality scores.
+
+### Workspace
+
+Unified view for managing a project's audio data. Users can filter by source or by speaker, view/edit segments in a table, and use the clip studio timeline for waveform visualization, playback, and segment creation.
 
 ## Data Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           CLIPPING WORKSPACE                             │
-│                                                                          │
-│  Audio File ──► Diarization ──► SPEAKER_XX (auto-created) + Segments   │
-│                                      │                                   │
-│                         ┌────────────┼────────────┐                     │
-│                         ▼            ▼            ▼                     │
-│                    SPEAKER_00   SPEAKER_01   SPEAKER_02                 │
-│                    (hidden)     (hidden)     (hidden)                   │
-│                         │            │            │                     │
-│                         ▼            ▼            ▼                     │
-│              ┌──────────────────────────────────────────────┐           │
-│              │   USER REASSIGNS SEGMENTS TO REAL SPEAKERS    │           │
-│              └──────────────────────────────────────────────┘           │
-└─────────────────────────────────────────────────────────────────────────┘
-                                      │
-                    ┌─────────────────┼─────────────────┐
-                    ▼                 ▼                 ▼
-        ┌───────────────────┐ ┌───────────────┐ ┌───────────────┐
-        │     "John"        │ │    "Sarah"    │ │  SPEAKER_02   │
-        │                   │ │               │ │  (unassigned) │
-        │ - seg from Sess A │ │ - seg from A  │ │ - seg from C  │
-        │ - seg from Sess B │ │ - seg from B  │ │               │
-        │ - seg from Sess D │ │               │ │               │
-        └─────────┬─────────┘ └───────┬───────┘ └───────────────┘
-                  │                   │
-                  ▼                   ▼
-        ┌───────────────────┐ ┌───────────────┐
-        │  PROCESS CLIPS    │ │ PROCESS CLIPS │
-        │  + Transcription  │ │ + Transcription│
-        └─────────┬─────────┘ └───────┬───────┘
-                  │                   │
-                  ▼                   ▼
-        ┌───────────────────┐ ┌───────────────┐
-        │  EXPORT DATASET   │ │ EXPORT DATASET│
-        │  (LJSpeech, etc.) │ │               │
-        └───────────────────┘ └───────────────┘
+Source Upload ──> Diarization ──> SPEAKER_XX speakers + segments created
+                                        |
+                     ┌──────────────────┼──────────────────┐
+                     v                  v                  v
+                SPEAKER_00         SPEAKER_01         SPEAKER_02
+                (hidden)           (hidden)           (hidden)
+                     |                  |                  |
+                     v                  v                  v
+              ┌─────────────────────────────────────────────────┐
+              │        User reassigns segments to speakers       │
+              └─────────────────────────────────────────────────┘
+                     |                  |
+                     v                  v
+               "John"              "Sarah"
+            (user speaker)      (user speaker)
+                     |                  |
+                     v                  v
+              Process clips       Process clips
+            (denoise + score)   (denoise + score)
+                     |                  |
+                     v                  v
+              Export dataset      Export dataset
+             (LJSpeech ZIP)     (LJSpeech ZIP)
 ```
 
-## Data Model
+## Business Rules
 
-```sql
--- Project-level speakers (replaces collections concept)
-speakers
-├── id UUID PK
-├── projectId UUID FK NOT NULL
-├── userId UUID FK NOT NULL
-├── name VARCHAR(255) NOT NULL      -- "SPEAKER_00" or "John"
-├── color VARCHAR(50)               -- Optional custom color
-├── createdAt TIMESTAMPTZ
-└── updatedAt TIMESTAMPTZ
+1. **No segment duplication**: segments live in one table, organized by speaker reference
+2. **Speakers ARE collections**: segments are grouped by their speaker assignment
+3. **Diarization speakers are immutable**: `SPEAKER_XX` names cannot be renamed and are hidden from project-level views
+4. **Hard deletes**: deleting a segment removes it from the database entirely (cascade removes its clip)
+5. **Clips reference segments**: speaker is derived via clip -> segment -> speaker
+6. **Speaker delete cascades**: deleting a speaker cascades to its segments and their clips
+7. **Source delete cascades**: deleting a source cascades to its segments, clips, and linked diarization speakers
+8. **Select-all with exclusions**: bulk operations support "all except these" pattern for efficient server-side processing
+9. **Auto-scoring pipeline**: processing a clip auto-enqueues a quality scoring job on completion
 
--- Normalized segments with speaker assignment
-segments
-├── id UUID PK
-├── sessionId UUID FK NOT NULL      -- References clipping_session
-├── speakerId UUID FK NOT NULL      -- References speaker (always assigned)
-├── startTime DOUBLE PRECISION NOT NULL
-├── endTime DOUBLE PRECISION NOT NULL
-├── createdAt TIMESTAMPTZ
-└── updatedAt TIMESTAMPTZ
+## Dataset Export
 
--- Clipping sessions (workspace for single audio file)
-clipping_sessions
-├── id UUID PK
-├── fileId UUID FK NOT NULL UNIQUE  -- 1:1 with file
-├── projectId UUID FK NOT NULL
-├── userId UUID FK NOT NULL
-├── name VARCHAR(255)
-├── diarization JSONB               -- Job metadata only (jobId, status, etc.)
-├── createdAt TIMESTAMPTZ
-└── updatedAt TIMESTAMPTZ
-
--- Clips reference segments (speaker derived via join)
-clips
-├── id UUID PK
-├── userId UUID FK NOT NULL
-├── segmentId UUID FK NOT NULL      -- Source segment
-├── fileId UUID FK                  -- Processed audio (nullable until generated)
-├── status ENUM('pending', 'processing', 'completed', 'failed')
-├── errorMessage TEXT
-├── transcription TEXT
-├── mosScore DOUBLE PRECISION
-├── createdAt TIMESTAMPTZ
-└── updatedAt TIMESTAMPTZ
-```
-
-## Key Business Rules
-
-1. **No segment duplication**: Segments live in one place, organized by speaker reference
-2. **Speakers ARE collections**: The collections concept is replaced by project-level speakers
-3. **SPEAKER_* convention**: Diarization speakers start with "SPEAKER_" prefix, are immutable and hidden from project views
-4. **Hard deletes**: Deleting a segment removes it from the database entirely
-5. **Clips reference segments**: Speaker is derived via clip → segment → speaker chain
-6. **Session speaker delete**: Removing a speaker from a session deletes segments (not the speaker itself)
-
-## Media Proxy (Planned)
-
-To reduce storage costs, segment playback uses on-demand transcoding:
-- Segments are streamed via `/api/media-proxy` (no pre-generated files)
-- Source audio is cached locally (LRU, 1GB max, 1hr TTL)
-- FFmpeg transcodes segments on-the-fly
-- Clips (processed outputs) get actual files only when needed for export
-
-## Tech Stack
-
-- **Framework**: Next.js 15, React 19, TypeScript
-- **Database**: PostgreSQL via Drizzle ORM
-- **API**: tRPC v11
-- **Auth**: better-auth
-- **Storage**: Cloudflare R2
-- **State**: Legend-State (clipping workspace)
-- **Services**: Effect-ts
+LJSpeech export per speaker:
+- WAV files (mono, 16-bit, configurable sample rate 8000-48000 Hz)
+- `metadata.csv` with pipe-delimited format: `filename|transcription|normalized_transcription`
+- Delivered as a ZIP archive with a time-limited download URL
+- Only segments with both a clip AND transcription are included

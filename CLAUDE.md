@@ -10,16 +10,16 @@ Audio Forge is a webapp designed to streamline the process of creating high-qual
 
 - **Package Manager**: Use BUN exclusively. NEVER use npm or pnpm.
 - **No Barrel Files**: Do NOT create `index.ts` files that re-export from other modules. Import directly from specific files instead.
-- **React Compiler**: Enabled (`experimental.reactCompiler`). Do not add manual `useMemo`/`useCallback` — the compiler handles memoization.
-- **TypeScript Strictness**: `noUncheckedIndexedAccess: true` — array/object index access returns `T | undefined`, so handle accordingly.
-- **Tailwind v4**: Config is CSS-based in `src/app/globals.css` (via `@theme` directive), not a JS/TS config file. Uses OKLCH color space with `light-dark()` function.
+- **React Compiler**: Enabled (`experimental.reactCompiler`). Do not add manual `useMemo`/`useCallback` -- the compiler handles memoization.
+- **TypeScript Strictness**: `noUncheckedIndexedAccess: true` -- array/object index access returns `T | undefined`, so handle accordingly.
+- **Tailwind v4**: Config is CSS-based in `src/styles/globals.css` (via `@theme` directive), not a JS/TS config file. Uses OKLCH color space with `light-dark()` function.
 
 ## Commands
 
 ```bash
 # Development
 bun dev                    # Start Next.js dev server with Turbopack
-bun worker:start             # Start audio processing worker (separate terminal)
+bun worker:start           # Start audio processing worker (separate terminal)
 bun worker:admin           # Start BullMQ admin UI
 bun media:start            # Start standalone media server (port 3002)
 
@@ -30,8 +30,8 @@ bun db:migrate             # Run migrations
 bun db:studio              # Open Drizzle Studio
 
 # Linting & Formatting
-bun biome:check -- "<path>"           # Check linting/formatting issues (double dash required between command and file path)
-bun biome:fix -- "<path>"              # Auto-fix linting/formatting issues (double dash required between command and file path)
+bun biome:check -- "<path>"    # Check linting/formatting issues (double dash required between command and file path)
+bun biome:fix -- "<path>"      # Auto-fix linting/formatting issues (double dash required between command and file path)
 
 # Testing
 bun test                   # Run Vitest (unit tests)
@@ -49,10 +49,10 @@ bun storybook              # Start Storybook dev server (port 6006)
 - **Auth**: better-auth
 - **Media Server**: Standalone Hono server for audio streaming (media-server/)
 - **Storage**: Cloudflare R2 (S3-compatible)
-- **State Management**: Legend-State (reactive stores with observables)
+- **State Management**: Valtio (proxy-based) + valtio-reactive (effects/computed)
 - **Services Layer**: Effect-TS for dependency injection and error handling
 - **Queue**: BullMQ with Redis for background jobs
-- **Styling**: Tailwind CSS v4 + Radix UI primitives
+- **Styling**: Tailwind CSS v4 + shadcn/ui + Radix UI primitives
 
 ### Project Structure
 
@@ -62,40 +62,43 @@ src/
 │   ├── (web)/              # Public marketing pages
 │   ├── (app)/app/          # Authenticated app routes
 │   │   └── project/[projectId]/
-│   │       ├── clipping/[sessionId]/  # Timeline editor
-│   │       └── speakers/[speakerId]/  # Speaker segment list
-│   └── api/                # API routes (trpc, webhooks, media-proxy)
-├── features/               # Feature modules with co-located components
-│   ├── clipping/           # Timeline editor feature
-│   │   ├── components/     # UI components (timeline, sidebar, table)
-│   │   ├── store/          # Legend-State store with slices
-│   │   ├── hooks/          # Feature-specific hooks
-│   │   └── context/        # React context for store provider
-│   └── speaker/            # Speaker management feature
+│   │       └── workspace/  # Unified workspace editor
+│   └── api/                # API routes (trpc, webhooks)
+├── features/workspace/     # Workspace feature module
+│   ├── components/         # UI components
+│   │   ├── clip-studio/    # Timeline editor (waveform, scrubber, segments)
+│   │   └── table/          # Segments table (virtualized)
+│   ├── store/              # Valtio store (WorkspaceStore class)
+│   ├── context/            # React context for store provider
+│   ├── hooks/              # Feature-specific hooks
+│   ├── utils/              # Timeline/zoom/segment utilities
+│   └── search-params.ts    # URL state (nuqs)
 ├── server/
 │   ├── api/                # tRPC routers
 │   │   ├── trpc.ts         # tRPC setup with context
 │   │   ├── root.ts         # Router composition
-│   │   └── routers/        # Individual routers
+│   │   └── routers/        # project, source, segment, speaker, file, export
 │   ├── db/
 │   │   └── schema.ts       # Drizzle schema (single source of truth)
+│   ├── events/             # Server-sent event types and bridges
 │   └── better-auth/        # Auth configuration
 ├── services/               # Effect-TS service layer
-│   ├── index.ts            # ServicesLive composition
-│   ├── infra/              # Infrastructure (S3ClientService, RedisService)
+│   ├── index.ts            # ServicesLive composition + AppRuntime
+│   ├── infra/              # Database, S3ClientService, RedisService
 │   ├── storage/            # StorageService (presigned URLs, object ops)
-│   ├── queue/              # QueueService (generic BullMQ operations)
+│   ├── queue/              # QueueService (BullMQ operations)
 │   ├── diarization/        # PyannoteService (speaker diarization API)
 │   └── audio/              # AudioProcessingService (ffmpeg, waveforms)
 ├── components/ui/          # Shared UI components (shadcn/ui style)
 ├── trpc/                   # tRPC client setup
 └── lib/                    # Utility functions
-workers/                    # BullMQ worker processes (run with bun)
+workers/                    # BullMQ worker processes
+media-server/               # Standalone Hono audio streaming server
 ```
 
 ### Key Patterns
 
-**Effect-TS Services**: Backend services use `Effect.Service` API. Key conventions:
+**Effect-TS Services**: Backend services use `Effect.Service` API:
 
 ```typescript
 // Infrastructure services with lifecycle (scoped) - for clients/connections
@@ -120,7 +123,7 @@ class StorageService extends Effect.Service<StorageService>()("StorageService", 
     };
   }),
   dependencies: [S3ClientService.Default],
-  accessors: true, // Enables StorageService.upload() instead of needing to yield* first
+  accessors: true,
 }) {}
 
 // Stateless services - use `succeed`
@@ -134,7 +137,7 @@ class AudioProcessingService extends Effect.Service<AudioProcessingService>()("A
 
 **Effect Service Conventions**:
 - One error type per service with `operation` discriminator: `StorageError`, `QueueError`, etc.
-- Don't manually annotate Effect return types - let TypeScript infer them
+- Don't manually annotate Effect return types -- let TypeScript infer them
 - Use `Effect.async<A, E>((resume) => ...)` for callback-based APIs (ffmpeg, child_process)
 - Use `Effect.tryPromise({ try, catch })` for Promise-based APIs
 - Use `accessors: true` to enable direct method calls via the service tag
@@ -142,7 +145,6 @@ class AudioProcessingService extends Effect.Service<AudioProcessingService>()("A
 
 **Effect-TS in tRPC Routers**: Procedures execute Effect programs via `AppRuntime`:
 ```typescript
-// In a tRPC router procedure:
 export const myRouter = createTRPCRouter({
   doSomething: protectedProcedure
     .input(z.object({ id: z.string() }))
@@ -163,58 +165,141 @@ export const myRouter = createTRPCRouter({
 
 **tRPC Procedures**: `publicProcedure` includes timing middleware (adds artificial 100-500ms delay in dev to catch waterfalls). `protectedProcedure` adds auth check and narrows `ctx.session` to non-nullable.
 
-**Legend-State Stores**: Client state uses observable stores with slices:
+**tRPC Client Links** (in `src/trpc/react.tsx`):
+- Subscriptions -> SSE via `httpSubscriptionLink`
+- Non-JSON-serializable inputs (e.g., `ReadableStream`) -> regular `httpLink`
+- Default -> `httpBatchStreamLink` for batched streaming
+
+**Valtio Store**: Client state uses a proxy-based class store with computed selectors:
 ```typescript
-// Store created in provider with useObservable
-const $store = useObservable<ClippingStoreState>({...})
-// Access via context: const $store = useClippingStore()
-// Read: $store.segments.get() or use()
-// Write: $store.segments.set([...])
+// Store is a plain class, wrapped with proxy() in provider
+class WorkspaceStore {
+  selectedSegmentIds: Set<string> = proxySet();
+  isPlaying = false;
+  zoomLevel = 100;
+  refs = ref({ audioElement: null }); // ref() = not tracked by proxy
+
+  // Methods mutate directly
+  toggleSelection(id: string) {
+    if (this.selectedSegmentIds.has(id)) {
+      this.selectedSegmentIds.delete(id);
+    } else {
+      this.selectedSegmentIds.add(id);
+    }
+  }
+
+  // Use batch() to group multiple mutations
+  zoomAtPoint(newZoom: number, focalTime: number, viewportOffset: number) {
+    batch(() => {
+      this.zoomLevel = clampedZoom;
+      this.scrollOffset = clampedOffset;
+    });
+  }
+}
+
+// Computed values created alongside the store
+const comp = computed({
+  pixelsPerSecond: () => calculatePPS(store.zoomLevel, store.duration, store.containerWidth),
+  selectionRange: () => { ... },
+});
 ```
 
-**Legend-State Mutation Best Practices**:
-- **Mutate directly** - Legend-State handles reactivity through direct mutations. Avoid re-creating Maps, Sets, arrays, or objects. Use the instance methods provided by the observable (`.set()`, `.delete()`, `.add()`, `.clear()`, etc.).
-- For Maps: use `$store.map.set(key, value)`, `$store.map.delete(key)`, not `$store.map.set(new Map(...))`
-- For Sets: use `$store.set.add(value)`, `$store.set.delete(value)`, not `$store.set.set(new Set(...))`
-- For nested updates: `$store.segments.get(id).status.set("loaded")` instead of replacing the entire entry
-- Use `.peek()` to read without subscribing (in actions), `.get()` to read with subscription (in components via `useValue`)
-- ALWAYS use `useValue`. The `useSelector` hook is deprecated.
-- Use `batch(() => { ... })` to group multiple mutations into a single reactive update.
+**Valtio Store Conventions**:
+- **Mutate directly** -- Valtio tracks mutations through proxies. Use `.add()`, `.delete()`, `.clear()` on Set/Map.
+- Use `ref()` to wrap values that should NOT be tracked (DOM refs, audio elements)
+- Use `proxySet()` / `proxyMap()` for trackable Set/Map instances
+- Use `batch(() => { ... })` to group multiple mutations into one reactive update
+- Use `effect()` from `valtio-reactive` for fine-grained subscriptions in hooks
+- Use `computed()` from `valtio-reactive` for derived reactive values
+- Use `useSnapshot()` in components for reactive reads
+- Store created once via `useRef` in provider to prevent re-initialization
 
-**tRPC with Optimistic Updates**: Mutations use `setupMutationDefaults` pattern in `store/mutations.ts` for optimistic updates that sync with Legend-State stores.
+**Store Context Provider**:
+```typescript
+function WorkspaceStoreProvider({ children }) {
+  const ctx = useRef<WorkspaceCtx | null>(null);
+  if (!ctx.current) {
+    const store = proxy(new WorkspaceStore());
+    const comp = createComputed(store);
+    ctx.current = { store, computed: comp };
+  }
+  return <WorkspaceStoreContext value={ctx.current}>{children}</WorkspaceStoreContext>;
+}
 
-**Dual Data Sources**: Segments and speakers can be "local" (from diarization JSONB, not yet saved to DB) or "project" (persisted in DB). Both are unified via `SpeakerWithSource` and `SegmentWithSource` types with a `source` discriminator.
+// Access: const { store, computed } = useWorkspaceStore();
+```
 
 ### Domain Model
 
-- **Project**: Container for files, speakers, and sessions
-- **Speaker**: Project-level identity. `SPEAKER_XX` names are diarization-generated (immutable, hidden from project views)
-- **ClippingSession**: 1:1 with File, stores diarization job info in JSONB
-- **Segment**: Time range within a session, always assigned to a speaker
-- **Clip**: Processed audio from a segment (1:1 relationship)
+- **Project**: Container for sources, speakers, and segments
+- **Source**: Uploaded audio file with waveform + diarization metadata (replaces old files + clippingSessions)
+- **Speaker**: Project-level identity. `origin: "diarization"` speakers are auto-generated and linked to a source. `origin: "user"` speakers are user-created.
+- **Segment**: Time range within a source, always assigned to a speaker. Carries transcription, tags, and quality scores.
+- **Clip**: Processed audio from a segment (1:1). Has its own storage key, duration, and quality scores.
 
-### Media Server
+### Database Schema (Drizzle)
 
-Standalone Hono server (`media-server/`) handles audio streaming with LRU cache.
-- Auth: Validates better-auth session cookies via direct DB lookup
-- Cookie format: `better-auth.session_token={token}.{HMAC-SHA256-signature}` (URL-encoded)
-- Env vars: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `MEDIA_SERVER_INTERNAL_TOKEN`
+**Enums**: `waveformStatus`, `diarizationStatus`, `speakerOrigin`, `clipProcessingStatus`
 
-### BullMQ Gotchas
-- `QueueEvents` "completed" handler: `returnvalue` is already parsed object, not JSON string
-- Worker must `return await handler(job)` (not just `await`) to capture return values in `job.returnvalue`
+**Tables**:
+- `projects`: id, name, description, userId
+- `sources`: id, userId, projectId, storageKey, duration, name, originalFileName, waveform fields, diarization fields
+- `speakers`: id, projectId, userId, name, color, sourceId (nullable), origin
+- `segments`: id, sourceId, speakerId, startTime, endTime, transcription, tags (text[]), scores (JSONB)
+- `clips`: id, segmentId (unique), userId, storageKey, duration, processingStatus, processingError, scores (JSONB)
 
-### Biome Conventions
-- `useSortedClasses` is enforced (warn) for `clsx`, `cva`, and `cn` — keep Tailwind classes sorted.
-- `useExhaustiveDependencies` is disabled (Legend-State observables don't need deps tracking).
-- 2-space indentation.
+**JSONB type -- AudioScores**:
+```typescript
+interface AudioScores {
+  DNSMOS: { SIG: number; BAK: number; OVRL: number; P808_MOS: number };
+  _meta?: { scoredAt: string; model: string };
+}
+```
 
-### Drizzle Schema Conventions
+**Drizzle Conventions**:
 - All tables: `uuid("id").defaultRandom().primaryKey()` with `createdAt`/`updatedAt` timestamps
 - Enums: defined with `pgEnum()` before tables
 - Relations: defined separately after tables using `relations()` helper
 - JSONB typing: `.jsonb("column").$type<InterfaceName>()`
 - Type inference: `typeof table.$inferSelect`
+
+### Media Server
+
+Standalone Hono server (`media-server/`) handles audio streaming with LRU cache.
+- **Endpoints**: `GET /health` (cache stats), `GET /audio` (authenticated streaming)
+- **Audio params**: `storageKey`, `startMs`, `endMs`, `format` (fMP4 for browser MSE, FLAC for workers)
+- **Auth**: Internal bearer token for worker requests, better-auth session cookie for browser requests
+- **Cache**: LRU with configurable size (10GB default) and TTL (24hr default)
+
+### BullMQ Workers
+
+Single audio processing queue with job types:
+- `GenerateWaveform`: source -> .dat waveform file -> R2
+- `Denoise`: segment -> extract slice -> denoise -> create clip
+- `RemoveOverlap`: segment audio overlap removal
+- `Transcribe`: segment -> transcription text
+- `CalculateScore`: segment/clip -> DNSMOS quality scores
+- `LJSpeechExport`: speaker -> ZIP archive with WAV files + metadata.csv
+
+**Gotchas**:
+- `QueueEvents` "completed" handler: `returnvalue` is already parsed object, not JSON string
+- Worker must `return await handler(job)` (not just `await`) to capture return values in `job.returnvalue`
+- Processing jobs auto-enqueue scoring jobs on completion
+
+### Server-Sent Events
+
+Event types for real-time updates:
+- `DiarizationEvent`: source diarization status changes
+- `ClipEvent`: clip processing completion (includes scores)
+- `ExportProgressEvent`: export job progress tracking
+
+Event bridges (`*-events-bridge.ts`) connect BullMQ job completion to SSE streams consumed by tRPC subscriptions.
+
+### Biome Conventions
+- `useSortedClasses` is enforced (warn) for `clsx`, `cva`, and `cn` -- keep Tailwind classes sorted.
+- `useExhaustiveDependencies` is disabled (Valtio effects handle their own subscriptions).
+- 2-space indentation.
+- a11y rules are off.
 
 ### Path Alias
 Use `~` for src imports: `import { api } from "~/trpc/react"`
