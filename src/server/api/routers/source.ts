@@ -73,6 +73,7 @@ export const sourceRouter = createTRPCRouter({
                 id: true,
                 name: true,
                 storageKey: true,
+                duration: true,
                 createdAt: true,
               },
             });

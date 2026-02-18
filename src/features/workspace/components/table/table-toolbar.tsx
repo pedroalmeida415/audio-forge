@@ -51,9 +51,9 @@ export function TableToolbar() {
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
-  const $store = useWorkspaceStore();
+  const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
-    useSnapshot($store);
+    useSnapshot(store);
 
   const utils = api.useUtils();
 
@@ -98,7 +98,7 @@ export function TableToolbar() {
           filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
         }
       }
-      $store.clearSelection();
+      store.clearSelection();
       setIsDeleting(false);
       setShowDeleteDialog(false);
     },
@@ -231,7 +231,7 @@ export function TableToolbar() {
             } else {
               filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
             }
-            $store.clearSelection();
+            store.clearSelection();
           }}
         />
       )}

@@ -38,9 +38,9 @@ declare module "@tanstack/react-table" {
 // ============================================================================
 
 function SelectAllCheckbox() {
-  const $store = useWorkspaceStore();
+  const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
-    useSnapshot($store);
+    useSnapshot(store);
 
   const checked: boolean | "indeterminate" =
     isAllSelected && excludedSegmentIds.size === 0
@@ -55,9 +55,9 @@ function SelectAllCheckbox() {
         checked={checked}
         onCheckedChange={(value) => {
           if (value) {
-            $store.selectAll();
+            store.selectAll();
           } else {
-            $store.clearSelection();
+            store.clearSelection();
           }
         }}
         aria-label="Select all"
@@ -67,9 +67,9 @@ function SelectAllCheckbox() {
 }
 
 function SelectCell({ segmentId }: { segmentId: string }) {
-  const $store = useWorkspaceStore();
+  const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
-    useSnapshot($store);
+    useSnapshot(store);
 
   const isSelected = isAllSelected
     ? !excludedSegmentIds.has(segmentId)
@@ -79,7 +79,7 @@ function SelectCell({ segmentId }: { segmentId: string }) {
     <div className="flex justify-center">
       <Checkbox
         checked={isSelected}
-        onCheckedChange={() => $store.toggleSelection(segmentId)}
+        onCheckedChange={() => store.toggleSelection(segmentId)}
         onClick={(e) => e.stopPropagation()}
         aria-label="Select row"
       />

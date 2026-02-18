@@ -58,6 +58,7 @@
         "superjson": "^2.2.6",
         "tailwind-merge": "^3.4.0",
         "valtio": "^2.3.0",
+        "valtio-reactive": "^0.2.0",
         "waveform-data": "^4.5.2",
         "zod": "^3.25.76",
       },
@@ -1995,6 +1996,8 @@
     "validate-npm-package-name": ["validate-npm-package-name@7.0.2", "", {}, "sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A=="],
 
     "valtio": ["valtio@2.3.0", "", { "dependencies": { "proxy-compare": "^3.0.1" }, "peerDependencies": { "@types/react": ">=18.0.0", "react": ">=18.0.0" }, "optionalPeers": ["@types/react", "react"] }, "sha512-1MfKNcmOIdBSatiJsYgw420n6jnD+jeoI0V+RkOQbCB0ElLh6GKUfPr0hc9uq/KBGeghivDEarRsKFFdSQQnKw=="],
+
+    "valtio-reactive": ["valtio-reactive@0.2.0", "", { "peerDependencies": { "valtio": ">=2.0.0" } }, "sha512-Zl1vr0w2S33QP9wBRX60p1LczyHrX+AWLB3iRl1doCdUTKaCziSj9GZIyrEIMykfjd0b3t27+X44phKOplcyfg=="],
 
     "vary": ["vary@1.1.2", "", {}, "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg=="],
 

@@ -10,7 +10,7 @@ import { SegmentsTable } from "./table/segments-table";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
 export function WorkspaceContent() {
-  const $store = useWorkspaceStore();
+  const { store } = useWorkspaceStore();
 
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
@@ -35,7 +35,7 @@ export function WorkspaceContent() {
 
   // Clear selection when switching speakers or sources
   useEffect(() => {
-    $store.clearSelection();
+    store.clearSelection();
   }, [speakerId, sourceId]);
 
   if (!speakerId) {
