@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Scissors, User } from "lucide-react";
+import { ArrowLeft, AudioLines, User } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { use } from "react";
@@ -40,10 +40,10 @@ export default function ProjectPage({
               </p>
             )}
           </div>
-          <Link href={`/app/project/${projectId}/clipping`}>
+          <Link href={`/app/project/${projectId}/workspace`}>
             <Button variant="outline">
-              <Scissors className="mr-2 h-4 w-4" />
-              Go to Clipping
+              <AudioLines className="mr-2 h-4 w-4" />
+              Go to Workspace
             </Button>
           </Link>
         </div>
@@ -63,12 +63,12 @@ export default function ProjectPage({
             <p className="mb-2 text-muted-foreground">No speakers yet</p>
             <p className="mb-4 max-w-sm text-center text-muted-foreground text-sm">
               Speakers are created when you run diarization or manually add them
-              in the clipping workspace
+              in the workspace
             </p>
-            <Link href={`/app/project/${projectId}/clipping`}>
+            <Link href={`/app/project/${projectId}/workspace`}>
               <Button variant="outline">
-                <Scissors className="mr-2 h-4 w-4" />
-                Go to Clipping
+                <AudioLines className="mr-2 h-4 w-4" />
+                Go to Workspace
               </Button>
             </Link>
           </div>
@@ -77,7 +77,7 @@ export default function ProjectPage({
             {project.speakers.map((speaker) => (
               <Link
                 key={speaker.id}
-                href={`/app/project/${projectId}/speakers/${speaker.id}`}
+                href={`/app/project/${projectId}/workspace?speakerId=${speaker.id}`}
               >
                 <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/50">
                   <CardHeader className="pb-2">

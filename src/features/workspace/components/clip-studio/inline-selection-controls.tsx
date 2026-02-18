@@ -1,0 +1,273 @@
+"use client";
+
+import { Check, ChevronsUpDown, Play, Plus } from "lucide-react";
+import { useState } from "react";
+import { useSnapshot } from "valtio";
+import { Button } from "~/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "~/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
+import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import { cn } from "~/lib/utils";
+import type { Speaker } from "~/server/db/schema";
+import { api } from "~/trpc/react";
+
+/**
+ * Formats time in MM:SS.mmm format
+ */
+function formatTimeWithMs(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
+}
+
+interface InlineSelectionControlsProps {
+  speakers: Speaker[];
+  sourceId: string;
+  projectId: string;
+  speakerId: string | null;
+}
+
+/**
+ * Inline selection controls shown in the timeline toolbar.
+ *
+ * Only visible when selection mode is 'active' (drag-to-select completed).
+ * Provides:
+ * - Time range display (MM:SS.mmm - MM:SS.mmm)
+ * - Speaker combobox (select existing or type to create new)
+ * - Play selection button
+ * - Create segment button
+ */
+export function InlineSelectionControls({
+  speakers,
+  sourceId,
+  projectId,
+  speakerId,
+}: InlineSelectionControlsProps) {
+  const { store, computed } = useWorkspaceStore();
+
+  const snap = useSnapshot(store);
+  const { selectionRange } = useSnapshot(computed);
+
+  const mode = snap.selectionMode;
+  const range = selectionRange;
+
+  // Get selected speaker: selection's speaker or fall back to URL speaker
+  const selectedSpeakerId = snap.selectionSpeaker ?? speakerId ?? "";
+
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  const createSegmentMutation = api.segment.createSegment.useMutation();
+  const createSpeakerMutation = api.speaker.createSpeaker.useMutation();
+
+  // Don't render if not in active selection mode
+  if (mode !== "active" || !range) return null;
+
+  const handlePlaySelection = () => {
+    if (range) {
+      store.playSegment(range.start, range.end);
+    }
+  };
+
+  const handleSpeakerSelect = (id: string) => {
+    store.setSelectionSpeaker(id);
+    setOpen(false);
+    setSearchValue("");
+  };
+
+  const handleCreateSpeaker = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    createSpeakerMutation.mutate(
+      { projectId, name: trimmed },
+      {
+        onSuccess: (result) => {
+          if (result.speaker) {
+            store.setSelectionSpeaker(result.speaker.id);
+          }
+        },
+      },
+    );
+    setOpen(false);
+    setSearchValue("");
+  };
+
+  const handleCreateSegment = () => {
+    if (!range || !selectedSpeakerId) return;
+
+    createSegmentMutation.mutate({
+      sourceId,
+      segment: {
+        speakerId: selectedSpeakerId,
+        startTime: range.start,
+        endTime: range.end,
+      },
+    });
+  };
+
+  const handleCancel = () => {
+    store.cancelSelection();
+  };
+
+  const selectedSpeaker = speakers.find((s) => s.id === selectedSpeakerId);
+
+  // Check if search matches any existing speaker
+  const searchMatchesExisting = speakers.some(
+    (s) => s.name.toLowerCase() === searchValue.toLowerCase().trim(),
+  );
+
+  return (
+    <div
+      data-testid="selection-controls"
+      className="flex items-center gap-2 border-l pl-3"
+    >
+      {/* Time range display */}
+      <div
+        data-testid="selection-time-range"
+        className="flex items-center gap-1 rounded bg-muted px-2 py-1 font-mono text-muted-foreground text-xs"
+      >
+        <span>{formatTimeWithMs(range.start)}</span>
+        <span className="text-muted-foreground/60">{"\u2192"}</span>
+        <span>{formatTimeWithMs(range.end)}</span>
+      </div>
+
+      {/* Speaker combobox */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            data-testid="speaker-combobox"
+            variant="outline"
+            size="sm"
+            aria-expanded={open}
+            aria-label="Select speaker"
+            className="h-8 w-[160px] justify-between"
+          >
+            {selectedSpeaker ? (
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-3 w-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: selectedSpeaker.color }}
+                />
+                <span className="truncate">{selectedSpeaker.name}</span>
+              </div>
+            ) : (
+              <span className="text-muted-foreground">Select speaker...</span>
+            )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[200px] p-0" align="start">
+          <Command>
+            <CommandInput
+              placeholder="Search or create..."
+              value={searchValue}
+              onValueChange={setSearchValue}
+            />
+            <CommandList>
+              <CommandEmpty>
+                {searchValue.trim() ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start gap-2"
+                    onClick={() => handleCreateSpeaker(searchValue)}
+                    disabled={createSpeakerMutation.isPending}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create "{searchValue.trim()}"
+                  </Button>
+                ) : (
+                  "No speakers found."
+                )}
+              </CommandEmpty>
+              <CommandGroup>
+                {speakers.map((speaker) => (
+                  <CommandItem
+                    key={speaker.id}
+                    value={speaker.name}
+                    onSelect={() => handleSpeakerSelect(speaker.id)}
+                  >
+                    <div
+                      className="mr-2 h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: speaker.color }}
+                    />
+                    <span>{speaker.name}</span>
+                    <Check
+                      className={cn(
+                        "ml-auto h-4 w-4",
+                        selectedSpeakerId === speaker.id
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    />
+                  </CommandItem>
+                ))}
+                {/* Show create option if search doesn't match existing */}
+                {searchValue.trim() && !searchMatchesExisting && (
+                  <CommandItem
+                    value={`create-${searchValue}`}
+                    onSelect={() => handleCreateSpeaker(searchValue)}
+                    disabled={createSpeakerMutation.isPending}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create "{searchValue.trim()}"
+                  </CommandItem>
+                )}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      {/* Play selection button */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label="Play selection"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={handlePlaySelection}
+          >
+            <Play className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Play selection</TooltipContent>
+      </Tooltip>
+
+      {/* Create segment button */}
+      <Button
+        size="sm"
+        className="h-8"
+        onClick={handleCreateSegment}
+        disabled={!selectedSpeakerId || createSegmentMutation.isPending}
+      >
+        <Plus className="mr-1 h-4 w-4" />
+        Create segment
+      </Button>
+
+      {/* Cancel button */}
+      <Button size="sm" variant="ghost" className="h-8" onClick={handleCancel}>
+        Cancel
+      </Button>
+    </div>
+  );
+}

@@ -1,6 +1,6 @@
 import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, not, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
@@ -16,6 +16,69 @@ import {
 } from "~/services/queue/queue-service";
 
 export const segmentRouter = createTRPCRouter({
+  getBySpeaker: protectedProcedure
+    .input(z.object({ speakerId: z.string().uuid() }))
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            const items = yield* db.query.segments.findMany({
+              where: eq(segments.speakerId, input.speakerId),
+              orderBy: [asc(segments.startTime)],
+              with: {
+                clip: true,
+                source: {
+                  columns: { id: true, name: true, storageKey: true },
+                },
+              },
+            });
+
+            return { segments: items };
+          }),
+        ),
+    ),
+
+  getBySource: protectedProcedure
+    .input(z.object({ sourceId: z.string().uuid() }))
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const results = yield* db.query.segments.findMany({
+              where: eq(segments.sourceId, input.sourceId),
+              orderBy: [asc(segments.startTime)],
+              with: {
+                clip: true,
+                source: {
+                  columns: { id: true, name: true, storageKey: true },
+                },
+              },
+            });
+
+            return { segments: results };
+          }),
+        ),
+    ),
+
   // Get all segment IDs for a speaker (lightweight ID index for windowed fetching)
   getIdsBySpeaker: protectedProcedure
     .input(
@@ -85,53 +148,15 @@ export const segmentRouter = createTRPCRouter({
             }
 
             // Fetch segments with relations
-            const segmentResults = yield* db.query.segments.findMany({
+            return yield* db.query.segments.findMany({
               where: inArray(segments.id, input.segmentIds),
               with: {
-                clip: {
-                  columns: {
-                    id: true,
-                    segmentId: true,
-                    storageKey: true,
-                    duration: true,
-                    scores: true,
-                    createdAt: true,
-                  },
-                },
+                clip: true,
                 source: {
                   columns: { id: true, name: true, storageKey: true },
                 },
-                speaker: {
-                  columns: { userId: true },
-                },
               },
             });
-
-            // Verify all segments belong to this user
-            const unauthorized = segmentResults.filter(
-              (s) => s.speaker.userId !== ctx.session.user.id,
-            );
-
-            if (unauthorized.length > 0) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "FORBIDDEN",
-                  message: "You do not have access to some segments",
-                }),
-              );
-            }
-
-            // Strip speaker.userId from response and preserve order
-            const segmentMap = new Map(
-              segmentResults.map((s) => {
-                const { speaker: _speaker, ...rest } = s;
-                return [s.id, rest];
-              }),
-            );
-
-            return input.segmentIds
-              .map((id) => segmentMap.get(id))
-              .filter((s) => s !== undefined);
           }),
         ),
     ),
@@ -597,12 +622,13 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Delete segments by speaker (for speaker page)
+  // Delete segments by speaker. Omit segmentIds to delete all.
   deleteSegmentsBySpeaker: protectedProcedure
     .input(
       z.object({
         speakerId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).min(1),
+        segmentIds: z.array(z.string().uuid()).min(1).optional(),
+        excludeSegmentIds: z.array(z.string().uuid()).min(1).optional(),
       }),
     )
     .mutation(
@@ -627,14 +653,19 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
+            const conditions = [eq(segments.speakerId, input.speakerId)];
+            if (input.segmentIds) {
+              conditions.push(inArray(segments.id, input.segmentIds));
+            }
+            if (input.excludeSegmentIds) {
+              conditions.push(
+                not(inArray(segments.id, input.excludeSegmentIds)),
+              );
+            }
+
             const result = yield* db
               .delete(segments)
-              .where(
-                and(
-                  inArray(segments.id, input.segmentIds),
-                  eq(segments.speakerId, input.speakerId),
-                ),
-              )
+              .where(and(...conditions))
               .returning({ id: segments.id });
 
             return { success: true, deletedCount: result.length };
@@ -642,12 +673,13 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Change speaker for segments
+  // Change speaker for segments. Omit segmentIds to move all.
   changeSpeaker: protectedProcedure
     .input(
       z.object({
         speakerId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).min(1),
+        segmentIds: z.array(z.string().uuid()).min(1).optional(),
+        excludeSegmentIds: z.array(z.string().uuid()).min(1).optional(),
         targetSpeakerId: z.string().uuid(),
       }),
     )
@@ -689,15 +721,20 @@ export const segmentRouter = createTRPCRouter({
               );
             }
 
+            const conditions = [eq(segments.speakerId, input.speakerId)];
+            if (input.segmentIds) {
+              conditions.push(inArray(segments.id, input.segmentIds));
+            }
+            if (input.excludeSegmentIds) {
+              conditions.push(
+                not(inArray(segments.id, input.excludeSegmentIds)),
+              );
+            }
+
             const result = yield* db
               .update(segments)
               .set({ speakerId: input.targetSpeakerId })
-              .where(
-                and(
-                  inArray(segments.id, input.segmentIds),
-                  eq(segments.speakerId, input.speakerId),
-                ),
-              )
+              .where(and(...conditions))
               .returning({ id: segments.id });
 
             return { success: true, updatedCount: result.length };
