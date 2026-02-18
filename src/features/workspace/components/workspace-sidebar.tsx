@@ -1,6 +1,6 @@
 "use client";
 
-import { DurationHistogram } from "~/features/speaker/components/duration-histogram";
+import { DurationHistogram } from "~/features/workspace/components/duration-histogram";
 
 const MOCK_STATS = {
   totalSegments: 12470,

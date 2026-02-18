@@ -14,9 +14,9 @@ import {
 import {
   CompactAudioCell,
   PlaceholderAudioCell,
-} from "~/features/speaker/components/table/compact-audio-cell";
-import { useSegmentAudio } from "~/features/speaker/hooks/use-segment-audio";
+} from "~/features/workspace/components/table/compact-audio-cell";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import { useSegmentAudio } from "~/features/workspace/hooks/use-segment-audio";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { cn } from "~/lib/utils";
 import { TagsCell } from "./tags-cell";

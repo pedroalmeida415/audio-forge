@@ -23,6 +23,7 @@ export function TimelineScrollbar() {
   const trackRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const [isVisible, setIsVisible] = useState(false);
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -54,9 +55,9 @@ export function TimelineScrollbar() {
           clearTimeout(fadeTimeoutRef.current);
         }
 
-        // Set new fade timeout
+        // Set new fade timeout (use ref to avoid stale closure)
         fadeTimeoutRef.current = setTimeout(() => {
-          if (!isDragging) {
+          if (!isDraggingRef.current) {
             setIsVisible(false);
           }
         }, FADE_DELAY);
@@ -69,7 +70,7 @@ export function TimelineScrollbar() {
         clearTimeout(fadeTimeoutRef.current);
       }
     };
-  }, [needsScrollbar, isDragging, store]);
+  }, [needsScrollbar, store]);
 
   // Reactive thumb positioning via effect()
   useEffect(() => {
@@ -113,6 +114,7 @@ export function TimelineScrollbar() {
     e.preventDefault();
     e.stopPropagation();
 
+    isDraggingRef.current = true;
     setIsDragging(true);
     const startX = e.clientX;
     const startOffset = store.scrollOffset;
@@ -142,6 +144,7 @@ export function TimelineScrollbar() {
     };
 
     const handleMouseUp = () => {
+      isDraggingRef.current = false;
       setIsDragging(false);
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);

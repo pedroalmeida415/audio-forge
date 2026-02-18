@@ -4,7 +4,6 @@ import { axisBottom } from "d3-axis";
 import { scaleLinear } from "d3-scale";
 import { select } from "d3-selection";
 import { useEffect, useRef } from "react";
-import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { formatTimestamp } from "~/lib/time-utils";
@@ -21,8 +20,6 @@ const TIMESTAMPS_HEIGHT = 24;
 export function TimelineTimestamps() {
   const { store, computed } = useWorkspaceStore();
   const svgRef = useRef<SVGSVGElement>(null);
-
-  const { containerWidth } = useSnapshot(store);
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -53,6 +50,16 @@ export function TimelineTimestamps() {
       const duration = store.duration;
 
       if (duration <= 0 || containerW <= 0 || pps <= 0) return;
+
+      // Set SVG dimensions via DOM (avoids React re-render + D3 conflict)
+      const svgEl = svgRef.current;
+      if (svgEl) {
+        svgEl.setAttribute("width", String(containerW));
+        svgEl.setAttribute(
+          "viewBox",
+          `0 0 ${containerW} ${TIMESTAMPS_HEIGHT}`,
+        );
+      }
 
       // Calculate visible time range with overscan
       const visibleStartTime = Math.max(0, scrollOffset / pps - 2);
@@ -141,8 +148,6 @@ export function TimelineTimestamps() {
         aria-hidden="true"
         className="h-full w-full"
         height={TIMESTAMPS_HEIGHT}
-        width={containerWidth}
-        viewBox={`0 0 ${containerWidth} ${TIMESTAMPS_HEIGHT}`}
         preserveAspectRatio="none"
       />
     </div>

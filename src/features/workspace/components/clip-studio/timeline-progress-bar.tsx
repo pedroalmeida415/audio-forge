@@ -26,8 +26,9 @@ export function TimelineProgressBar() {
     // effect() replaces observe()
     const dispose = effect(() => {
       const time = store.currentTime;
-      if (filledRef.current) {
-        const percentage = (time / duration) * 100;
+      const dur = store.duration;
+      if (filledRef.current && dur > 0) {
+        const percentage = (time / dur) * 100;
         filledRef.current.style.width = `${percentage}%`;
       }
     });

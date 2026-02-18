@@ -192,8 +192,11 @@ export function usePlayback(
       const segment = segments.find((s) => s.id === activeSegmentId);
       if (!segment) return;
 
-      // Calculate segment center and scroll to it
-      store.scrollToTime((segment.startTime + segment.endTime) / 2);
+      // Schedule scroll asynchronously so scrollToTime's internal reads
+      // (zoomLevel, duration, containerWidth) are NOT tracked by the effect.
+      // Without this, zooming would re-trigger scroll-to-active-segment.
+      const centerTime = (segment.startTime + segment.endTime) / 2;
+      queueMicrotask(() => store.scrollToTime(centerTime));
     });
 
     return dispose;

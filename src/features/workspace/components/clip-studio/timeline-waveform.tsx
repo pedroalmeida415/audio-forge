@@ -5,7 +5,6 @@ import { select } from "d3-selection";
 import { area, curveLinear } from "d3-shape";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import type WaveformData from "waveform-data";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
@@ -68,9 +67,6 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
     }
   }, [waveform]);
 
-  // Subscribe to container width for SVG sizing
-  const { containerWidth } = useSnapshot(store);
-
   // Reactive rendering via effect()
   useEffect(() => {
     if (!waveform || !svgRef.current) return;
@@ -88,6 +84,16 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
       const duration = currentWaveform.duration;
 
       if (duration <= 0 || containerW <= 0) return;
+
+      // Set SVG dimensions via DOM (avoids React re-render + D3 conflict)
+      const svgEl = svgRef.current;
+      if (svgEl) {
+        svgEl.setAttribute("width", String(containerW));
+        svgEl.setAttribute(
+          "viewBox",
+          `0 0 ${containerW} ${WAVEFORM_HEIGHT}`,
+        );
+      }
 
       // Get pps from computed, but fallback to simple calculation if store duration not set
       let pps = computed.pixelsPerSecond;
@@ -178,8 +184,6 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
         ref={svgRef}
         aria-hidden="true"
         height={WAVEFORM_HEIGHT}
-        width={containerWidth}
-        viewBox={`0 0 ${containerWidth} ${WAVEFORM_HEIGHT}`}
         preserveAspectRatio="none"
       />
     </div>

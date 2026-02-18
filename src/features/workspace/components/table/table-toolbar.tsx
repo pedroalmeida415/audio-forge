@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
-import { ChangeSpeakerDialog } from "~/features/speaker/components/change-speaker-dialog";
+import { ChangeSpeakerDialog } from "~/features/workspace/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
