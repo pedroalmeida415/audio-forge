@@ -57,7 +57,7 @@ export function ChangeSpeakerDialog({
 
   // Fetch project speakers (excludes source-linked diarization speakers)
   const { data: speakers, isLoading: isLoadingSpeakers } =
-    api.speaker.getAllByProjectId.useQuery({ projectId }, { enabled: open });
+    api.speaker.getByProject.useQuery({ projectId }, { enabled: open });
 
   // Change speaker mutation
   const changeSpeakerMutation = api.segment.changeSpeaker.useMutation({

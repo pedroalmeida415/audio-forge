@@ -35,9 +35,11 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
 
   const updateTagsMutation = api.segment.updateTags.useMutation({
     onMutate: async ({ tags: newTags }) => {
-      const updateSegmentTags = (
-        segments: { id: string; tags: string[] | null }[],
-      ) =>
+      const updateSegmentTags = <
+        T extends { id: string; tags: string[] | null },
+      >(
+        segments: T[],
+      ): T[] =>
         segments.map((item) =>
           item.id === segmentId
             ? { ...item, tags: newTags.length > 0 ? newTags : null }
