@@ -17,7 +17,7 @@ export type QueueName = (typeof Queues)[keyof typeof Queues];
 // ============================================================================
 
 export const AudioJobs = {
-  GenerateWaveform: "generate_waveform",
+  IngestSource: "ingest_source",
   Denoise: "denoise",
   RemoveOverlap: "remove_overlap",
   Transcribe: "transcribe",
@@ -29,7 +29,7 @@ export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
 
 // Job payload - single generic type for all audio jobs
 // The job name determines how entryId is interpreted:
-// - generate_waveform: entryId is fileId (uploaded source file)
+// - ingest_source: entryId is sourceId
 // - denoise, remove_overlap, transcribe: entryId is segmentId (worker ensures clip exists)
 
 /** Payload for all audio processing jobs */
@@ -102,11 +102,11 @@ const DEFAULT_JOB_OPTIONS: JobsOptions = {
  *
  * @example
  * ```ts
- * // Enqueue a waveform generation job
+ * // Enqueue a source ingest job
  * yield* QueueService.enqueueJob(
  *   Queues.AudioProcessing,
- *   AudioJobs.GenerateWaveform,
- *   { fileId: "file-123", audioStorageKey: "path/to/audio.mp3" }
+ *   AudioJobs.IngestSource,
+ *   { entryId: "source-123" }
  * );
  *
  * // Enqueue a batch of transcription jobs

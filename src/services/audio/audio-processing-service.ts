@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { Data, Effect } from "effect";
-import ffmpeg from "fluent-ffmpeg";
 
 // ============================================================================
 // Types
@@ -26,6 +25,21 @@ export interface ExtractFromVideoResult {
 
 export interface WaveformResult {
   outputPath: string;
+}
+
+interface FfprobeStream {
+  codec_type?: string;
+  codec_name?: string;
+  channels?: number;
+  sample_rate?: string;
+  bit_rate?: string;
+}
+
+interface FfprobeOutput {
+  format?: {
+    duration?: string;
+  };
+  streams?: FfprobeStream[];
 }
 
 // ============================================================================
@@ -53,87 +67,289 @@ export class AudioProcessingError extends Data.TaggedError(
 // Internal Effect Wrappers
 // ============================================================================
 
+const FFMPEG_TIMEOUT_MS = 15 * 60 * 1000;
+const FFPROBE_TIMEOUT_MS = 2 * 60 * 1000;
+const EXEC_MAX_BUFFER = 10 * 1024 * 1024;
+
+function parseNumericValue(value: string | number | undefined): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const runCommand = (params: {
+  command: string;
+  args: string[];
+  timeoutMs: number;
+}) =>
+  Effect.tryPromise({
+    try: async () => {
+      return await new Promise<{ stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          execFile(
+            params.command,
+            params.args,
+            {
+              timeout: params.timeoutMs,
+              maxBuffer: EXEC_MAX_BUFFER,
+            },
+            (error, stdout, stderr) => {
+              if (error) {
+                reject(new Error(stderr || error.message));
+                return;
+              }
+
+              resolve({ stdout, stderr });
+            },
+          );
+        },
+      );
+    },
+    catch: (error) =>
+      error instanceof Error ? error : new Error(String(error)),
+  });
+
+const runFfprobe = (inputPath: string) =>
+  runCommand({
+    command: "ffprobe",
+    args: [
+      "-v",
+      "error",
+      "-show_format",
+      "-show_streams",
+      "-print_format",
+      "json",
+      inputPath,
+    ],
+    timeoutMs: FFPROBE_TIMEOUT_MS,
+  });
+
+const runFfmpeg = (args: string[]) =>
+  runCommand({
+    command: "ffmpeg",
+    args,
+    timeoutMs: FFMPEG_TIMEOUT_MS,
+  });
+
 const probeFile = (inputPath: string) =>
-  Effect.async<AudioMetadata, AudioProcessingError>((resume) => {
-    ffmpeg.ffprobe(inputPath, (err, metadata) => {
-      if (err) {
-        resume(
-          Effect.fail(
+  Effect.gen(function* () {
+    const { stdout } = yield* runFfprobe(inputPath).pipe(
+      Effect.catchAll((error) => {
+        const message = error.message.toLowerCase();
+
+        if (message.includes("no such file") || message.includes("not found")) {
+          return Effect.fail(
             new AudioProcessingError({
               operation: "probe",
-              message: "Failed to probe media file",
-              code: "FFMPEG_ERROR",
-              cause: err,
+              message: `File not found: ${inputPath}`,
+              code: "FILE_NOT_FOUND",
+              cause: error,
             }),
-          ),
+          );
+        }
+
+        if (
+          message.includes("invalid data") ||
+          message.includes("moov atom not found") ||
+          message.includes("corrupt")
+        ) {
+          return Effect.fail(
+            new AudioProcessingError({
+              operation: "probe",
+              message: "Failed to read media file. It may be corrupted.",
+              code: "CORRUPT_FILE",
+              cause: error,
+            }),
+          );
+        }
+
+        if (message.includes("timed out")) {
+          return Effect.fail(
+            new AudioProcessingError({
+              operation: "probe",
+              message: "Media probe timed out",
+              code: "FFMPEG_ERROR",
+              cause: error,
+            }),
+          );
+        }
+
+        return Effect.fail(
+          new AudioProcessingError({
+            operation: "probe",
+            message: "Failed to probe media file",
+            code: "FFMPEG_ERROR",
+            cause: error,
+          }),
         );
-        return;
-      }
+      }),
+    );
 
-      const audioStreams =
-        metadata.streams
-          ?.filter((s) => s.codec_type === "audio")
-          .map((s) => ({
-            codec: s.codec_name ?? "unknown",
-            channels: s.channels ?? 0,
-            sampleRate: s.sample_rate
-              ? typeof s.sample_rate === "number"
-                ? s.sample_rate
-                : Number.parseInt(s.sample_rate, 10)
-              : 0,
-            bitrate: s.bit_rate
-              ? typeof s.bit_rate === "number"
-                ? s.bit_rate
-                : Number.parseInt(s.bit_rate, 10)
-              : undefined,
-          })) ?? [];
-
-      resume(
-        Effect.succeed({
-          hasAudio: audioStreams.length > 0,
-          durationSeconds: metadata.format?.duration ?? 0,
-          streams: audioStreams,
+    const parsed = yield* Effect.try({
+      try: () => JSON.parse(stdout) as FfprobeOutput,
+      catch: (error) =>
+        new AudioProcessingError({
+          operation: "probe",
+          message: "Failed to parse ffprobe output",
+          code: "FFMPEG_ERROR",
+          cause: error,
         }),
-      );
     });
+
+    const streams = parsed.streams ?? [];
+    const audioStreams = streams
+      .filter((stream) => stream.codec_type === "audio")
+      .map((stream) => {
+        const sampleRate = parseNumericValue(stream.sample_rate);
+        const bitrate = parseNumericValue(stream.bit_rate);
+
+        return {
+          codec: stream.codec_name ?? "unknown",
+          channels: stream.channels ?? 0,
+          sampleRate,
+          bitrate: bitrate > 0 ? bitrate : undefined,
+        };
+      });
+
+    return {
+      hasAudio: audioStreams.length > 0,
+      durationSeconds: parseNumericValue(parsed.format?.duration),
+      streams: audioStreams,
+    } satisfies AudioMetadata;
   });
 
 const runExtraction = (inputPath: string, outputPath: string) =>
-  Effect.async<number, AudioProcessingError>((resume) => {
-    let duration = 0;
+  Effect.gen(function* () {
+    yield* runFfmpeg([
+      "-y",
+      "-nostdin",
+      "-i",
+      inputPath,
+      "-vn",
+      "-acodec",
+      "flac",
+      "-ac",
+      "2",
+      "-ar",
+      "48000",
+      outputPath,
+    ]).pipe(
+      Effect.catchAll((error) => {
+        const message = error.message;
+        const lowerMessage = message.toLowerCase();
 
-    ffmpeg(inputPath)
-      .noVideo()
-      .audioCodec("flac")
-      .audioChannels(2)
-      .audioFrequency(48000)
-      .output(outputPath)
-      .on("codecData", (data) => {
-        if (data.duration) {
-          const parts = data.duration.split(":");
-          const [h, m, s] = parts;
-          if (h && m && s) {
-            const hours = Number.parseFloat(h);
-            const minutes = Number.parseFloat(m);
-            const seconds = Number.parseFloat(s);
-            duration = hours * 3600 + minutes * 60 + seconds;
-          }
-        }
-      })
-      .on("end", () => resume(Effect.succeed(duration)))
-      .on("error", (err) =>
-        resume(
-          Effect.fail(
+        if (
+          lowerMessage.includes("matches no streams") ||
+          lowerMessage.includes("does not contain any stream") ||
+          lowerMessage.includes("no audio")
+        ) {
+          return Effect.fail(
             new AudioProcessingError({
               operation: "extract",
-              message: "Failed to extract audio from video",
-              code: "FFMPEG_ERROR",
-              cause: err,
+              message: "Video has no audio track",
+              code: "NO_AUDIO",
+              cause: error,
             }),
-          ),
+          );
+        }
+
+        if (
+          lowerMessage.includes("invalid data") ||
+          lowerMessage.includes("moov atom not found") ||
+          lowerMessage.includes("corrupt")
+        ) {
+          return Effect.fail(
+            new AudioProcessingError({
+              operation: "extract",
+              message: "Failed to read video file. It may be corrupted.",
+              code: "CORRUPT_FILE",
+              cause: error,
+            }),
+          );
+        }
+
+        if (lowerMessage.includes("timed out")) {
+          return Effect.fail(
+            new AudioProcessingError({
+              operation: "extract",
+              message: "Audio extraction timed out",
+              code: "FFMPEG_ERROR",
+              cause: error,
+            }),
+          );
+        }
+
+        return Effect.fail(
+          new AudioProcessingError({
+            operation: "extract",
+            message: "Failed to extract audio from video",
+            code: "FFMPEG_ERROR",
+            cause: error,
+          }),
+        );
+      }),
+    );
+
+    const metadata = yield* probeFile(outputPath).pipe(
+      Effect.mapError(
+        (error) =>
+          new AudioProcessingError({
+            ...error,
+            operation: "extract",
+            message: "Failed to read extracted audio file",
+          }),
+      ),
+    );
+
+    return metadata.durationSeconds;
+  });
+
+const runFlacConversion = (inputPath: string, outputPath: string) =>
+  Effect.gen(function* () {
+    yield* runFfmpeg([
+      "-y",
+      "-nostdin",
+      "-i",
+      inputPath,
+      "-acodec",
+      "flac",
+      "-ac",
+      "2",
+      "-ar",
+      "48000",
+      outputPath,
+    ]).pipe(
+      Effect.catchAll((error) =>
+        Effect.fail(
+          new AudioProcessingError({
+            operation: "convert",
+            message: `Failed to convert to FLAC: ${error.message}`,
+            code: "FFMPEG_ERROR",
+            cause: error,
+          }),
         ),
-      )
-      .run();
+      ),
+    );
+
+    const metadata = yield* probeFile(outputPath).pipe(
+      Effect.mapError(
+        (error) =>
+          new AudioProcessingError({
+            ...error,
+            operation: "convert",
+            message: "Failed to read converted FLAC file",
+          }),
+      ),
+    );
+
+    return metadata.durationSeconds;
   });
 
 // ============================================================================
@@ -179,34 +395,13 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
        */
       extractFromVideo: (params: { inputPath: string; outputPath: string }) =>
         Effect.gen(function* () {
-          const metadata = yield* probeFile(params.inputPath).pipe(
-            Effect.mapError(
-              (e) =>
-                new AudioProcessingError({
-                  ...e,
-                  message: "Failed to read video file. It may be corrupted.",
-                  code: "CORRUPT_FILE",
-                }),
-            ),
-          );
-
-          if (!metadata.hasAudio) {
-            return yield* Effect.fail(
-              new AudioProcessingError({
-                operation: "extract",
-                message: "Video has no audio track",
-                code: "NO_AUDIO",
-              }),
-            );
-          }
-
           const duration = yield* runExtraction(
             params.inputPath,
             params.outputPath,
           );
 
           return {
-            durationSeconds: duration || metadata.durationSeconds,
+            durationSeconds: duration,
             outputPath: params.outputPath,
           };
         }),
@@ -251,8 +446,9 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
             );
           }
 
-          yield* Effect.async<void, AudioProcessingError>((resume) => {
-            const args = [
+          yield* runCommand({
+            command: "docker",
+            args: [
               "run",
               "--rm",
               "-v",
@@ -268,66 +464,66 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
               "8",
               "-z",
               (params.samplesPerPixel ?? 256).toString(),
-            ];
+            ],
+            timeoutMs: 300000,
+          }).pipe(
+            Effect.catchAll((error) => {
+              const message = error.message;
 
-            execFile(
-              "docker",
-              args,
-              { timeout: 300000 },
-              (error, _stdout, stderr) => {
-                if (error) {
-                  const message = stderr || error.message;
+              if (message.includes("no audio")) {
+                return Effect.fail(
+                  new AudioProcessingError({
+                    operation: "waveform",
+                    message: "No audio found in file",
+                    code: "NO_AUDIO",
+                    cause: error,
+                  }),
+                );
+              }
 
-                  if (message.includes("no audio")) {
-                    resume(
-                      Effect.fail(
-                        new AudioProcessingError({
-                          operation: "waveform",
-                          message: "No audio found in file",
-                          code: "NO_AUDIO",
-                          cause: error,
-                        }),
-                      ),
-                    );
-                    return;
-                  }
+              if (
+                message.includes("corrupt") ||
+                message.includes("Invalid data")
+              ) {
+                return Effect.fail(
+                  new AudioProcessingError({
+                    operation: "waveform",
+                    message: "Audio file appears to be corrupted",
+                    code: "CORRUPT_FILE",
+                    cause: error,
+                  }),
+                );
+              }
 
-                  if (
-                    message.includes("corrupt") ||
-                    message.includes("Invalid data")
-                  ) {
-                    resume(
-                      Effect.fail(
-                        new AudioProcessingError({
-                          operation: "waveform",
-                          message: "Audio file appears to be corrupted",
-                          code: "CORRUPT_FILE",
-                          cause: error,
-                        }),
-                      ),
-                    );
-                    return;
-                  }
-
-                  resume(
-                    Effect.fail(
-                      new AudioProcessingError({
-                        operation: "waveform",
-                        message: `Waveform generation failed: ${message}`,
-                        code: "DOCKER_ERROR",
-                        cause: error,
-                      }),
-                    ),
-                  );
-                  return;
-                }
-
-                resume(Effect.void);
-              },
-            );
-          });
+              return Effect.fail(
+                new AudioProcessingError({
+                  operation: "waveform",
+                  message: `Waveform generation failed: ${message}`,
+                  code: "DOCKER_ERROR",
+                  cause: error,
+                }),
+              );
+            }),
+          );
 
           return { outputPath: params.outputPath };
+        }),
+
+      /**
+       * Convert an audio file to FLAC format at 48kHz stereo.
+       * Used by source ingestion to normalize non-FLAC audio inputs.
+       */
+      convertToFlac: (params: { inputPath: string; outputPath: string }) =>
+        Effect.gen(function* () {
+          const durationSeconds = yield* runFlacConversion(
+            params.inputPath,
+            params.outputPath,
+          );
+
+          return {
+            outputPath: params.outputPath,
+            durationSeconds,
+          };
         }),
 
       /**
@@ -341,34 +537,41 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
         channels: number;
         bitDepth: 16 | 24 | 32;
       }) =>
-        Effect.async<{ outputPath: string }, AudioProcessingError>((resume) => {
+        Effect.gen(function* () {
           const codecMap: Record<number, string> = {
             16: "pcm_s16le",
             24: "pcm_s24le",
             32: "pcm_s32le",
           };
 
-          ffmpeg(params.inputPath)
-            .audioCodec(codecMap[params.bitDepth] ?? "pcm_s16le")
-            .audioChannels(params.channels)
-            .audioFrequency(params.sampleRate)
-            .output(params.outputPath)
-            .on("end", () =>
-              resume(Effect.succeed({ outputPath: params.outputPath })),
-            )
-            .on("error", (err) =>
-              resume(
-                Effect.fail(
-                  new AudioProcessingError({
-                    operation: "convert",
-                    message: `Failed to convert to WAV: ${err.message}`,
-                    code: "FFMPEG_ERROR",
-                    cause: err,
-                  }),
-                ),
+          const codec = codecMap[params.bitDepth] ?? "pcm_s16le";
+
+          yield* runFfmpeg([
+            "-y",
+            "-nostdin",
+            "-i",
+            params.inputPath,
+            "-acodec",
+            codec,
+            "-ac",
+            String(params.channels),
+            "-ar",
+            String(params.sampleRate),
+            params.outputPath,
+          ]).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new AudioProcessingError({
+                  operation: "convert",
+                  message: `Failed to convert to WAV: ${error.message}`,
+                  code: "FFMPEG_ERROR",
+                  cause: error,
+                }),
               ),
-            )
-            .run();
+            ),
+          );
+
+          return { outputPath: params.outputPath };
         }),
     },
     accessors: true,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2, Upload } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import {
@@ -10,11 +11,14 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "~/components/ui/navigation-menu";
+import { useWorkspaceUpload } from "~/features/workspace/components/workspace-upload-layer";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
 export function SourcePicker() {
   const { projectId } = useParams<{ projectId: string }>();
+  const { openFilePicker, isUploading, ingestError, ingestStatus } =
+    useWorkspaceUpload();
 
   const [sourceId, setSourceId] = useQueryState(
     "sourceId",
@@ -26,7 +30,10 @@ export function SourcePicker() {
     { refetchOnWindowFocus: false },
   );
 
-  const selectedSource = sources.find((s) => s.id === sourceId);
+  const selectedSource = sources.find((source) => source.id === sourceId);
+  const selectedStatus = sourceId ? ingestStatus : null;
+  const isIngesting =
+    selectedStatus === "pending" || selectedStatus === "processing";
 
   return (
     <NavigationMenu viewport={false}>
@@ -39,10 +46,28 @@ export function SourcePicker() {
                 ? (selectedSource.name ??
                   selectedSource.storageKey?.split("/").pop())
                 : "None"}
+              {isIngesting && " (processing)"}
+              {selectedStatus === "failed" && " (failed)"}
             </span>
           </NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="w-[320px] p-1">
+              <li>
+                <NavigationMenuLink asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2"
+                    onClick={openFilePicker}
+                  >
+                    {isUploading ? (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Upload className="size-4 text-muted-foreground" />
+                    )}
+                    <span>Upload source</span>
+                  </button>
+                </NavigationMenuLink>
+              </li>
               {sourceId && (
                 <li>
                   <NavigationMenuLink asChild>
@@ -54,6 +79,11 @@ export function SourcePicker() {
                       Clear selection
                     </button>
                   </NavigationMenuLink>
+                </li>
+              )}
+              {selectedStatus === "failed" && ingestError && (
+                <li className="px-2 py-1 text-destructive text-xs">
+                  {ingestError}
                 </li>
               )}
               {sources.map((source) => (

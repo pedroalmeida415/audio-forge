@@ -9,7 +9,6 @@ const config = {
   experimental: {
     reactCompiler: true,
   },
-  serverExternalPackages: ["fluent-ffmpeg"],
 };
 
 export default config;

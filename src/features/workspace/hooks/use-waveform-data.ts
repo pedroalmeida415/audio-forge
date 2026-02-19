@@ -17,11 +17,23 @@ interface UseWaveformDataOptions {
   sourceId: string;
 }
 
+function decodeBase64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    const char = binary.charCodeAt(i);
+    bytes[i] = char;
+  }
+
+  return bytes.buffer;
+}
+
 /**
- * Hook to load waveform data from R2 storage.
+ * Hook to load waveform data inline from source.getById.
  *
- * Polls for waveform generation status, then loads the .dat file when ready.
- * Uses waveform-data.js to parse BBC audiowaveform binary format.
+ * Polls source ingest/waveform status, then decodes base64 waveform bytes
+ * and parses them via waveform-data.js when completed.
  */
 export function useWaveformData({
   sourceId,
@@ -33,93 +45,97 @@ export function useWaveformData({
     error: null,
   });
 
-  // Query waveform URL with polling for pending/processing states
-  const { data, error: queryError } = api.file.getWaveformUrl.useQuery(
-    { sourceId },
+  const { data, error: queryError } = api.source.getById.useQuery(
+    { id: sourceId },
     {
-      // Poll every 2 seconds while pending or processing
       refetchInterval: (query) => {
-        const status = query.state.data?.status;
-        if (status === "pending" || status === "processing") {
+        const ingestStatus = query.state.data?.ingestStatus;
+        const waveformStatus = query.state.data?.waveformStatus;
+
+        if (
+          ingestStatus === "pending" ||
+          ingestStatus === "processing" ||
+          waveformStatus === "pending" ||
+          waveformStatus === "processing"
+        ) {
           return 2000;
         }
+
         return false;
       },
-      // Keep refetching in background for status updates
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: false,
     },
   );
 
-  // Load waveform data when URL is available
   useEffect(() => {
     if (!data) return;
 
-    // Update status
-    if (data.status !== "completed") {
+    const status = data.waveformStatus ?? "pending";
+
+    if (status === "pending" || status === "processing") {
       setState((prev) => ({
         ...prev,
-        status: data.status as WaveformStatus,
-        isLoading: data.status === "pending" || data.status === "processing",
-        error: data.error ?? null,
+        status,
+        isLoading: true,
+        error: data.waveformError ?? data.ingestError ?? null,
       }));
       return;
     }
 
-    // URL is available, fetch the waveform data
-    if (!data.url) return;
-
-    let cancelled = false;
-    const waveformUrl = data.url;
-
-    async function loadWaveform() {
-      try {
-        const response = await fetch(waveformUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch waveform: ${response.status}`);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        const waveform = WaveformData.create(arrayBuffer);
-
-        if (!cancelled) {
-          setState({
-            waveform,
-            isLoading: false,
-            status: "completed",
-            error: null,
-          });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setState({
-            waveform: null,
-            isLoading: false,
-            status: "failed",
-            error:
-              err instanceof Error ? err.message : "Failed to load waveform",
-          });
-        }
-      }
-    }
-
-    loadWaveform();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [data]);
-
-  // Handle query errors
-  useEffect(() => {
-    if (queryError) {
-      setState((prev) => ({
-        ...prev,
+    if (status === "failed") {
+      setState({
+        waveform: null,
         isLoading: false,
         status: "failed",
-        error: queryError.message,
-      }));
+        error:
+          data.waveformError ?? data.ingestError ?? "Waveform ingest failed",
+      });
+      return;
     }
+
+    if (!data.waveformBase64) {
+      setState({
+        waveform: null,
+        isLoading: false,
+        status: "failed",
+        error: "Waveform data is missing",
+      });
+      return;
+    }
+
+    try {
+      const buffer = decodeBase64ToArrayBuffer(data.waveformBase64);
+      const waveform = WaveformData.create(buffer);
+
+      setState({
+        waveform,
+        isLoading: false,
+        status: "completed",
+        error: null,
+      });
+    } catch (error) {
+      setState({
+        waveform: null,
+        isLoading: false,
+        status: "failed",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to parse waveform data",
+      });
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (!queryError) return;
+
+    setState((prev) => ({
+      ...prev,
+      isLoading: false,
+      status: "failed",
+      error: queryError.message,
+    }));
   }, [queryError]);
 
   return state;

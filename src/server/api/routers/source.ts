@@ -1,19 +1,230 @@
+import { randomUUID } from "node:crypto";
 import { on } from "node:events";
+import { mkdir, open } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { TRPCError } from "@trpc/server";
+import { octetInputParser } from "@trpc/server/http";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { sources, speakers } from "~/server/db/schema";
+import { projects, sources, speakers } from "~/server/db/schema";
 import {
   type DiarizationEvent,
   diarizationEvents,
 } from "~/server/events/diarization-events";
 import { PyannoteService } from "~/services/diarization/pyannote-service";
 import { Database } from "~/services/infra/database";
+import {
+  AudioJobs,
+  QueueService,
+  Queues,
+} from "~/services/queue/queue-service";
 import { StorageService } from "~/services/storage/storage-service";
 
+const PROJECT_ID_SCHEMA = z.string().uuid();
+const SUPPORTED_UPLOAD_CONTENT_TYPE = /^(audio|video)\//;
+const MAX_FILENAME_LENGTH = 255;
+
+function normalizeFilename(value: string): string {
+  const safeName = basename(value).trim();
+  if (!safeName) {
+    return "upload";
+  }
+  return safeName.slice(0, MAX_FILENAME_LENGTH);
+}
+
 export const sourceRouter = createTRPCRouter({
+  upload: protectedProcedure.input(octetInputParser).mutation(
+    async ({ ctx, input }) =>
+      await ctx.runtime.runPromise(
+        Effect.gen(function* () {
+          const db = yield* Database;
+
+          const contentType = ctx.headers.get("x-content-type")?.toLowerCase();
+          const projectId = ctx.headers.get("x-project-id");
+          const rawFilename = ctx.headers.get("x-filename") ?? "upload";
+
+          if (
+            !contentType ||
+            !SUPPORTED_UPLOAD_CONTENT_TYPE.test(contentType)
+          ) {
+            return yield* Effect.fail(
+              new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Invalid x-content-type header",
+              }),
+            );
+          }
+
+          if (!projectId || !PROJECT_ID_SCHEMA.safeParse(projectId).success) {
+            return yield* Effect.fail(
+              new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Missing or invalid x-project-id header",
+              }),
+            );
+          }
+
+          const filename = normalizeFilename(rawFilename);
+          const project = yield* db.query.projects.findFirst({
+            where: and(
+              eq(projects.id, projectId),
+              eq(projects.userId, ctx.session.user.id),
+            ),
+            columns: { id: true },
+          });
+
+          if (!project) {
+            return yield* Effect.fail(
+              new TRPCError({
+                code: "NOT_FOUND",
+                message: "Project not found",
+              }),
+            );
+          }
+
+          const stagingDir = join(tmpdir(), "audio-forge-staging");
+          yield* Effect.tryPromise({
+            try: () => mkdir(stagingDir, { recursive: true }),
+            catch: (error) =>
+              new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Failed to initialize staging directory",
+                cause: error,
+              }),
+          });
+
+          const stagingPath = join(
+            stagingDir,
+            `${Date.now()}-${randomUUID()}-${filename}`,
+          );
+
+          yield* Effect.tryPromise({
+            try: async () => {
+              const fileHandle = await open(stagingPath, "w");
+              try {
+                const reader = input.getReader();
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  await fileHandle.write(value);
+                }
+              } finally {
+                await fileHandle.close();
+              }
+            },
+            catch: (error) =>
+              new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Failed to stage uploaded source",
+                cause: error,
+              }),
+          });
+
+          const [source] = yield* db
+            .insert(sources)
+            .values({
+              userId: ctx.session.user.id,
+              projectId,
+              name: filename,
+              originalFileName: filename,
+              ingestStatus: "pending",
+              ingestError: null,
+              ingestLocalPath: stagingPath,
+              ingestContentType: contentType,
+              ingestOriginalFilename: filename,
+              waveformStatus: "pending",
+              waveformError: null,
+            })
+            .returning({ id: sources.id });
+
+          if (!source) {
+            return yield* Effect.fail(
+              new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Failed to create source record",
+              }),
+            );
+          }
+
+          yield* QueueService.enqueueJob(
+            Queues.AudioProcessing,
+            AudioJobs.IngestSource,
+            { entryId: source.id },
+          ).pipe(
+            Effect.catchAll((error) =>
+              Effect.gen(function* () {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to enqueue ingest job";
+
+                yield* db
+                  .update(sources)
+                  .set({
+                    ingestStatus: "failed",
+                    ingestError: message,
+                    waveformStatus: "failed",
+                    waveformError: message,
+                  })
+                  .where(eq(sources.id, source.id));
+
+                return yield* Effect.fail(
+                  new TRPCError({
+                    code: "INTERNAL_SERVER_ERROR",
+                    message,
+                  }),
+                );
+              }),
+            ),
+          );
+
+          return { sourceId: source.id };
+        }),
+      ),
+  ),
+
+  getIngestStatus: protectedProcedure
+    .input(z.object({ sourceId: z.string().uuid() }))
+    .query(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const source = yield* db.query.sources.findFirst({
+              where: and(
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
+              ),
+              columns: {
+                ingestStatus: true,
+                ingestError: true,
+                waveformStatus: true,
+                waveformError: true,
+              },
+            });
+
+            if (!source) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Source not found",
+                }),
+              );
+            }
+
+            return {
+              ingestStatus: source.ingestStatus ?? "pending",
+              ingestError: source.ingestError,
+              waveformStatus: source.waveformStatus ?? "pending",
+              waveformError: source.waveformError,
+            };
+          }),
+        ),
+    ),
+
   // Get source by ID with segments and speakers
   getById: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(
     async ({ ctx, input }) =>
@@ -42,13 +253,21 @@ export const sourceRouter = createTRPCRouter({
           }
 
           // Get all project speakers
-          const projectSpeakers = yield* db.query.speakers.findMany({
-            where: eq(speakers.projectId, source.projectId!),
-            orderBy: (sp, { asc }) => [asc(sp.createdAt)],
-          });
+          const projectSpeakers = source.projectId
+            ? yield* db.query.speakers.findMany({
+                where: eq(speakers.projectId, source.projectId),
+                orderBy: (sp, { asc }) => [asc(sp.createdAt)],
+              })
+            : [];
+
+          const { waveformData, ...sourceWithoutWaveformData } = source;
 
           return {
-            ...source,
+            ...sourceWithoutWaveformData,
+            waveformBase64:
+              source.waveformStatus === "completed" && waveformData
+                ? Buffer.from(waveformData).toString("base64")
+                : null,
             speakers: projectSpeakers,
           };
         }),
@@ -74,6 +293,10 @@ export const sourceRouter = createTRPCRouter({
                 name: true,
                 storageKey: true,
                 duration: true,
+                ingestStatus: true,
+                ingestError: true,
+                waveformStatus: true,
+                waveformError: true,
                 createdAt: true,
               },
             });
@@ -235,11 +458,21 @@ export const sourceRouter = createTRPCRouter({
               source.diarizationStatus === "pending" ||
               source.diarizationStatus === "running"
             ) {
+              if (!source.diarizationJobId) {
+                return {
+                  status: source.diarizationStatus,
+                  liveStatus: source.diarizationStatus,
+                  startedAt: source.diarizationStartedAt?.toISOString() ?? null,
+                  completedAt: null,
+                  error: source.diarizationError,
+                };
+              }
+
               const statusResult = yield* PyannoteService.getJobStatus(
-                source.diarizationJobId!,
+                source.diarizationJobId,
               ).pipe(
                 Effect.catchTag("PyannoteError", () =>
-                  Effect.succeed({ status: source.diarizationStatus! }),
+                  Effect.succeed({ status: source.diarizationStatus }),
                 ),
               );
 
@@ -255,8 +488,7 @@ export const sourceRouter = createTRPCRouter({
             return {
               status: source.diarizationStatus,
               startedAt: source.diarizationStartedAt?.toISOString() ?? null,
-              completedAt:
-                source.diarizationCompletedAt?.toISOString() ?? null,
+              completedAt: source.diarizationCompletedAt?.toISOString() ?? null,
               error: source.diarizationError,
             };
           }),

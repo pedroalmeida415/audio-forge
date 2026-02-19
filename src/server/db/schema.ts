@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  customType,
   doublePrecision,
   index,
   jsonb,
@@ -115,11 +116,24 @@ export interface AudioScores {
   };
 }
 
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
 // ============================================================================
 // ENUMS
 // ============================================================================
 
 export const waveformStatus = pgEnum("waveform_status", [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+]);
+
+export const ingestStatus = pgEnum("ingest_status", [
   "pending",
   "processing",
   "completed",
@@ -133,10 +147,7 @@ export const diarizationStatus = pgEnum("diarization_status", [
   "failed",
 ]);
 
-export const speakerOrigin = pgEnum("speaker_origin", [
-  "diarization",
-  "user",
-]);
+export const speakerOrigin = pgEnum("speaker_origin", ["diarization", "user"]);
 
 export const clipProcessingStatus = pgEnum("clip_processing_status", [
   "pending",
@@ -192,9 +203,18 @@ export const sources = pgTable(
     name: varchar("name", { length: 255 }),
     originalFileName: varchar("original_file_name", { length: 255 }),
 
+    // Source ingest workflow
+    ingestStatus: ingestStatus("ingest_status").default("pending"),
+    ingestError: text("ingest_error"),
+    ingestLocalPath: varchar("ingest_local_path", { length: 1024 }),
+    ingestContentType: varchar("ingest_content_type", { length: 255 }),
+    ingestOriginalFilename: varchar("ingest_original_filename", {
+      length: 255,
+    }),
+
     // Waveform generation
     waveformStatus: waveformStatus("waveform_status").default("pending"),
-    waveformStorageKey: varchar("waveform_storage_key", { length: 1024 }),
+    waveformData: bytea("waveform_data"),
     waveformError: text("waveform_error"),
 
     // Diarization (formerly in clippingSessions JSONB)
