@@ -27,6 +27,7 @@ interface Segment {
 export function usePlayback(
   sourceData: SourceData | null,
   segments: Segment[] = [],
+  activeSegmentId: string | null = null,
 ) {
   const { store } = useWorkspaceStore();
 
@@ -185,20 +186,12 @@ export function usePlayback(
   // ============================================================================
 
   useEffect(() => {
-    const dispose = effect(() => {
-      const activeSegmentId = store.activeSegmentId;
-      if (!activeSegmentId) return;
+    if (!activeSegmentId) return;
 
-      const segment = segments.find((s) => s.id === activeSegmentId);
-      if (!segment) return;
+    const segment = segments.find((s) => s.id === activeSegmentId);
+    if (!segment) return;
 
-      // Schedule scroll asynchronously so scrollToTime's internal reads
-      // (zoomLevel, duration, containerWidth) are NOT tracked by the effect.
-      // Without this, zooming would re-trigger scroll-to-active-segment.
-      const centerTime = (segment.startTime + segment.endTime) / 2;
-      queueMicrotask(() => store.scrollToTime(centerTime));
-    });
-
-    return dispose;
-  }, [store, segments]);
+    const centerTime = (segment.startTime + segment.endTime) / 2;
+    store.scrollToTime(centerTime);
+  }, [store, segments, activeSegmentId]);
 }

@@ -81,6 +81,8 @@ interface TimelineToolbarProps {
   sourceId: string;
   projectId: string;
   speakerId: string | null;
+  activeSegmentId: string | null;
+  onActiveSegmentChange: (segmentId: string | null) => void;
 }
 
 export function TimelineToolbar({
@@ -89,6 +91,8 @@ export function TimelineToolbar({
   sourceId,
   projectId,
   speakerId,
+  activeSegmentId,
+  onActiveSegmentChange,
 }: TimelineToolbarProps) {
   const { store } = useWorkspaceStore();
 
@@ -146,6 +150,8 @@ export function TimelineToolbar({
         speakers={speakers}
         sourceId={sourceId}
         projectId={projectId}
+        activeSegmentId={activeSegmentId}
+        onActiveSegmentChange={onActiveSegmentChange}
       />
 
       {/* Selection controls (shown during drag-to-select) */}

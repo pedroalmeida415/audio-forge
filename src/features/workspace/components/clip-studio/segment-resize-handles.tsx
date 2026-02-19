@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { api } from "~/trpc/react";
@@ -22,6 +21,7 @@ interface SegmentResizeHandlesProps {
     endTime: number;
   }[];
   sourceId: string;
+  activeSegmentId: string | null;
 }
 
 /**
@@ -34,9 +34,9 @@ interface SegmentResizeHandlesProps {
 export function SegmentResizeHandles({
   segments,
   sourceId,
+  activeSegmentId,
 }: SegmentResizeHandlesProps) {
   const { store, computed } = useWorkspaceStore();
-  const snap = useSnapshot(store);
   const updateSegmentsMutation = api.segment.updateSegments.useMutation();
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
@@ -51,17 +51,16 @@ export function SegmentResizeHandles({
   // This avoids race conditions with DOM queries
   useEffect(() => {
     const dispose = effect(() => {
-      const activeId = store.activeSegmentId;
       const scrollOffset = store.scrollOffset;
       const pps = computed.pixelsPerSecond;
 
-      if (!activeId) {
+      if (!activeSegmentId) {
         setPosition(null);
         return;
       }
 
       // Find segment from props
-      const segment = segments.find((s) => s.id === activeId);
+      const segment = segments.find((s) => s.id === activeSegmentId);
       if (!segment) {
         setPosition(null);
         return;
@@ -94,16 +93,15 @@ export function SegmentResizeHandles({
     });
 
     return dispose;
-  }, [store, computed, segments]);
+  }, [store, computed, segments, activeSegmentId]);
 
   const handleMouseDown = (edge: "start" | "end") => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const activeId = store.activeSegmentId;
-    if (!activeId) return;
+    if (!activeSegmentId) return;
 
-    const segment = segments.find((s) => s.id === activeId);
+    const segment = segments.find((s) => s.id === activeSegmentId);
     if (!segment) return;
 
     const startX = e.clientX;
@@ -153,7 +151,7 @@ export function SegmentResizeHandles({
           if (newStart !== originalStart) {
             updateSegmentsMutation.mutate({
               sourceId,
-              segmentIds: activeId,
+              segmentIds: activeSegmentId,
               updates: { startTime: newStart },
             });
           }
@@ -165,7 +163,7 @@ export function SegmentResizeHandles({
           if (newEnd !== originalEnd) {
             updateSegmentsMutation.mutate({
               sourceId,
-              segmentIds: activeId,
+              segmentIds: activeSegmentId,
               updates: { endTime: newEnd },
             });
           }
@@ -177,7 +175,7 @@ export function SegmentResizeHandles({
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  if (!mounted || !position || !snap.activeSegmentId) return null;
+  if (!mounted || !position || !activeSegmentId) return null;
 
   return createPortal(
     <>

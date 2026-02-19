@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useQueryState } from "nuqs";
+import { useQueryStates } from "nuqs";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -19,11 +19,11 @@ import { api } from "~/trpc/react";
 export function SpeakerPicker() {
   const { projectId } = useParams<{ projectId: string }>();
 
-  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
-  const [speakerId, setSpeakerId] = useQueryState(
-    "speakerId",
-    workspaceParams.speakerId,
-  );
+  const [{ sourceId, speakerId }, setQueryState] = useQueryStates({
+    sourceId: workspaceParams.sourceId,
+    speakerId: workspaceParams.speakerId,
+    segmentId: workspaceParams.segmentId,
+  });
 
   const [projectSpeakers] = api.speaker.getByProject.useSuspenseQuery(
     { projectId },
@@ -39,6 +39,10 @@ export function SpeakerPicker() {
   const selectedSpeaker =
     projectSpeakers.find((s) => s.id === speakerId) ??
     sourceSpeakers?.find((s) => s.id === speakerId);
+
+  const handleSelectSpeaker = (id: string | null) => {
+    void setQueryState({ speakerId: id, segmentId: null });
+  };
 
   return (
     <NavigationMenu viewport={false}>
@@ -58,7 +62,7 @@ export function SpeakerPicker() {
                     <button
                       type="button"
                       className="w-full text-muted-foreground"
-                      onClick={() => setSpeakerId(null)}
+                      onClick={() => handleSelectSpeaker(null)}
                     >
                       Clear selection
                     </button>
@@ -70,14 +74,14 @@ export function SpeakerPicker() {
                   key={speaker.id}
                   speaker={speaker}
                   active={speaker.id === speakerId}
-                  onSelect={() => setSpeakerId(speaker.id)}
+                  onSelect={() => handleSelectSpeaker(speaker.id)}
                 />
               ))}
               <SourceSpeakersSection
                 speakers={sourceSpeakers}
                 isLoading={isLoadingSourceSpeakers}
                 speakerId={speakerId}
-                onSelect={setSpeakerId}
+                onSelect={handleSelectSpeaker}
                 enabled={!!sourceId}
               />
             </ul>
@@ -126,7 +130,7 @@ function SourceSpeakersSection({
   speakers: Speaker[] | undefined;
   isLoading: boolean;
   speakerId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   enabled: boolean;
 }) {
   if (!enabled) return null;

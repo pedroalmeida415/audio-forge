@@ -1,10 +1,12 @@
 "use client";
 
+import { useQueryState } from "nuqs";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { usePlayback } from "~/features/workspace/hooks/use-playback";
 import { useSelectionDrag } from "~/features/workspace/hooks/use-selection-drag";
 import { useTimelineResize } from "~/features/workspace/hooks/use-timeline-resize";
 import { useWheelZoom } from "~/features/workspace/hooks/use-wheel-zoom";
+import { workspaceParams } from "~/features/workspace/search-params";
 import type { Segment, Speaker } from "~/server/db/schema";
 import { HoverPlayhead } from "./hover-playhead";
 import { SegmentResizeHandles } from "./segment-resize-handles";
@@ -44,11 +46,15 @@ export function TimelineContainer({
   sourceData,
 }: TimelineContainerProps) {
   const { store } = useWorkspaceStore();
+  const [segmentId, setSegmentId] = useQueryState(
+    "segmentId",
+    workspaceParams.segmentId,
+  );
 
   const containerRef = useTimelineResize();
 
   // Connect MSE audio provider to store
-  usePlayback(sourceData, segments);
+  usePlayback(sourceData, segments, segmentId);
 
   // Enable Ctrl+wheel zooming and Shift+wheel scrolling
   useWheelZoom(store);
@@ -72,6 +78,8 @@ export function TimelineContainer({
         sourceId={sourceId}
         projectId={projectId}
         speakerId={speakerId}
+        activeSegmentId={segmentId}
+        onActiveSegmentChange={(id) => void setSegmentId(id)}
       />
 
       {/* Timeline content - no native scroll, manual handling via transforms */}
@@ -104,6 +112,7 @@ export function TimelineContainer({
             segments={segments}
             speakers={speakers}
             speakerId={speakerId}
+            activeSegmentId={segmentId}
           />
 
           {/* Waveform */}
@@ -115,7 +124,11 @@ export function TimelineContainer({
       </div>
 
       {/* Segment resize handles */}
-      <SegmentResizeHandles segments={segments} sourceId={sourceId} />
+      <SegmentResizeHandles
+        segments={segments}
+        sourceId={sourceId}
+        activeSegmentId={segmentId}
+      />
 
       {/* Selection resize handles */}
       <SelectionResizeHandles />

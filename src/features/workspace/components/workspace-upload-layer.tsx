@@ -2,7 +2,7 @@
 
 import { AlertCircle, Loader2, Upload } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useQueryState } from "nuqs";
+import { useQueryStates } from "nuqs";
 import {
   createContext,
   type ReactNode,
@@ -112,14 +112,11 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
   const { projectId } = useParams<{ projectId: string }>();
   const utils = api.useUtils();
 
-  const [sourceId, setSourceId] = useQueryState(
-    "sourceId",
-    workspaceParams.sourceId,
-  );
-  const [, setSpeakerId] = useQueryState(
-    "speakerId",
-    workspaceParams.speakerId,
-  );
+  const [{ sourceId }, setQueryState] = useQueryStates({
+    sourceId: workspaceParams.sourceId,
+    speakerId: workspaceParams.speakerId,
+    segmentId: workspaceParams.segmentId,
+  });
 
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -201,8 +198,11 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
         throw new Error("Upload succeeded but no source id was returned");
       }
 
-      await setSourceId(nextSourceId);
-      await setSpeakerId(null);
+      await setQueryState({
+        sourceId: nextSourceId,
+        speakerId: null,
+        segmentId: null,
+      });
 
       await Promise.all([
         utils.source.listByProject.invalidate({ projectId }),

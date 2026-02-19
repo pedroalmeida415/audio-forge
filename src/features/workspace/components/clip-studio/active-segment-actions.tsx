@@ -2,7 +2,6 @@
 
 import { Check, Plus, Scissors, Trash2, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import { Button } from "~/components/ui/button";
 import {
@@ -35,6 +34,8 @@ interface ActiveSegmentActionsProps {
   speakers: Speaker[];
   sourceId: string;
   projectId: string;
+  activeSegmentId: string | null;
+  onActiveSegmentChange: (segmentId: string | null) => void;
 }
 
 /**
@@ -51,11 +52,10 @@ export function ActiveSegmentActions({
   speakers,
   sourceId,
   projectId,
+  activeSegmentId,
+  onActiveSegmentChange,
 }: ActiveSegmentActionsProps) {
   const { store } = useWorkspaceStore();
-
-  const snap = useSnapshot(store);
-  const activeSegmentId = snap.activeSegmentId;
 
   const splitSegmentMutation = api.segment.splitSegment.useMutation();
   const updateSegmentsMutation = api.segment.updateSegments.useMutation();
@@ -73,15 +73,14 @@ export function ActiveSegmentActions({
   // Track split availability via effect()
   useEffect(() => {
     const dispose = effect(() => {
-      const currentActiveId = store.activeSegmentId;
       const currentTime = store.currentTime;
 
-      if (!currentActiveId) {
+      if (!activeSegmentId) {
         setCanSplit(false);
         return;
       }
 
-      const segment = segments.find((s) => s.id === currentActiveId);
+      const segment = segments.find((s) => s.id === activeSegmentId);
       if (!segment) {
         setCanSplit(false);
         return;
@@ -93,7 +92,7 @@ export function ActiveSegmentActions({
     });
 
     return dispose;
-  }, [store, segments]);
+  }, [store, segments, activeSegmentId]);
 
   // Don't render if no active segment
   if (!activeSegmentId || !activeSegment) return null;
@@ -126,7 +125,7 @@ export function ActiveSegmentActions({
       sourceId,
       segmentIds: [activeSegmentId],
     });
-    store.setActiveSegment(null);
+    onActiveSegmentChange(null);
   };
 
   const currentSpeaker = speakers.find((s) => s.id === activeSegment.speakerId);

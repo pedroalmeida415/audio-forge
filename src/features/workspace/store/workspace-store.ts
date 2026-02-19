@@ -27,9 +27,6 @@ export class WorkspaceStore {
     scrollContainer: null as HTMLDivElement | null,
   });
 
-  // ─── Active segment ───
-  activeSegmentId: string | null = null;
-
   // ─── Playback ───
   isPlaying = false;
   duration = 0;
@@ -78,11 +75,6 @@ export class WorkspaceStore {
     this.isAllSelected = false;
     this.selectedSegmentIds.clear();
     this.excludedSegmentIds.clear();
-  }
-
-  // ─── Active segment ───
-  setActiveSegment(segmentId: string | null) {
-    this.activeSegmentId = segmentId;
   }
 
   // ─── Playback actions ───
@@ -382,7 +374,6 @@ export class WorkspaceStore {
   // ─── Reset (when source changes) ───
   resetTimeline() {
     batch(() => {
-      this.activeSegmentId = null;
       this.isPlaying = false;
       this.currentTime = 0;
       this.duration = 0;

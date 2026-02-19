@@ -2,7 +2,7 @@
 
 import { Loader2, Upload } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useQueryState } from "nuqs";
+import { useQueryStates } from "nuqs";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -20,10 +20,10 @@ export function SourcePicker() {
   const { openFilePicker, isUploading, ingestError, ingestStatus } =
     useWorkspaceUpload();
 
-  const [sourceId, setSourceId] = useQueryState(
-    "sourceId",
-    workspaceParams.sourceId,
-  );
+  const [{ sourceId }, setQueryState] = useQueryStates({
+    sourceId: workspaceParams.sourceId,
+    segmentId: workspaceParams.segmentId,
+  });
 
   const [sources] = api.source.listByProject.useSuspenseQuery(
     { projectId },
@@ -34,6 +34,10 @@ export function SourcePicker() {
   const selectedStatus = sourceId ? ingestStatus : null;
   const isIngesting =
     selectedStatus === "pending" || selectedStatus === "processing";
+
+  const handleSelectSource = (id: string | null) => {
+    void setQueryState({ sourceId: id, segmentId: null });
+  };
 
   return (
     <NavigationMenu viewport={false}>
@@ -74,7 +78,7 @@ export function SourcePicker() {
                     <button
                       type="button"
                       className="w-full text-muted-foreground"
-                      onClick={() => setSourceId(null)}
+                      onClick={() => handleSelectSource(null)}
                     >
                       Clear selection
                     </button>
@@ -92,7 +96,7 @@ export function SourcePicker() {
                     <button
                       type="button"
                       className="w-full"
-                      onClick={() => setSourceId(source.id)}
+                      onClick={() => handleSelectSource(source.id)}
                     >
                       <span className="truncate">
                         {source.name ?? source.storageKey?.split("/").pop()}
