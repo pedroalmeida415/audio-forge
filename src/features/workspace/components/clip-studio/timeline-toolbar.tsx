@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Pause, Play, Plus } from "lucide-react";
+import { Loader2, Minus, Pause, Play, Plus } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
@@ -83,6 +83,10 @@ interface TimelineToolbarProps {
   speakerId: string | null;
   activeSegmentId: string | null;
   onActiveSegmentChange: (segmentId: string | null) => void;
+  onStartDiarization: () => void;
+  isDiarizationRunning: boolean;
+  isDiarizationCompleted: boolean;
+  isDiarizationButtonDisabled: boolean;
 }
 
 export function TimelineToolbar({
@@ -93,6 +97,10 @@ export function TimelineToolbar({
   speakerId,
   activeSegmentId,
   onActiveSegmentChange,
+  onStartDiarization,
+  isDiarizationRunning,
+  isDiarizationCompleted,
+  isDiarizationButtonDisabled,
 }: TimelineToolbarProps) {
   const { store } = useWorkspaceStore();
 
@@ -210,6 +218,22 @@ export function TimelineToolbar({
               : "Zoom disabled for short audio"}
           </TooltipContent>
         </Tooltip>
+
+        <Button
+          disabled={isDiarizationButtonDisabled}
+          onClick={onStartDiarization}
+          size="sm"
+          variant="outline"
+        >
+          {isDiarizationRunning ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : null}
+          {isDiarizationRunning
+            ? "Diarizing..."
+            : isDiarizationCompleted
+              ? "Diarized"
+              : "Diarize"}
+        </Button>
       </div>
     </div>
   );

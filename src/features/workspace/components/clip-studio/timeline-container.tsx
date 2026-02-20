@@ -27,6 +27,10 @@ interface TimelineContainerProps {
   projectId: string;
   speakerId: string | null;
   sourceData: { storageKey: string; duration: number };
+  onStartDiarization: () => void;
+  isDiarizationRunning: boolean;
+  isDiarizationCompleted: boolean;
+  isDiarizationButtonDisabled: boolean;
 }
 
 /**
@@ -44,6 +48,10 @@ export function TimelineContainer({
   projectId,
   speakerId,
   sourceData,
+  onStartDiarization,
+  isDiarizationRunning,
+  isDiarizationCompleted,
+  isDiarizationButtonDisabled,
 }: TimelineContainerProps) {
   const { store } = useWorkspaceStore();
   const [segmentId, setSegmentId] = useQueryState(
@@ -80,6 +88,10 @@ export function TimelineContainer({
         speakerId={speakerId}
         activeSegmentId={segmentId}
         onActiveSegmentChange={(id) => void setSegmentId(id)}
+        onStartDiarization={onStartDiarization}
+        isDiarizationRunning={isDiarizationRunning}
+        isDiarizationCompleted={isDiarizationCompleted}
+        isDiarizationButtonDisabled={isDiarizationButtonDisabled}
       />
 
       {/* Timeline content - no native scroll, manual handling via transforms */}

@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   Collapsible,
   CollapsibleContent,
@@ -78,6 +79,10 @@ function ClipStudioTimelineInner({
   projectId: string;
   speakerId: string | null;
 }) {
+  const utils = api.useUtils();
+  const [isAwaitingDiarizationCompletion, setIsAwaitingDiarizationCompletion] =
+    useState(false);
+
   const {
     data: source,
     isLoading: isLoadingSource,
@@ -111,6 +116,67 @@ function ClipStudioTimelineInner({
     { refetchOnWindowFocus: false },
   );
 
+  const diarizationStatus = source?.diarizationStatus;
+  const isSourceDiarizationRunning =
+    diarizationStatus === "pending" || diarizationStatus === "running";
+  const isDiarizationCompleted = diarizationStatus === "completed";
+
+  const startDiarizationMutation = api.source.startDiarization.useMutation({
+    onSuccess: () => {
+      setIsAwaitingDiarizationCompletion(true);
+      void utils.source.getById.invalidate({ id: sourceId });
+    },
+    onError: (error) => {
+      setIsAwaitingDiarizationCompletion(false);
+      toast.error(
+        error instanceof Error
+          ? `Failed to start diarization: ${error.message}`
+          : "Failed to start diarization",
+      );
+    },
+  });
+
+  api.source.onDiarizationComplete.useSubscription(
+    { sourceId },
+    {
+      enabled:
+        !!source &&
+        (isSourceDiarizationRunning || isAwaitingDiarizationCompletion),
+      onData: (event) => {
+        if (event.status === "completed") {
+          toast.success("Diarization completed");
+        }
+        if (event.status === "failed") {
+          toast.error("Diarization failed");
+        }
+
+        void Promise.all([
+          utils.segment.getBySource.invalidate({ sourceId }),
+          utils.speaker.getBySource.invalidate({ sourceId }),
+          utils.source.getById.invalidate({ id: sourceId }),
+        ]);
+        setIsAwaitingDiarizationCompletion(false);
+      },
+      onError: (error) => {
+        toast.error(
+          error instanceof Error
+            ? `Diarization updates disconnected: ${error.message}`
+            : "Diarization updates disconnected",
+        );
+        setIsAwaitingDiarizationCompletion(false);
+      },
+    },
+  );
+
+  useEffect(() => {
+    if (
+      isAwaitingDiarizationCompletion &&
+      (diarizationStatus === "completed" || diarizationStatus === "failed")
+    ) {
+      setIsAwaitingDiarizationCompletion(false);
+    }
+  }, [diarizationStatus, isAwaitingDiarizationCompletion]);
+
   const allSpeakers = projectSpeakers.concat(sourceSpeakers);
 
   const isLoading =
@@ -140,6 +206,19 @@ function ClipStudioTimelineInner({
     );
   }
 
+  const isDiarizationRunning =
+    isSourceDiarizationRunning || startDiarizationMutation.isPending;
+  const isDiarizationButtonDisabled =
+    !source.storageKey || isDiarizationRunning || isDiarizationCompleted;
+
+  const handleStartDiarization = () => {
+    if (isDiarizationButtonDisabled) {
+      return;
+    }
+
+    startDiarizationMutation.mutate({ sourceId });
+  };
+
   return (
     <TimelineContainer
       segments={segmentData?.segments ?? []}
@@ -151,6 +230,10 @@ function ClipStudioTimelineInner({
         storageKey: source.storageKey ?? "",
         duration: source.duration ?? 0,
       }}
+      onStartDiarization={handleStartDiarization}
+      isDiarizationRunning={isDiarizationRunning}
+      isDiarizationCompleted={isDiarizationCompleted}
+      isDiarizationButtonDisabled={isDiarizationButtonDisabled}
     />
   );
 }

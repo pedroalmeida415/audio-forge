@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ReactScan } from "~/components/react-scan";
 import { ThemeProvider } from "~/components/theme-provider";
+import { Toaster } from "~/components/ui/sonner";
 import { getSession } from "~/server/better-auth/server";
 import { TRPCReactProvider } from "~/trpc/react";
 
@@ -38,6 +39,7 @@ export default async function RootLayout({
               <main className="flex min-h-screen flex-1 flex-col">
                 {children}
               </main>
+              <Toaster />
             </NuqsAdapter>
           </TRPCReactProvider>
         </ThemeProvider>
