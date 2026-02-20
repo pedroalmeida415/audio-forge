@@ -19,20 +19,20 @@ import {
 
 type WorkspaceUtils = ReturnType<typeof api.useUtils>;
 
-type CreateSegmentInput = RouterInputs["segment"]["createSegment"];
-type CreateSegmentOutput = RouterOutputs["segment"]["createSegment"];
+type CreateSegmentInput = RouterInputs["segment"]["create"];
+type CreateSegmentOutput = RouterOutputs["segment"]["create"];
 
-type UpdateSegmentsInput = RouterInputs["segment"]["updateSegments"];
-type UpdateSegmentsOutput = RouterOutputs["segment"]["updateSegments"];
+type UpdateSegmentsInput = RouterInputs["segment"]["updateMany"];
+type UpdateSegmentsOutput = RouterOutputs["segment"]["updateMany"];
 
-type DeleteSegmentsInput = RouterInputs["segment"]["deleteSegments"];
-type DeleteSegmentsOutput = RouterOutputs["segment"]["deleteSegments"];
+type DeleteSegmentsInput = RouterInputs["segment"]["deleteMany"];
+type DeleteSegmentsOutput = RouterOutputs["segment"]["deleteMany"];
 
-type SplitSegmentInput = RouterInputs["segment"]["splitSegment"];
-type SplitSegmentOutput = RouterOutputs["segment"]["splitSegment"];
+type SplitSegmentInput = RouterInputs["segment"]["split"];
+type SplitSegmentOutput = RouterOutputs["segment"]["split"];
 
-type CreateSpeakerInput = RouterInputs["speaker"]["createSpeaker"];
-type CreateSpeakerOutput = RouterOutputs["speaker"]["createSpeaker"];
+type CreateSpeakerInput = RouterInputs["speaker"]["create"];
+type CreateSpeakerOutput = RouterOutputs["speaker"]["create"];
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -77,7 +77,7 @@ export function useWorkspaceCreateSegmentMutation(
 ) {
   const utils = api.useUtils();
 
-  return api.segment.createSegment.useMutation({
+  return api.segment.create.useMutation({
     onMutate: async (variables): Promise<WorkspaceSegmentMutationContext> => {
       const tempId = createTempId();
       await utils.segment.getBySource.cancel({ sourceId: variables.sourceId });
@@ -150,6 +150,7 @@ export function useWorkspaceCreateSegmentMutation(
 }
 
 export function useWorkspaceUpdateSegmentsMutation(
+  sourceId: string,
   handlers: WorkspaceMutationHandlers<
     UpdateSegmentsOutput,
     UpdateSegmentsInput
@@ -157,27 +158,27 @@ export function useWorkspaceUpdateSegmentsMutation(
 ) {
   const utils = api.useUtils();
 
-  return api.segment.updateSegments.useMutation({
+  return api.segment.updateMany.useMutation({
     onMutate: async (variables): Promise<WorkspaceSegmentMutationContext> => {
-      await utils.segment.getBySource.cancel({ sourceId: variables.sourceId });
+      await utils.segment.getBySource.cancel({ sourceId });
 
       const previousSegmentsBySource = utils.segment.getBySource.getData({
-        sourceId: variables.sourceId,
+        sourceId,
       });
 
       if (previousSegmentsBySource) {
         utils.segment.getBySource.setData(
-          { sourceId: variables.sourceId },
+          { sourceId },
           applyOptimisticUpdateSegments({
             segmentList: previousSegmentsBySource,
             segmentIds: variables.segmentIds,
-            updates: variables.updates,
+            patch: variables.patch,
           }),
         );
       }
 
       return {
-        sourceId: variables.sourceId,
+        sourceId,
         previousSegmentsBySource,
       };
     },
@@ -187,7 +188,7 @@ export function useWorkspaceUpdateSegmentsMutation(
     onError: async (error, variables, context) => {
       if (context?.previousSegmentsBySource) {
         utils.segment.getBySource.setData(
-          { sourceId: variables.sourceId },
+          { sourceId },
           restoreWorkspaceSegmentsSnapshot({
             segmentList: context.previousSegmentsBySource,
             context,
@@ -200,7 +201,7 @@ export function useWorkspaceUpdateSegmentsMutation(
     onSettled: async (data, error, variables, context) => {
       await invalidateWorkspaceSegmentCaches(
         utils,
-        context?.sourceId ?? variables.sourceId,
+        context?.sourceId ?? sourceId,
       );
       await handlers.onSettled?.(data, error, variables, context);
     },
@@ -208,6 +209,7 @@ export function useWorkspaceUpdateSegmentsMutation(
 }
 
 export function useWorkspaceDeleteSegmentsMutation(
+  sourceId: string,
   handlers: WorkspaceMutationHandlers<
     DeleteSegmentsOutput,
     DeleteSegmentsInput
@@ -215,17 +217,17 @@ export function useWorkspaceDeleteSegmentsMutation(
 ) {
   const utils = api.useUtils();
 
-  return api.segment.deleteSegments.useMutation({
+  return api.segment.deleteMany.useMutation({
     onMutate: async (variables): Promise<WorkspaceSegmentMutationContext> => {
-      await utils.segment.getBySource.cancel({ sourceId: variables.sourceId });
+      await utils.segment.getBySource.cancel({ sourceId });
 
       const previousSegmentsBySource = utils.segment.getBySource.getData({
-        sourceId: variables.sourceId,
+        sourceId,
       });
 
       if (previousSegmentsBySource) {
         utils.segment.getBySource.setData(
-          { sourceId: variables.sourceId },
+          { sourceId },
           applyOptimisticDeleteSegments({
             segmentList: previousSegmentsBySource,
             segmentIds: variables.segmentIds,
@@ -234,7 +236,7 @@ export function useWorkspaceDeleteSegmentsMutation(
       }
 
       return {
-        sourceId: variables.sourceId,
+        sourceId,
         previousSegmentsBySource,
       };
     },
@@ -244,7 +246,7 @@ export function useWorkspaceDeleteSegmentsMutation(
     onError: async (error, variables, context) => {
       if (context?.previousSegmentsBySource) {
         utils.segment.getBySource.setData(
-          { sourceId: variables.sourceId },
+          { sourceId },
           restoreWorkspaceSegmentsSnapshot({
             segmentList: context.previousSegmentsBySource,
             context,
@@ -257,7 +259,7 @@ export function useWorkspaceDeleteSegmentsMutation(
     onSettled: async (data, error, variables, context) => {
       await invalidateWorkspaceSegmentCaches(
         utils,
-        context?.sourceId ?? variables.sourceId,
+        context?.sourceId ?? sourceId,
       );
       await handlers.onSettled?.(data, error, variables, context);
     },
@@ -272,7 +274,7 @@ export function useWorkspaceSplitSegmentMutation(
 ) {
   const utils = api.useUtils();
 
-  return api.segment.splitSegment.useMutation({
+  return api.segment.split.useMutation({
     onMutate: async (variables): Promise<WorkspaceSegmentMutationContext> => {
       const tempId = createTempId();
       await utils.segment.getBySource.cancel({ sourceId: variables.sourceId });
@@ -352,7 +354,7 @@ export function useWorkspaceCreateSpeakerMutation(
 ) {
   const utils = api.useUtils();
 
-  return api.speaker.createSpeaker.useMutation({
+  return api.speaker.create.useMutation({
     onMutate: async (variables): Promise<WorkspaceSegmentMutationContext> => {
       const tempId = createTempId();
       await utils.speaker.getBySource.cancel({ sourceId });

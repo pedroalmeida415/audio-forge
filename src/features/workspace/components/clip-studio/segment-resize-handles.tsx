@@ -37,7 +37,7 @@ export function SegmentResizeHandles({
   activeSegmentId,
 }: SegmentResizeHandlesProps) {
   const { store, computed } = useWorkspaceStore();
-  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation();
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation(sourceId);
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -150,9 +150,8 @@ export function SegmentResizeHandles({
           );
           if (newStart !== originalStart) {
             updateSegmentsMutation.mutate({
-              sourceId,
-              segmentIds: activeSegmentId,
-              updates: { startTime: newStart },
+              segmentIds: [activeSegmentId],
+              patch: { startTime: newStart },
             });
           }
         } else {
@@ -162,9 +161,8 @@ export function SegmentResizeHandles({
           );
           if (newEnd !== originalEnd) {
             updateSegmentsMutation.mutate({
-              sourceId,
-              segmentIds: activeSegmentId,
-              updates: { endTime: newEnd },
+              segmentIds: [activeSegmentId],
+              patch: { endTime: newEnd },
             });
           }
         }

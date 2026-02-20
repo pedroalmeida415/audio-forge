@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { octetInputParser } from "@trpc/server/http";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, not } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { projects, sources } from "~/server/db/schema";
+import { projects, segments, sources, speakers } from "~/server/db/schema";
 import {
   type DiarizationEvent,
   diarizationEvents,
@@ -26,6 +26,11 @@ import { StorageService } from "~/services/storage/storage-service";
 const PROJECT_ID_SCHEMA = z.string().uuid();
 const SUPPORTED_UPLOAD_CONTENT_TYPE = /^(audio|video)\//;
 const MAX_FILENAME_LENGTH = 255;
+const sourceBulkPatchSchema = z
+  .object({
+    speakerId: z.string().uuid().optional(),
+  })
+  .strict();
 
 function normalizeFilename(value: string): string {
   const safeName = basename(value).trim();
@@ -33,6 +38,12 @@ function normalizeFilename(value: string): string {
     return "upload";
   }
   return safeName.slice(0, MAX_FILENAME_LENGTH);
+}
+
+function hasSourceBulkPatchFields(
+  patch: z.infer<typeof sourceBulkPatchSchema>,
+): boolean {
+  return Object.values(patch).some((value) => value !== undefined);
 }
 
 export const sourceRouter = createTRPCRouter({
@@ -477,6 +488,160 @@ export const sourceRouter = createTRPCRouter({
               completedAt: source.diarizationCompletedAt?.toISOString() ?? null,
               error: source.diarizationError,
             };
+          }),
+        ),
+    ),
+
+  deleteSegments: protectedProcedure
+    .input(
+      z.object({
+        sourceId: z.string().uuid(),
+        speakerId: z.string().uuid(),
+        excludeSegmentIds: z.array(z.string().uuid()).optional(),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const source = yield* db.query.sources.findFirst({
+              where: and(
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
+              ),
+            });
+            if (!source) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Source not found",
+                }),
+              );
+            }
+
+            const speaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+            if (!speaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            const conditions = [
+              eq(segments.sourceId, input.sourceId),
+              eq(segments.speakerId, input.speakerId),
+            ];
+
+            const excludedSegmentIds = [
+              ...new Set(input.excludeSegmentIds ?? []),
+            ];
+            if (excludedSegmentIds.length > 0) {
+              conditions.push(not(inArray(segments.id, excludedSegmentIds)));
+            }
+
+            const deletedSegments = yield* db
+              .delete(segments)
+              .where(and(...conditions))
+              .returning({ id: segments.id });
+
+            return { success: true, deletedCount: deletedSegments.length };
+          }),
+        ),
+    ),
+
+  updateSegments: protectedProcedure
+    .input(
+      z.object({
+        sourceId: z.string().uuid(),
+        speakerId: z.string().uuid(),
+        excludeSegmentIds: z.array(z.string().uuid()).optional(),
+        patch: sourceBulkPatchSchema.refine(hasSourceBulkPatchFields, {
+          message: "Patch cannot be empty",
+        }),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const source = yield* db.query.sources.findFirst({
+              where: and(
+                eq(sources.id, input.sourceId),
+                eq(sources.userId, ctx.session.user.id),
+              ),
+            });
+            if (!source) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Source not found",
+                }),
+              );
+            }
+
+            const currentSpeaker = yield* db.query.speakers.findFirst({
+              where: and(
+                eq(speakers.id, input.speakerId),
+                eq(speakers.userId, ctx.session.user.id),
+              ),
+            });
+            if (!currentSpeaker) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Speaker not found",
+                }),
+              );
+            }
+
+            if (input.patch.speakerId !== undefined) {
+              const targetSpeaker = yield* db.query.speakers.findFirst({
+                where: and(
+                  eq(speakers.id, input.patch.speakerId),
+                  eq(speakers.userId, ctx.session.user.id),
+                ),
+              });
+              if (!targetSpeaker) {
+                return yield* Effect.fail(
+                  new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Target speaker not found",
+                  }),
+                );
+              }
+            }
+
+            const conditions = [
+              eq(segments.sourceId, input.sourceId),
+              eq(segments.speakerId, input.speakerId),
+            ];
+            const excludedSegmentIds = [
+              ...new Set(input.excludeSegmentIds ?? []),
+            ];
+            if (excludedSegmentIds.length > 0) {
+              conditions.push(not(inArray(segments.id, excludedSegmentIds)));
+            }
+
+            const updatedSegments = yield* db
+              .update(segments)
+              .set({
+                ...(input.patch.speakerId !== undefined && {
+                  speakerId: input.patch.speakerId,
+                }),
+              })
+              .where(and(...conditions))
+              .returning({ id: segments.id });
+
+            return { success: true, updatedCount: updatedSegments.length };
           }),
         ),
     ),

@@ -5,7 +5,7 @@ type RouterInputs = inferRouterInputs<AppRouter>;
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 type CreatedSegment = NonNullable<
-  RouterOutputs["segment"]["createSegment"]["segment"]
+  RouterOutputs["segment"]["create"]["segment"]
 >;
 
 export type WorkspaceSegmentListSnapshot =
@@ -28,14 +28,14 @@ export interface WorkspaceSegmentMutationContext {
 interface OptimisticCreateSegmentInput {
   segmentList: WorkspaceSegmentListSnapshot;
   sourceId: string;
-  segment: RouterInputs["segment"]["createSegment"]["segment"];
+  segment: RouterInputs["segment"]["create"]["segment"];
   tempId: string;
 }
 
 interface OptimisticUpdateSegmentsInput {
   segmentList: WorkspaceSegmentListSnapshot;
-  segmentIds: RouterInputs["segment"]["updateSegments"]["segmentIds"];
-  updates: RouterInputs["segment"]["updateSegments"]["updates"];
+  segmentIds: RouterInputs["segment"]["updateMany"]["segmentIds"];
+  patch: RouterInputs["segment"]["updateMany"]["patch"];
 }
 
 interface OptimisticDeleteSegmentsInput {
@@ -52,7 +52,7 @@ interface OptimisticSplitSegmentInput {
 
 interface OptimisticCreateSpeakerInput {
   speakers: WorkspaceSourceSpeakersSnapshot;
-  speaker: RouterInputs["speaker"]["createSpeaker"];
+  speaker: RouterInputs["speaker"]["create"];
   tempId: string;
   fallbackColor: string;
 }
@@ -92,9 +92,9 @@ function sortSegmentsByStartTime(
 }
 
 function normalizeSegmentIds(
-  segmentIds: RouterInputs["segment"]["updateSegments"]["segmentIds"],
+  segmentIds: RouterInputs["segment"]["updateMany"]["segmentIds"],
 ): string[] {
-  return Array.isArray(segmentIds) ? segmentIds : [segmentIds];
+  return segmentIds;
 }
 
 export function applyOptimisticCreateSegment({
@@ -141,7 +141,7 @@ export function applyOptimisticCreateSegment({
 export function applyOptimisticUpdateSegments({
   segmentList,
   segmentIds,
-  updates,
+  patch,
 }: OptimisticUpdateSegmentsInput): WorkspaceSegmentListSnapshot {
   const normalizedIds = normalizeSegmentIds(segmentIds);
   if (normalizedIds.length === 0) {
@@ -150,7 +150,7 @@ export function applyOptimisticUpdateSegments({
 
   const segmentIdSet = new Set(normalizedIds);
   const timeChanged =
-    updates.startTime !== undefined || updates.endTime !== undefined;
+    patch.startTime !== undefined || patch.endTime !== undefined;
   let didChange = false;
 
   const nextSegments = segmentList.segments.map((segment) => {
@@ -158,18 +158,25 @@ export function applyOptimisticUpdateSegments({
       return segment;
     }
 
-    const nextStartTime = updates.startTime ?? segment.startTime;
-    const nextEndTime = updates.endTime ?? segment.endTime;
+    const nextStartTime = patch.startTime ?? segment.startTime;
+    const nextEndTime = patch.endTime ?? segment.endTime;
 
     if (nextEndTime <= nextStartTime) {
       return segment;
     }
 
-    const nextSpeakerId = updates.speakerId ?? segment.speakerId;
+    const nextSpeakerId = patch.speakerId ?? segment.speakerId;
+    const nextTranscription =
+      patch.transcription !== undefined
+        ? patch.transcription
+        : segment.transcription;
+    const nextTags = patch.tags !== undefined ? patch.tags : segment.tags;
     const hasSegmentChange =
       nextStartTime !== segment.startTime ||
       nextEndTime !== segment.endTime ||
-      nextSpeakerId !== segment.speakerId;
+      nextSpeakerId !== segment.speakerId ||
+      nextTranscription !== segment.transcription ||
+      nextTags !== segment.tags;
 
     if (!hasSegmentChange) {
       return segment;
@@ -181,6 +188,8 @@ export function applyOptimisticUpdateSegments({
       startTime: nextStartTime,
       endTime: nextEndTime,
       speakerId: nextSpeakerId,
+      transcription: nextTranscription,
+      tags: nextTags,
       updatedAt: new Date(),
     };
   });

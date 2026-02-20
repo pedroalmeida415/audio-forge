@@ -63,8 +63,8 @@ export function ActiveSegmentActions({
   const { store } = useWorkspaceStore();
 
   const splitSegmentMutation = useWorkspaceSplitSegmentMutation();
-  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation();
-  const deleteSegmentsMutation = useWorkspaceDeleteSegmentsMutation();
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation(sourceId);
+  const deleteSegmentsMutation = useWorkspaceDeleteSegmentsMutation(sourceId);
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
@@ -114,9 +114,8 @@ export function ActiveSegmentActions({
 
   const handleChangeSpeaker = (speakerId: string) => {
     updateSegmentsMutation.mutate({
-      sourceId,
       segmentIds: [activeSegmentId],
-      updates: { speakerId },
+      patch: { speakerId },
     });
   };
 
@@ -127,7 +126,6 @@ export function ActiveSegmentActions({
 
   const handleDelete = () => {
     deleteSegmentsMutation.mutate({
-      sourceId,
       segmentIds: [activeSegmentId],
     });
     onActiveSegmentChange(null);

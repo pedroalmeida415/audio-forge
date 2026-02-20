@@ -34,6 +34,7 @@ interface ChangeSpeakerDialogProps {
   excludeSegmentIds?: string[];
   segmentCount: number;
   projectId: string;
+  sourceId?: string | null;
   speakerId: string;
   speakerName: string;
   onSuccess: (data: { updatedCount: number }) => void;
@@ -46,6 +47,7 @@ export function ChangeSpeakerDialog({
   excludeSegmentIds,
   segmentCount,
   projectId,
+  sourceId,
   speakerId,
   speakerName,
   onSuccess,
@@ -60,17 +62,14 @@ export function ChangeSpeakerDialog({
   const { data: speakers, isLoading: isLoadingSpeakers } =
     api.speaker.getByProject.useQuery({ projectId }, { enabled: open });
 
-  // Change speaker mutation
-  const changeSpeakerMutation = api.segment.changeSpeaker.useMutation({
-    onSuccess: (data) => {
-      onSuccess(data);
-      onOpenChange(false);
-      setSelectedSpeakerId(null);
-    },
-    onSettled: async () => {
-      await utils.segment.getBySpeaker.invalidate();
-    },
-  });
+  const updateManyMutation = api.segment.updateMany.useMutation();
+  const updateSourceSegmentsMutation = api.source.updateSegments.useMutation();
+  const updateSpeakerSegmentsMutation =
+    api.speaker.updateSegments.useMutation();
+  const isMoving =
+    updateManyMutation.isPending ||
+    updateSourceSegmentsMutation.isPending ||
+    updateSpeakerSegmentsMutation.isPending;
 
   // Filter out current speaker from the list
   const availableSpeakers = speakers?.filter((s) => s.id !== speakerId) ?? [];
@@ -79,20 +78,66 @@ export function ChangeSpeakerDialog({
     (s) => s.id === selectedSpeakerId,
   );
 
+  const invalidateSegmentQueries = async (targetSpeakerId: string) => {
+    const invalidations: Promise<unknown>[] = [];
+
+    if (sourceId) {
+      invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
+    }
+
+    invalidations.push(utils.segment.getBySpeaker.invalidate({ speakerId }));
+    if (targetSpeakerId !== speakerId) {
+      invalidations.push(
+        utils.segment.getBySpeaker.invalidate({ speakerId: targetSpeakerId }),
+      );
+    }
+
+    await Promise.all(invalidations);
+  };
+
   const handleSubmit = () => {
     if (!selectedSpeakerId) return;
+    const targetSpeakerId = selectedSpeakerId;
 
-    changeSpeakerMutation.mutate({
-      speakerId,
-      segmentIds,
-      excludeSegmentIds,
-      targetSpeakerId: selectedSpeakerId,
-    });
+    void (async () => {
+      try {
+        if (segmentIds && segmentIds.length > 0) {
+          const data = await updateManyMutation.mutateAsync({
+            segmentIds,
+            patch: { speakerId: targetSpeakerId },
+          });
+          onSuccess(data);
+        } else if (sourceId) {
+          const data = await updateSourceSegmentsMutation.mutateAsync({
+            sourceId,
+            speakerId,
+            excludeSegmentIds,
+            patch: { speakerId: targetSpeakerId },
+          });
+          onSuccess(data);
+        } else {
+          const data = await updateSpeakerSegmentsMutation.mutateAsync({
+            speakerId,
+            excludeSegmentIds,
+            patch: { speakerId: targetSpeakerId },
+          });
+          onSuccess(data);
+        }
+
+        onOpenChange(false);
+        setSelectedSpeakerId(null);
+      } catch {
+        // Keep dialog open so the user can retry.
+      } finally {
+        await invalidateSegmentQueries(targetSpeakerId);
+      }
+    })();
   };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setSelectedSpeakerId(null);
+      setComboboxOpen(false);
     }
     onOpenChange(newOpen);
   };
@@ -117,7 +162,7 @@ export function ChangeSpeakerDialog({
                 role="combobox"
                 aria-expanded={comboboxOpen}
                 className="w-full justify-between"
-                disabled={isLoadingSpeakers}
+                disabled={isLoadingSpeakers || isMoving}
               >
                 {isLoadingSpeakers ? (
                   <span className="text-muted-foreground">
@@ -191,15 +236,15 @@ export function ChangeSpeakerDialog({
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
-            disabled={changeSpeakerMutation.isPending}
+            disabled={isMoving}
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!selectedSpeakerId || changeSpeakerMutation.isPending}
+            disabled={!selectedSpeakerId || isMoving}
           >
-            {changeSpeakerMutation.isPending ? (
+            {isMoving ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
                 Moving...

@@ -76,7 +76,6 @@ export function TableToolbar() {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showChangeSpeakerDialog, setShowChangeSpeakerDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch current speaker for the dialog description
   const { data: speakers } = api.speaker.getByProject.useQuery(
@@ -85,60 +84,66 @@ export function TableToolbar() {
   );
   const currentSpeaker = speakers?.find((s) => s.id === speakerId);
 
-  const deleteMutation = api.segment.deleteSegmentsBySpeaker.useMutation({
-    onSuccess: () => {
-      if (speakerId) {
-        if (isAllSelected) {
-          if (sourceId) {
-            utils.segment.getBySource.invalidate({ sourceId });
-          } else {
-            utils.segment.getBySpeaker.invalidate({ speakerId });
-          }
-        } else {
-          filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
-        }
-      }
-      store.clearSelection();
-      setIsDeleting(false);
-      setShowDeleteDialog(false);
-    },
-    onError: () => {
-      setIsDeleting(false);
-    },
-    onSettled: async () => {
-      const invalidations: Promise<unknown>[] = [];
+  const deleteManyMutation = api.segment.deleteMany.useMutation();
+  const deleteSourceSegmentsMutation = api.source.deleteSegments.useMutation();
+  const deleteSpeakerSegmentsMutation =
+    api.speaker.deleteSegments.useMutation();
 
-      if (sourceId) {
-        invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
-      }
+  const isDeleting =
+    deleteManyMutation.isPending ||
+    deleteSourceSegmentsMutation.isPending ||
+    deleteSpeakerSegmentsMutation.isPending;
 
-      if (speakerId) {
-        invalidations.push(
-          utils.segment.getBySpeaker.invalidate({ speakerId }),
-        );
-      } else {
-        invalidations.push(utils.segment.getBySpeaker.invalidate());
-      }
+  const invalidateSegmentQueries = async () => {
+    const invalidations: Promise<unknown>[] = [];
 
-      await Promise.all(invalidations);
-    },
-  });
+    if (sourceId) {
+      invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
+    }
 
-  const handleDelete = () => {
-    if (!hasSelection || !speakerId) return;
-    setIsDeleting(true);
-
-    if (isAllSelected) {
-      const excludeIds =
-        excludedSegmentIds.size > 0
-          ? Array.from(excludedSegmentIds)
-          : undefined;
-      deleteMutation.mutate({ speakerId, excludeSegmentIds: excludeIds });
+    if (speakerId) {
+      invalidations.push(utils.segment.getBySpeaker.invalidate({ speakerId }));
     } else {
-      deleteMutation.mutate({
-        speakerId,
-        segmentIds: Array.from(selectedSegmentIds),
-      });
+      invalidations.push(utils.segment.getBySpeaker.invalidate());
+    }
+
+    await Promise.all(invalidations);
+  };
+
+  const handleDelete = async () => {
+    if (!hasSelection || !speakerId) return;
+
+    try {
+      if (isAllSelected) {
+        const excludeSegmentIds =
+          excludedSegmentIds.size > 0
+            ? Array.from(excludedSegmentIds)
+            : undefined;
+
+        if (sourceId) {
+          await deleteSourceSegmentsMutation.mutateAsync({
+            sourceId,
+            speakerId,
+            excludeSegmentIds,
+          });
+        } else {
+          await deleteSpeakerSegmentsMutation.mutateAsync({
+            speakerId,
+            excludeSegmentIds,
+          });
+        }
+      } else {
+        const segmentIds = Array.from(selectedSegmentIds);
+        await deleteManyMutation.mutateAsync({ segmentIds });
+        filterOutSegments(new Set(segmentIds), utils, sourceId, speakerId);
+      }
+
+      store.clearSelection();
+      setShowDeleteDialog(false);
+    } catch {
+      // Keep dialog open so the user can retry.
+    } finally {
+      await invalidateSegmentQueries();
     }
   };
 
@@ -205,7 +210,7 @@ export function TableToolbar() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
+              onClick={() => void handleDelete()}
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
@@ -236,16 +241,11 @@ export function TableToolbar() {
           }
           segmentCount={selectedCount}
           projectId={projectId}
+          sourceId={sourceId}
           speakerId={speakerId}
           speakerName={currentSpeaker?.name ?? "Unknown"}
           onSuccess={() => {
-            if (isAllSelected) {
-              if (sourceId) {
-                utils.segment.getBySource.invalidate({ sourceId });
-              } else {
-                utils.segment.getBySpeaker.invalidate({ speakerId });
-              }
-            } else {
+            if (!isAllSelected) {
               filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
             }
             store.clearSelection();
