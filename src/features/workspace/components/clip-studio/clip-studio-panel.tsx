@@ -80,12 +80,47 @@ function ClipStudioTimelineInner({
 }) {
   const {
     data: source,
-    isLoading,
-    error,
+    isLoading: isLoadingSource,
+    error: sourceError,
   } = api.source.getById.useQuery(
     { id: sourceId },
     { refetchOnWindowFocus: false },
   );
+  const {
+    data: segmentData,
+    isLoading: isLoadingSegments,
+    error: segmentError,
+  } = api.segment.getBySource.useQuery(
+    { sourceId },
+    { refetchOnWindowFocus: false },
+  );
+  const {
+    data: sourceSpeakers = [],
+    isLoading: isLoadingSourceSpeakers,
+    error: sourceSpeakersError,
+  } = api.speaker.getBySource.useQuery(
+    { sourceId },
+    { refetchOnWindowFocus: false },
+  );
+  const {
+    data: projectSpeakers = [],
+    isLoading: isLoadingProjectSpeakers,
+    error: projectSpeakersError,
+  } = api.speaker.getByProject.useQuery(
+    { projectId },
+    { refetchOnWindowFocus: false },
+  );
+
+  const allSpeakers = projectSpeakers.concat(sourceSpeakers);
+
+  const isLoading =
+    isLoadingSource ||
+    isLoadingSegments ||
+    isLoadingSourceSpeakers ||
+    isLoadingProjectSpeakers;
+
+  const error =
+    sourceError ?? segmentError ?? sourceSpeakersError ?? projectSpeakersError;
 
   if (isLoading) {
     return (
@@ -107,8 +142,8 @@ function ClipStudioTimelineInner({
 
   return (
     <TimelineContainer
-      segments={source.segments ?? []}
-      speakers={source.speakers ?? []}
+      segments={segmentData?.segments ?? []}
+      speakers={allSpeakers}
       sourceId={source.id}
       projectId={projectId}
       speakerId={speakerId}

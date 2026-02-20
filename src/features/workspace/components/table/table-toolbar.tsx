@@ -105,6 +105,23 @@ export function TableToolbar() {
     onError: () => {
       setIsDeleting(false);
     },
+    onSettled: async () => {
+      const invalidations: Promise<unknown>[] = [];
+
+      if (sourceId) {
+        invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
+      }
+
+      if (speakerId) {
+        invalidations.push(
+          utils.segment.getBySpeaker.invalidate({ speakerId }),
+        );
+      } else {
+        invalidations.push(utils.segment.getBySpeaker.invalidate());
+      }
+
+      await Promise.all(invalidations);
+    },
   });
 
   const handleDelete = () => {

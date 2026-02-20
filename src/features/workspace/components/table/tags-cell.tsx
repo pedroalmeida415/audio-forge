@@ -74,6 +74,23 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
         utils.segment.getBySpeaker.setData({ speakerId }, context.previous);
       }
     },
+    onSettled: async () => {
+      const invalidations: Promise<unknown>[] = [];
+
+      if (sourceId) {
+        invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
+      }
+
+      if (speakerId) {
+        invalidations.push(
+          utils.segment.getBySpeaker.invalidate({ speakerId }),
+        );
+      } else {
+        invalidations.push(utils.segment.getBySpeaker.invalidate());
+      }
+
+      await Promise.all(invalidations);
+    },
   });
 
   const handleAddTag = () => {

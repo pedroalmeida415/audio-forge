@@ -60,13 +60,14 @@ export const speakerRouter = createTRPCRouter({
       };
     }),
 
-  // Create a new speaker (project-level)
+  // Create a new speaker (project-level, optionally linked to a source)
   createSpeaker: protectedProcedure
     .input(
       z.object({
         projectId: z.string().uuid(),
         name: z.string().min(1).max(100),
         color: z.string().optional(),
+        sourceId: z.string().uuid().optional(),
       }),
     )
     .mutation(
@@ -82,6 +83,7 @@ export const speakerRouter = createTRPCRouter({
                 userId: ctx.session.user.id,
                 name: input.name,
                 color: input.color ?? generateSpeakerColor(),
+                sourceId: input.sourceId ?? null,
                 origin: "user",
               })
               .returning();

@@ -26,8 +26,13 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import {
+  useWorkspaceCreateSpeakerMutation,
+  useWorkspaceDeleteSegmentsMutation,
+  useWorkspaceSplitSegmentMutation,
+  useWorkspaceUpdateSegmentsMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import type { Segment, Speaker } from "~/server/db/schema";
-import { api } from "~/trpc/react";
 
 interface ActiveSegmentActionsProps {
   segments: Segment[];
@@ -57,9 +62,9 @@ export function ActiveSegmentActions({
 }: ActiveSegmentActionsProps) {
   const { store } = useWorkspaceStore();
 
-  const splitSegmentMutation = api.segment.splitSegment.useMutation();
-  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
-  const deleteSegmentsMutation = api.segment.deleteSegments.useMutation();
+  const splitSegmentMutation = useWorkspaceSplitSegmentMutation();
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation();
+  const deleteSegmentsMutation = useWorkspaceDeleteSegmentsMutation();
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
@@ -244,6 +249,7 @@ export function ActiveSegmentActions({
         open={isCreateSpeakerOpen}
         onOpenChange={setIsCreateSpeakerOpen}
         onSpeakerCreated={handleSpeakerCreated}
+        sourceId={sourceId}
         projectId={projectId}
         speakerCount={speakers.length}
       />
@@ -259,19 +265,21 @@ function CreateSpeakerInlineDialog({
   open,
   onOpenChange,
   onSpeakerCreated,
+  sourceId,
   projectId,
   speakerCount,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSpeakerCreated?: (speakerId: string) => void;
+  sourceId: string;
   projectId: string;
   speakerCount: number;
 }) {
   const [name, setName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const createSpeakerMutation = api.speaker.createSpeaker.useMutation({
+  const createSpeakerMutation = useWorkspaceCreateSpeakerMutation(sourceId, {
     onSuccess: (result) => {
       if (result.speaker) {
         onSpeakerCreated?.(result.speaker.id);

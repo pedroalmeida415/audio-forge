@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { projects, sources, speakers } from "~/server/db/schema";
+import { projects, sources } from "~/server/db/schema";
 import {
   type DiarizationEvent,
   diarizationEvents,
@@ -225,7 +225,7 @@ export const sourceRouter = createTRPCRouter({
         ),
     ),
 
-  // Get source by ID with segments and speakers
+  // Get source by ID (metadata + waveform payload only)
   getById: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(
     async ({ ctx, input }) =>
       await ctx.runtime.runPromise(
@@ -236,11 +236,6 @@ export const sourceRouter = createTRPCRouter({
               eq(sources.id, input.id),
               eq(sources.userId, ctx.session.user.id),
             ),
-            with: {
-              segments: {
-                orderBy: (seg, { asc }) => [asc(seg.startTime)],
-              },
-            },
           });
 
           if (!source) {
@@ -252,23 +247,14 @@ export const sourceRouter = createTRPCRouter({
             );
           }
 
-          // Get all project speakers
-          const projectSpeakers = source.projectId
-            ? yield* db.query.speakers.findMany({
-                where: eq(speakers.projectId, source.projectId),
-                orderBy: (sp, { asc }) => [asc(sp.createdAt)],
-              })
-            : [];
-
           const { waveformData, ...sourceWithoutWaveformData } = source;
 
           return {
             ...sourceWithoutWaveformData,
             waveformBase64:
               source.waveformStatus === "completed" && waveformData
-                ? Buffer.from(waveformData).toString("base64")
+                ? waveformData.toString("base64")
                 : null,
-            speakers: projectSpeakers,
           };
         }),
       ),

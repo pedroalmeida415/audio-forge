@@ -54,6 +54,7 @@ export function ChangeSpeakerDialog({
     null,
   );
   const [comboboxOpen, setComboboxOpen] = useState(false);
+  const utils = api.useUtils();
 
   // Fetch project speakers (excludes source-linked diarization speakers)
   const { data: speakers, isLoading: isLoadingSpeakers } =
@@ -65,6 +66,9 @@ export function ChangeSpeakerDialog({
       onSuccess(data);
       onOpenChange(false);
       setSelectedSpeakerId(null);
+    },
+    onSettled: async () => {
+      await utils.segment.getBySpeaker.invalidate();
     },
   });
 

@@ -23,9 +23,12 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import {
+  useWorkspaceCreateSegmentMutation,
+  useWorkspaceCreateSpeakerMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import { cn } from "~/lib/utils";
 import type { Speaker } from "~/server/db/schema";
-import { api } from "~/trpc/react";
 
 /**
  * Formats time in MM:SS.mmm format
@@ -74,8 +77,8 @@ export function InlineSelectionControls({
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
-  const createSegmentMutation = api.segment.createSegment.useMutation();
-  const createSpeakerMutation = api.speaker.createSpeaker.useMutation();
+  const createSegmentMutation = useWorkspaceCreateSegmentMutation();
+  const createSpeakerMutation = useWorkspaceCreateSpeakerMutation(sourceId);
 
   // Don't render if not in active selection mode
   if (mode !== "active" || !range) return null;

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
-import { api } from "~/trpc/react";
+import { useWorkspaceUpdateSegmentsMutation } from "~/features/workspace/hooks/use-workspace-mutations";
 
 interface HandlePosition {
   left: number;
@@ -37,7 +37,7 @@ export function SegmentResizeHandles({
   activeSegmentId,
 }: SegmentResizeHandlesProps) {
   const { store, computed } = useWorkspaceStore();
-  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation();
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
   const [mounted, setMounted] = useState(false);
