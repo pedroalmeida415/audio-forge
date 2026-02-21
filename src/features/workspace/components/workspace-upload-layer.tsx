@@ -124,7 +124,10 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
-  const lastInvalidatedCompletedSourceRef = useRef<string | null>(null);
+  const prevIngestRef = useRef<{
+    sourceId: string;
+    status: IngestStatus;
+  } | null>(null);
 
   const ingestStatusQuery = api.source.getIngestStatus.useQuery(
     { sourceId: sourceId ?? "" },
@@ -143,16 +146,26 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!sourceId) {
-      lastInvalidatedCompletedSourceRef.current = null;
+    const status = ingestStatusQuery.data?.ingestStatus ?? null;
+
+    if (!sourceId || !status) {
+      prevIngestRef.current = null;
       return;
     }
 
+    const prev = prevIngestRef.current;
+    prevIngestRef.current = { sourceId, status };
+
+    // Only invalidate when transitioning TO completed from a non-completed state
+    // for the SAME source. Skip if completed on first load (prev is null) or if
+    // the sourceId changed (prev.sourceId !== sourceId) since queries already
+    // have fresh data from the initial fetch.
     if (
-      ingestStatusQuery.data?.ingestStatus === "completed" &&
-      lastInvalidatedCompletedSourceRef.current !== sourceId
+      status === "completed" &&
+      prev != null &&
+      prev.sourceId === sourceId &&
+      prev.status !== "completed"
     ) {
-      lastInvalidatedCompletedSourceRef.current = sourceId;
       void Promise.all([
         utils.source.getById.invalidate({ id: sourceId }),
         utils.source.listByProject.invalidate({ projectId }),
