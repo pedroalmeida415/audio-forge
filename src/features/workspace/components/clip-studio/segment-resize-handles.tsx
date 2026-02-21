@@ -42,6 +42,10 @@ export function SegmentResizeHandles({
   });
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
+  const [dragState, setDragState] = useState<{
+    edge: "start" | "end";
+    time: number;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
 
   // Ensure we only render portal after mount (SSR safety)
@@ -68,8 +72,9 @@ export function SegmentResizeHandles({
         return;
       }
 
-      const start = segment.startTime;
-      const end = segment.endTime;
+      const start =
+        dragState?.edge === "start" ? dragState.time : segment.startTime;
+      const end = dragState?.edge === "end" ? dragState.time : segment.endTime;
 
       // Find the segments bar container for viewport offset
       const container = document.querySelector(
@@ -95,7 +100,7 @@ export function SegmentResizeHandles({
     });
 
     return dispose;
-  }, [store, computed, segments, activeSegmentId]);
+  }, [store, computed, segments, activeSegmentId, dragState]);
 
   const handleMouseDown = (edge: "start" | "end") => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -121,8 +126,8 @@ export function SegmentResizeHandles({
 
       // Note: Since segments are props (from React Query), we can't mutate them directly.
       // We apply the pending time via the tRPC mutation on mouse up.
-      // During drag, we update the position visually through the effect.
-      pendingTime = null;
+      // During drag, we update the position visually through the React state.
+      setDragState({ edge, time: pendingTime });
     };
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -142,6 +147,7 @@ export function SegmentResizeHandles({
       document.removeEventListener("mouseup", handleMouseUp);
 
       if (rafId !== null) cancelAnimationFrame(rafId);
+      setDragState(null);
 
       // Persist via mutation using the last pending time
       if (pendingTime !== null) {
