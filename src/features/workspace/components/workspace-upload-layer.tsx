@@ -115,7 +115,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
   const [{ sourceId }, setQueryState] = useQueryStates({
     sourceId: workspaceParams.sourceId,
     speakerId: workspaceParams.speakerId,
-    segmentId: workspaceParams.segmentId,
+    activeSegmentId: workspaceParams.activeSegmentId,
   });
 
   const [isDragging, setIsDragging] = useState(false);
@@ -214,7 +214,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
       await setQueryState({
         sourceId: nextSourceId,
         speakerId: null,
-        segmentId: null,
+        activeSegmentId: null,
       });
 
       await Promise.all([

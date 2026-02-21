@@ -4,7 +4,7 @@ import { createSearchParamsCache } from "nuqs/server";
 export const workspaceParams = {
   sourceId: parseAsString,
   speakerId: parseAsString,
-  segmentId: parseAsString,
+  activeSegmentId: parseAsString,
 };
 
 export const workspaceParamsCache = createSearchParamsCache(workspaceParams);

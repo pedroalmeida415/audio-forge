@@ -54,15 +54,15 @@ export function TimelineContainer({
   isDiarizationButtonDisabled,
 }: TimelineContainerProps) {
   const { store } = useWorkspaceStore();
-  const [segmentId, setSegmentId] = useQueryState(
-    "segmentId",
-    workspaceParams.segmentId,
+  const [activeSegmentId, setActiveSegmentId] = useQueryState(
+    "activeSegmentId",
+    workspaceParams.activeSegmentId,
   );
 
   const containerRef = useTimelineResize();
 
   // Connect MSE audio provider to store
-  usePlayback(sourceData, segments, segmentId);
+  usePlayback(sourceData, segments, activeSegmentId);
 
   // Enable Ctrl+wheel zooming and Shift+wheel scrolling
   useWheelZoom(store);
@@ -86,8 +86,8 @@ export function TimelineContainer({
         sourceId={sourceId}
         projectId={projectId}
         speakerId={speakerId}
-        activeSegmentId={segmentId}
-        onActiveSegmentChange={(id) => void setSegmentId(id)}
+        activeSegmentId={activeSegmentId}
+        onActiveSegmentChange={(id) => void setActiveSegmentId(id)}
         onStartDiarization={onStartDiarization}
         isDiarizationRunning={isDiarizationRunning}
         isDiarizationCompleted={isDiarizationCompleted}
@@ -124,7 +124,7 @@ export function TimelineContainer({
             segments={segments}
             speakers={speakers}
             speakerId={speakerId}
-            activeSegmentId={segmentId}
+            activeSegmentId={activeSegmentId}
           />
 
           {/* Waveform */}
@@ -139,7 +139,7 @@ export function TimelineContainer({
       <SegmentResizeHandles
         segments={segments}
         sourceId={sourceId}
-        activeSegmentId={segmentId}
+        activeSegmentId={activeSegmentId}
       />
 
       {/* Selection resize handles */}

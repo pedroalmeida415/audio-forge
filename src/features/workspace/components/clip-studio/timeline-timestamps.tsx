@@ -55,10 +55,7 @@ export function TimelineTimestamps() {
       const svgEl = svgRef.current;
       if (svgEl) {
         svgEl.setAttribute("width", String(containerW));
-        svgEl.setAttribute(
-          "viewBox",
-          `0 0 ${containerW} ${TIMESTAMPS_HEIGHT}`,
-        );
+        svgEl.setAttribute("viewBox", `0 0 ${containerW} ${TIMESTAMPS_HEIGHT}`);
       }
 
       // Calculate visible time range with overscan

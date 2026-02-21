@@ -4,13 +4,13 @@ import { Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryStates } from "nuqs";
 import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "~/components/ui/navigation-menu";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Separator } from "~/components/ui/separator";
 import { workspaceParams } from "~/features/workspace/search-params";
 import type { Speaker } from "~/server/db/schema";
@@ -22,7 +22,7 @@ export function SpeakerPicker() {
   const [{ sourceId, speakerId }, setQueryState] = useQueryStates({
     sourceId: workspaceParams.sourceId,
     speakerId: workspaceParams.speakerId,
-    segmentId: workspaceParams.segmentId,
+    activeSegmentId: workspaceParams.activeSegmentId,
   });
 
   const [projectSpeakers] = api.speaker.getByProject.useSuspenseQuery(
@@ -36,101 +36,69 @@ export function SpeakerPicker() {
       { enabled: !!sourceId, refetchOnWindowFocus: false },
     );
 
-  const selectedSpeaker =
-    projectSpeakers.find((s) => s.id === speakerId) ??
-    sourceSpeakers?.find((s) => s.id === speakerId);
-
   const handleSelectSpeaker = (id: string | null) => {
-    void setQueryState({ speakerId: id, segmentId: null });
+    void setQueryState({ speakerId: id, activeSegmentId: null });
   };
 
   return (
-    <NavigationMenu viewport={false}>
-      <NavigationMenuList>
-        <NavigationMenuItem>
-          <NavigationMenuTrigger>
-            Speaker:{" "}
-            <span className="ml-1 max-w-[160px] truncate text-muted-foreground">
-              {selectedSpeaker?.name ?? "None"}
-            </span>
-          </NavigationMenuTrigger>
-          <NavigationMenuContent>
-            <ul className="w-[240px] p-1">
-              {speakerId && (
-                <li>
-                  <NavigationMenuLink asChild>
-                    <button
-                      type="button"
-                      className="w-full text-muted-foreground"
-                      onClick={() => handleSelectSpeaker(null)}
-                    >
-                      Clear selection
-                    </button>
-                  </NavigationMenuLink>
-                </li>
-              )}
-              {projectSpeakers.map((speaker) => (
-                <SpeakerItem
-                  key={speaker.id}
-                  speaker={speaker}
-                  active={speaker.id === speakerId}
-                  onSelect={() => handleSelectSpeaker(speaker.id)}
-                />
-              ))}
-              <SourceSpeakersSection
-                speakers={sourceSpeakers}
-                isLoading={isLoadingSourceSpeakers}
-                speakerId={speakerId}
-                onSelect={handleSelectSpeaker}
-                enabled={!!sourceId}
-              />
-            </ul>
-          </NavigationMenuContent>
-        </NavigationMenuItem>
-      </NavigationMenuList>
-    </NavigationMenu>
+    <div className="flex items-center gap-2">
+      <span className="font-medium text-sm">Speaker:</span>
+      <Select
+        value={speakerId ?? ""}
+        onValueChange={(val) => {
+          if (val === "clear") {
+            handleSelectSpeaker(null);
+          } else {
+            handleSelectSpeaker(val);
+          }
+        }}
+      >
+        <SelectTrigger className="h-8 w-[240px] text-xs">
+          <SelectValue placeholder="Select a speaker..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {speakerId && (
+              <SelectItem value="clear" className="text-muted-foreground">
+                Clear selection
+              </SelectItem>
+            )}
+            {projectSpeakers.map((speaker) => (
+              <SpeakerItem key={speaker.id} speaker={speaker} />
+            ))}
+            <SourceSpeakersSection
+              speakers={sourceSpeakers}
+              isLoading={isLoadingSourceSpeakers}
+              enabled={!!sourceId}
+            />
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
-function SpeakerItem({
-  speaker,
-  active,
-  onSelect,
-}: {
-  speaker: Speaker;
-  active: boolean;
-  onSelect: () => void;
-}) {
+function SpeakerItem({ speaker }: { speaker: Speaker }) {
   return (
-    <li>
-      <NavigationMenuLink asChild active={active}>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2"
-          onClick={onSelect}
-        >
-          <span
-            className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: speaker.color }}
-          />
-          <span className="truncate">{speaker.name}</span>
-        </button>
-      </NavigationMenuLink>
-    </li>
+    <SelectItem value={speaker.id}>
+      <div className="flex items-center gap-2">
+        <span
+          className="size-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: speaker.color }}
+        />
+        <span className="truncate">{speaker.name}</span>
+      </div>
+    </SelectItem>
   );
 }
 
 function SourceSpeakersSection({
   speakers,
   isLoading,
-  speakerId,
-  onSelect,
   enabled,
 }: {
   speakers: Speaker[] | undefined;
   isLoading: boolean;
-  speakerId: string | null;
-  onSelect: (id: string | null) => void;
   enabled: boolean;
 }) {
   if (!enabled) return null;
@@ -139,10 +107,10 @@ function SourceSpeakersSection({
     return (
       <>
         <Separator className="my-1" />
-        <li className="flex items-center gap-2 px-2 py-1.5 text-muted-foreground text-xs">
+        <div className="flex items-center gap-2 px-2 py-1.5 text-muted-foreground text-xs">
           <Loader2 className="size-3 animate-spin" />
           Loading source speakers...
-        </li>
+        </div>
       </>
     );
   }
@@ -152,16 +120,11 @@ function SourceSpeakersSection({
   return (
     <>
       <Separator className="my-1" />
-      <li className="px-2 py-1.5 text-muted-foreground text-xs">
+      <div className="px-2 py-1.5 text-muted-foreground text-xs">
         Source speakers
-      </li>
+      </div>
       {speakers.map((speaker) => (
-        <SpeakerItem
-          key={speaker.id}
-          speaker={speaker}
-          active={speaker.id === speakerId}
-          onSelect={() => onSelect(speaker.id)}
-        />
+        <SpeakerItem key={speaker.id} speaker={speaker} />
       ))}
     </>
   );

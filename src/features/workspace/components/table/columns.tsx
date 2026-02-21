@@ -2,6 +2,7 @@
 
 import type { ColumnDef, RowData } from "@tanstack/react-table";
 import { PencilIcon } from "lucide-react";
+import { useQueryStates } from "nuqs";
 import { useSnapshot } from "valtio";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -17,6 +18,7 @@ import {
 } from "~/features/workspace/components/table/compact-audio-cell";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { useSegmentAudio } from "~/features/workspace/hooks/use-segment-audio";
+import { workspaceParams } from "~/features/workspace/search-params";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { cn } from "~/lib/utils";
 import { TagsCell } from "./tags-cell";
@@ -189,9 +191,20 @@ function IndexCell({ index }: { index: number }) {
   );
 }
 
-function ActionsCell({ segmentId }: { segmentId: string }) {
+function ActionsCell({
+  segmentId,
+  sourceId,
+}: {
+  segmentId: string;
+  sourceId: string;
+}) {
+  const [, setQueryState] = useQueryStates({
+    sourceId: workspaceParams.sourceId,
+    activeSegmentId: workspaceParams.activeSegmentId,
+  });
+
   const handleEdit = () => {
-    console.log("Edit segment:", segmentId);
+    void setQueryState({ sourceId, activeSegmentId: segmentId });
   };
 
   return (
@@ -341,7 +354,12 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     {
       id: "actions",
       header: () => null,
-      cell: ({ row }) => <ActionsCell segmentId={row.original.id} />,
+      cell: ({ row }) => (
+        <ActionsCell
+          segmentId={row.original.id}
+          sourceId={row.original.sourceId}
+        />
+      ),
       size: 48,
       enableSorting: false,
       enableHiding: false,

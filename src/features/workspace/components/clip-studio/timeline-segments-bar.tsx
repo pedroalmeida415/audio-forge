@@ -42,7 +42,7 @@ export function TimelineSegmentsBar({
   const { store, computed } = useWorkspaceStore();
   const [, setQueryState] = useQueryStates({
     speakerId: workspaceParams.speakerId,
-    segmentId: workspaceParams.segmentId,
+    activeSegmentId: workspaceParams.activeSegmentId,
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -102,7 +102,10 @@ export function TimelineSegmentsBar({
         let el = segmentElementsMap.current.get(id);
         if (!el) {
           el = createSegmentElement(id, name, () => {
-            void setQueryState({ speakerId: segSpeakerId, segmentId: id });
+            void setQueryState({
+              speakerId: segSpeakerId,
+              activeSegmentId: id,
+            });
           });
           container.appendChild(el);
           segmentElementsMap.current.set(id, el);

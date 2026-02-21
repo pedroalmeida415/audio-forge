@@ -89,10 +89,7 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
       const svgEl = svgRef.current;
       if (svgEl) {
         svgEl.setAttribute("width", String(containerW));
-        svgEl.setAttribute(
-          "viewBox",
-          `0 0 ${containerW} ${WAVEFORM_HEIGHT}`,
-        );
+        svgEl.setAttribute("viewBox", `0 0 ${containerW} ${WAVEFORM_HEIGHT}`);
       }
 
       // Get pps from computed, but fallback to simple calculation if store duration not set
