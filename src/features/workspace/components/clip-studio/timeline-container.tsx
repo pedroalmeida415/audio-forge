@@ -4,6 +4,7 @@ import { useQueryState } from "nuqs";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { usePlayback } from "~/features/workspace/hooks/use-playback";
 import { useSelectionDrag } from "~/features/workspace/hooks/use-selection-drag";
+import { useSpacebarPlayback } from "~/features/workspace/hooks/use-spacebar-playback";
 import { useTimelineResize } from "~/features/workspace/hooks/use-timeline-resize";
 import { useWheelZoom } from "~/features/workspace/hooks/use-wheel-zoom";
 import { workspaceParams } from "~/features/workspace/search-params";
@@ -63,6 +64,9 @@ export function TimelineContainer({
 
   // Connect MSE audio provider to store
   usePlayback(sourceData, segments, activeSegmentId);
+
+  // Enable spacebar playback toggling
+  useSpacebarPlayback(!!sourceData);
 
   // Enable Ctrl+wheel zooming and Shift+wheel scrolling
   useWheelZoom(store);
