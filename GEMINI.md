@@ -13,6 +13,7 @@ Audio Forge is a webapp designed to streamline the process of creating high-qual
 - **React Compiler**: Enabled (`experimental.reactCompiler`). Do not add manual `useMemo`/`useCallback` -- the compiler handles memoization.
 - **TypeScript Strictness**: `noUncheckedIndexedAccess: true` -- array/object index access returns `T | undefined`, so handle accordingly.
 - **Tailwind v4**: Config is CSS-based in `src/styles/globals.css` (via `@theme` directive), not a JS/TS config file. Uses OKLCH color space with `light-dark()` function.
+- **Testing**: Always try to test UI and interaction changes through the browser (e.g., using the `browser_subagent` tool) to verify real-world behavior, not just relying on terminal commands.
 
 ## Commands
 
@@ -32,12 +33,6 @@ bun db:studio              # Open Drizzle Studio
 # Linting & Formatting
 bun biome:check -- "<path>"    # Check linting/formatting issues (double dash required between command and file path)
 bun biome:fix -- "<path>"      # Auto-fix linting/formatting issues (double dash required between command and file path)
-
-# Testing
-bun test                   # Run Vitest (unit tests)
-bun test-storybook         # Run Storybook tests (browser tests)
-bun test <path>            # Run specific test file
-bun storybook              # Start Storybook dev server (port 6006)
 ```
 
 ## Architecture Overview
