@@ -13,14 +13,19 @@ export type WorkspaceSegmentListSnapshot =
 export type WorkspaceSegmentListItem =
   WorkspaceSegmentListSnapshot["segments"][number];
 
+export type WorkspaceSpeakerSegmentListSnapshot =
+  RouterOutputs["segment"]["getBySpeaker"];
+
 export type WorkspaceSourceSpeakersSnapshot =
   RouterOutputs["speaker"]["getBySource"];
 export type WorkspaceSpeaker = WorkspaceSourceSpeakersSnapshot[number];
 
 export interface WorkspaceSegmentMutationContext {
   sourceId?: string;
+  speakerId?: string;
   projectId?: string;
   previousSegmentsBySource?: WorkspaceSegmentListSnapshot;
+  previousSegmentsBySpeaker?: WorkspaceSpeakerSegmentListSnapshot;
   previousSourceSpeakers?: WorkspaceSourceSpeakersSnapshot;
   tempIds?: string[];
 }
@@ -75,8 +80,31 @@ interface ReplaceTempSpeakerInput {
   speaker: WorkspaceSpeaker;
 }
 
+interface OptimisticBulkDeleteFromSourceInput {
+  segmentList: WorkspaceSegmentListSnapshot;
+  speakerId: string;
+  excludeSegmentIds?: string[];
+}
+
+interface OptimisticBulkDeleteFromSpeakerInput {
+  segmentList: WorkspaceSpeakerSegmentListSnapshot;
+  excludeSegmentIds?: string[];
+}
+
+interface OptimisticBulkChangeSpeakerInSourceInput {
+  segmentList: WorkspaceSegmentListSnapshot;
+  fromSpeakerId: string;
+  toSpeakerId: string;
+  excludeSegmentIds?: string[];
+}
+
 interface RestoreSegmentListSnapshotInput {
   segmentList: WorkspaceSegmentListSnapshot;
+  context?: WorkspaceSegmentMutationContext;
+}
+
+interface RestoreSpeakerSegmentListSnapshotInput {
+  segmentList: WorkspaceSpeakerSegmentListSnapshot;
   context?: WorkspaceSegmentMutationContext;
 }
 
@@ -393,9 +421,76 @@ export function restoreWorkspaceSegmentsSnapshot({
   return context?.previousSegmentsBySource ?? segmentList;
 }
 
+export function restoreWorkspaceSegmentsBySpeakerSnapshot({
+  segmentList,
+  context,
+}: RestoreSpeakerSegmentListSnapshotInput): WorkspaceSpeakerSegmentListSnapshot {
+  return context?.previousSegmentsBySpeaker ?? segmentList;
+}
+
 export function restoreWorkspaceSourceSpeakersSnapshot({
   speakers,
   context,
 }: RestoreSourceSpeakersSnapshotInput): WorkspaceSourceSpeakersSnapshot {
   return context?.previousSourceSpeakers ?? speakers;
+}
+
+export function applyOptimisticBulkDeleteFromSource({
+  segmentList,
+  speakerId,
+  excludeSegmentIds,
+}: OptimisticBulkDeleteFromSourceInput): WorkspaceSegmentListSnapshot {
+  const excludeSet = new Set(excludeSegmentIds ?? []);
+  const nextSegments = segmentList.segments.filter(
+    (s) => s.speakerId !== speakerId || excludeSet.has(s.id),
+  );
+
+  if (nextSegments.length === segmentList.segments.length) {
+    return segmentList;
+  }
+
+  return { ...segmentList, segments: nextSegments };
+}
+
+export function applyOptimisticBulkDeleteFromSpeaker({
+  segmentList,
+  excludeSegmentIds,
+}: OptimisticBulkDeleteFromSpeakerInput): WorkspaceSpeakerSegmentListSnapshot {
+  if (!excludeSegmentIds?.length) {
+    return { ...segmentList, segments: [] };
+  }
+
+  const excludeSet = new Set(excludeSegmentIds);
+  const nextSegments = segmentList.segments.filter((s) => excludeSet.has(s.id));
+
+  if (nextSegments.length === segmentList.segments.length) {
+    return segmentList;
+  }
+
+  return { ...segmentList, segments: nextSegments };
+}
+
+export function applyOptimisticBulkChangeSpeakerInSource({
+  segmentList,
+  fromSpeakerId,
+  toSpeakerId,
+  excludeSegmentIds,
+}: OptimisticBulkChangeSpeakerInSourceInput): WorkspaceSegmentListSnapshot {
+  const excludeSet = new Set(excludeSegmentIds ?? []);
+  let didChange = false;
+
+  const nextSegments = segmentList.segments.map((s) => {
+    if (s.speakerId !== fromSpeakerId || excludeSet.has(s.id)) {
+      return s;
+    }
+
+    didChange = true;
+    return { ...s, speakerId: toSpeakerId, updatedAt: new Date() };
+  });
+
+  if (!didChange) {
+    return segmentList;
+  }
+
+  return { ...segmentList, segments: nextSegments };
 }

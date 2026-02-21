@@ -37,7 +37,9 @@ export function SegmentResizeHandles({
   activeSegmentId,
 }: SegmentResizeHandlesProps) {
   const { store, computed } = useWorkspaceStore();
-  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation(sourceId);
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation({
+    sourceId,
+  });
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
   const [mounted, setMounted] = useState(false);

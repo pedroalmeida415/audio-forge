@@ -63,8 +63,12 @@ export function ActiveSegmentActions({
   const { store } = useWorkspaceStore();
 
   const splitSegmentMutation = useWorkspaceSplitSegmentMutation();
-  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation(sourceId);
-  const deleteSegmentsMutation = useWorkspaceDeleteSegmentsMutation(sourceId);
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation({
+    sourceId,
+  });
+  const deleteSegmentsMutation = useWorkspaceDeleteSegmentsMutation({
+    sourceId,
+  });
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);

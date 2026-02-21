@@ -24,6 +24,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import {
+  useWorkspaceBulkChangeSpeakerMutation,
+  useWorkspaceUpdateSegmentsMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
@@ -37,7 +41,7 @@ interface ChangeSpeakerDialogProps {
   sourceId?: string | null;
   speakerId: string;
   speakerName: string;
-  onSuccess: (data: { updatedCount: number }) => void;
+  onSuccess: () => void;
 }
 
 export function ChangeSpeakerDialog({
@@ -56,20 +60,29 @@ export function ChangeSpeakerDialog({
     null,
   );
   const [comboboxOpen, setComboboxOpen] = useState(false);
-  const utils = api.useUtils();
+
+  const cacheContext = { sourceId, speakerId };
 
   // Fetch project speakers (excludes source-linked diarization speakers)
   const { data: speakers, isLoading: isLoadingSpeakers } =
     api.speaker.getByProject.useQuery({ projectId }, { enabled: open });
 
-  const updateManyMutation = api.segment.updateMany.useMutation();
-  const updateSourceSegmentsMutation = api.source.updateSegments.useMutation();
-  const updateSpeakerSegmentsMutation =
-    api.speaker.updateSegments.useMutation();
+  const handleMutationSuccess = () => {
+    onSuccess();
+    onOpenChange(false);
+    setSelectedSpeakerId(null);
+  };
+
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation(
+    cacheContext,
+    { onSuccess: handleMutationSuccess },
+  );
+
+  const bulkChangeSpeakerMutation =
+    useWorkspaceBulkChangeSpeakerMutation(cacheContext);
+
   const isMoving =
-    updateManyMutation.isPending ||
-    updateSourceSegmentsMutation.isPending ||
-    updateSpeakerSegmentsMutation.isPending;
+    updateSegmentsMutation.isPending || bulkChangeSpeakerMutation.isPending;
 
   // Filter out current speaker from the list
   const availableSpeakers = speakers?.filter((s) => s.id !== speakerId) ?? [];
@@ -78,60 +91,22 @@ export function ChangeSpeakerDialog({
     (s) => s.id === selectedSpeakerId,
   );
 
-  const invalidateSegmentQueries = async (targetSpeakerId: string) => {
-    const invalidations: Promise<unknown>[] = [];
-
-    if (sourceId) {
-      invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
-    }
-
-    invalidations.push(utils.segment.getBySpeaker.invalidate({ speakerId }));
-    if (targetSpeakerId !== speakerId) {
-      invalidations.push(
-        utils.segment.getBySpeaker.invalidate({ speakerId: targetSpeakerId }),
-      );
-    }
-
-    await Promise.all(invalidations);
-  };
-
   const handleSubmit = () => {
     if (!selectedSpeakerId) return;
-    const targetSpeakerId = selectedSpeakerId;
 
-    void (async () => {
-      try {
-        if (segmentIds && segmentIds.length > 0) {
-          const data = await updateManyMutation.mutateAsync({
-            segmentIds,
-            patch: { speakerId: targetSpeakerId },
-          });
-          onSuccess(data);
-        } else if (sourceId) {
-          const data = await updateSourceSegmentsMutation.mutateAsync({
-            sourceId,
-            speakerId,
-            excludeSegmentIds,
-            patch: { speakerId: targetSpeakerId },
-          });
-          onSuccess(data);
-        } else {
-          const data = await updateSpeakerSegmentsMutation.mutateAsync({
-            speakerId,
-            excludeSegmentIds,
-            patch: { speakerId: targetSpeakerId },
-          });
-          onSuccess(data);
-        }
-
-        onOpenChange(false);
-        setSelectedSpeakerId(null);
-      } catch {
-        // Keep dialog open so the user can retry.
-      } finally {
-        await invalidateSegmentQueries(targetSpeakerId);
-      }
-    })();
+    if (segmentIds && segmentIds.length > 0) {
+      updateSegmentsMutation.mutate({
+        segmentIds,
+        patch: { speakerId: selectedSpeakerId },
+      });
+    } else {
+      bulkChangeSpeakerMutation.mutate({
+        targetSpeakerId: selectedSpeakerId,
+        excludeSegmentIds,
+      });
+      // Bulk mutation doesn't use the handlers pattern — close immediately
+      handleMutationSuccess();
+    }
   };
 
   const handleOpenChange = (newOpen: boolean) => {

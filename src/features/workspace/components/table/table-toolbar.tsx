@@ -18,33 +18,12 @@ import {
 import { Button } from "~/components/ui/button";
 import { ChangeSpeakerDialog } from "~/features/workspace/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import {
+  useWorkspaceBulkDeleteSegmentsMutation,
+  useWorkspaceDeleteSegmentsMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
-
-function filterOutSegments(
-  ids: Set<string>,
-  utils: ReturnType<typeof api.useUtils>,
-  sourceId: string | null,
-  speakerId: string,
-) {
-  if (sourceId) {
-    utils.segment.getBySource.setData({ sourceId }, (old) => {
-      if (!old) return old;
-      return {
-        ...old,
-        segments: old.segments.filter((item) => !ids.has(item.id)),
-      };
-    });
-  } else {
-    utils.segment.getBySpeaker.setData({ speakerId }, (old) => {
-      if (!old) return old;
-      return {
-        ...old,
-        segments: old.segments.filter((item) => !ids.has(item.id)),
-      };
-    });
-  }
-}
 
 export function TableToolbar() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -84,67 +63,33 @@ export function TableToolbar() {
   );
   const currentSpeaker = speakers?.find((s) => s.id === speakerId);
 
-  const deleteManyMutation = api.segment.deleteMany.useMutation();
-  const deleteSourceSegmentsMutation = api.source.deleteSegments.useMutation();
-  const deleteSpeakerSegmentsMutation =
-    api.speaker.deleteSegments.useMutation();
+  const cacheContext = { sourceId, speakerId };
+
+  const deleteSegmentsMutation =
+    useWorkspaceDeleteSegmentsMutation(cacheContext);
+
+  const bulkDeleteMutation =
+    useWorkspaceBulkDeleteSegmentsMutation(cacheContext);
 
   const isDeleting =
-    deleteManyMutation.isPending ||
-    deleteSourceSegmentsMutation.isPending ||
-    deleteSpeakerSegmentsMutation.isPending;
+    deleteSegmentsMutation.isPending || bulkDeleteMutation.isPending;
 
-  const invalidateSegmentQueries = async () => {
-    const invalidations: Promise<unknown>[] = [];
-
-    if (sourceId) {
-      invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
-    }
-
-    if (speakerId) {
-      invalidations.push(utils.segment.getBySpeaker.invalidate({ speakerId }));
-    } else {
-      invalidations.push(utils.segment.getBySpeaker.invalidate());
-    }
-
-    await Promise.all(invalidations);
-  };
-
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!hasSelection || !speakerId) return;
 
-    try {
-      if (isAllSelected) {
-        const excludeSegmentIds =
-          excludedSegmentIds.size > 0
-            ? Array.from(excludedSegmentIds)
-            : undefined;
-
-        if (sourceId) {
-          await deleteSourceSegmentsMutation.mutateAsync({
-            sourceId,
-            speakerId,
-            excludeSegmentIds,
-          });
-        } else {
-          await deleteSpeakerSegmentsMutation.mutateAsync({
-            speakerId,
-            excludeSegmentIds,
-          });
-        }
-      } else {
-        const segmentIds = Array.from(selectedSegmentIds);
-        await deleteManyMutation.mutateAsync({ segmentIds });
-        filterOutSegments(new Set(segmentIds), utils, sourceId, speakerId);
-      }
-
-      store.clearSelection();
-      setShowDeleteDialog(false);
-    } catch {
-      // Keep dialog open so the user can retry.
-    } finally {
-      await invalidateSegmentQueries();
+    if (isAllSelected) {
+      const excludeSegmentIds =
+        excludedSegmentIds.size > 0
+          ? Array.from(excludedSegmentIds)
+          : undefined;
+      bulkDeleteMutation.mutate({ excludeSegmentIds });
+    } else {
+      const segmentIds = Array.from(selectedSegmentIds);
+      deleteSegmentsMutation.mutate({ segmentIds });
     }
+
+    store.clearSelection();
+    setShowDeleteDialog(false);
   };
 
   return (
@@ -210,7 +155,7 @@ export function TableToolbar() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => void handleDelete()}
+              onClick={handleDelete}
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
@@ -244,12 +189,7 @@ export function TableToolbar() {
           sourceId={sourceId}
           speakerId={speakerId}
           speakerName={currentSpeaker?.name ?? "Unknown"}
-          onSuccess={() => {
-            if (!isAllSelected) {
-              filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
-            }
-            store.clearSelection();
-          }}
+          onSuccess={() => store.clearSelection()}
         />
       )}
     </>
