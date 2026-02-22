@@ -18,6 +18,7 @@ import { isVideoMimeType } from "../src/lib/video-types";
 import { clips, segments, sources, speakers } from "../src/server/db/schema";
 import { AppRuntime, disposeRuntime } from "../src/services";
 import { AudioProcessingService } from "../src/services/audio/audio-processing-service";
+import { PyannoteService } from "../src/services/diarization/pyannote-service";
 import { Database } from "../src/services/infra/database";
 import {
   type AudioJobName,
@@ -444,9 +445,11 @@ function toFlacName(filename: string | null, sourceId: string): string {
  * 3. Upload final FLAC to R2 and persist storage metadata
  * 4. Generate waveform and store bytes directly in Postgres
  * 5. Mark source ingest+waveform completed
+ * 6. Optionally queue diarization if requested by upload flow
  */
 const handleIngestSource: JobHandler = async (job) => {
   const sourceId = job.data.entryId;
+  const shouldQueueDiarization = job.data.queueDiarization === true;
   console.log(`[IngestSource] Processing source ${sourceId}`);
 
   await AppRuntime.runPromise(
@@ -550,18 +553,9 @@ const handleIngestSource: JobHandler = async (job) => {
 
       const audioStorageKey = `sources/${source.userId}/${Date.now()}-${sourceId}.flac`;
       console.log(`[IngestSource] Uploading FLAC to R2 for ${sourceId}`);
-      const flacBuffer = yield* Effect.try({
-        try: () => readFileSync(flacPath),
-        catch: (error) =>
-          new Error(
-            `Failed to read FLAC for upload (${sourceId}): ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          ),
-      });
-      yield* StorageService.uploadBuffer({
+      yield* StorageService.uploadFromPath({
+        localPath: flacPath,
         key: audioStorageKey,
-        data: flacBuffer,
         contentType: "audio/flac",
       });
 
@@ -584,21 +578,73 @@ const handleIngestSource: JobHandler = async (job) => {
 
       const displayName = toFlacName(ingestFilename, sourceId);
 
-      yield* db
-        .update(sources)
-        .set({
-          storageKey: audioStorageKey,
-          duration,
-          name: displayName,
-          originalFileName: ingestFilename,
-          ingestStatus: "completed",
-          ingestError: null,
-          ingestLocalPath: null,
-          waveformStatus: "completed",
-          waveformError: null,
-          waveformData: waveformBuffer,
-        })
-        .where(eq(sources.id, sourceId));
+      const update: Partial<typeof sources.$inferInsert> = {
+        storageKey: audioStorageKey,
+        duration,
+        name: displayName,
+        originalFileName: ingestFilename,
+        ingestStatus: "completed",
+        ingestError: null,
+        ingestLocalPath: null,
+        waveformStatus: "completed",
+        waveformError: null,
+        waveformData: waveformBuffer,
+      };
+
+      if (shouldQueueDiarization) {
+        console.log(`[IngestSource] Auto-queueing diarization for ${sourceId}`);
+
+        const diarizationUpdate = yield* Effect.gen(function* () {
+          const audioUrl = yield* StorageService.generatePresignedDownloadUrl({
+            key: audioStorageKey,
+            expiresIn: 7200,
+          });
+
+          const diarizationJob = yield* PyannoteService.submitJob({
+            audioUrl,
+          }).pipe(
+            Effect.catchTag("PyannoteError", (error) =>
+              Effect.fail(new Error(error.message)),
+            ),
+          );
+
+          console.log(
+            `[IngestSource] Auto-diarization queued for ${sourceId}: ${diarizationJob.jobId}`,
+          );
+
+          return {
+            diarizationJobId: diarizationJob.jobId,
+            diarizationStatus: "pending" as const,
+            diarizationStartedAt: new Date(),
+            diarizationCompletedAt: null,
+            diarizationError: null,
+          };
+        }).pipe(
+          Effect.catchAll((error) => {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Failed to queue diarization";
+
+            console.error(
+              `[IngestSource] Auto-diarization failed for ${sourceId}:`,
+              message,
+            );
+
+            return Effect.succeed({
+              diarizationJobId: null,
+              diarizationStatus: "failed" as const,
+              diarizationStartedAt: null,
+              diarizationCompletedAt: new Date(),
+              diarizationError: message,
+            });
+          }),
+        );
+
+        Object.assign(update, diarizationUpdate);
+      }
+
+      yield* db.update(sources).set(update).where(eq(sources.id, sourceId));
 
       // Delete staged artifacts only after full success.
       yield* Effect.sync(() => {

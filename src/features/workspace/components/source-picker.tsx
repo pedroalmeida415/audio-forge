@@ -65,7 +65,7 @@ export function SourcePicker() {
                 ) : (
                   <Upload className="size-4 text-muted-foreground" />
                 )}
-                <span>Upload source</span>
+                <span>Upload sources</span>
               </div>
             </SelectItem>
             {sourceId && (

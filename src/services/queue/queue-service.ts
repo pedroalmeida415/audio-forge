@@ -35,6 +35,8 @@ export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
 /** Payload for all audio processing jobs */
 export interface AudioJobPayload {
   entryId: string;
+  // Only used by ingest_source jobs.
+  queueDiarization?: boolean;
 }
 
 /** Payload for LJSpeech export jobs */

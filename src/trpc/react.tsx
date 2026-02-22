@@ -54,6 +54,29 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
  */
 export const procedureSpy = {} as unknown as ProcedureSpy;
 
+function resolveContextHeaders(context: unknown): Record<string, string> {
+  if (!context || typeof context !== "object") {
+    return {};
+  }
+
+  const rawHeaders =
+    "uploadHeaders" in context
+      ? (context as { uploadHeaders?: unknown }).uploadHeaders
+      : undefined;
+  if (!rawHeaders || typeof rawHeaders !== "object") {
+    return {};
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rawHeaders)) {
+    if (typeof value === "string") {
+      headers[key] = value;
+    }
+  }
+
+  return headers;
+}
+
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
 
@@ -81,6 +104,10 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
                 serialize: (d) => d,
                 deserialize: SuperJSON.deserialize,
               },
+              headers: ({ op }) => ({
+                "x-trpc-source": "nextjs-react",
+                ...resolveContextHeaders(op.context),
+              }),
             }),
             // Regular queries/mutations use batched streaming
             false: httpBatchStreamLink({

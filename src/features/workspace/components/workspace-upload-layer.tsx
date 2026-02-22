@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertCircle, Loader2, Upload } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Upload,
+  XCircle,
+} from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryStates } from "nuqs";
 import {
@@ -11,6 +17,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
+import { Progress } from "~/components/ui/progress";
+import { Switch } from "~/components/ui/switch";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
@@ -30,6 +47,21 @@ const EXTENSION_CONTENT_TYPE: Record<string, string> = {
 };
 
 type IngestStatus = "pending" | "processing" | "completed" | "failed";
+type UploadItemStatus = "queued" | "uploading" | "completed" | "failed";
+
+interface UploadBatchItem {
+  id: string;
+  name: string;
+  size: number;
+  status: UploadItemStatus;
+  error: string | null;
+}
+
+interface SelectedUploadFile {
+  file: File;
+  contentType: string;
+  itemId: string;
+}
 
 interface WorkspaceUploadContextValue {
   openFilePicker: () => void;
@@ -59,47 +91,45 @@ function resolveUploadContentType(file: File): string | null {
   return inferred ?? null;
 }
 
-function readTrpcError(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const value = payload as {
-    error?: {
-      message?: string;
-      json?: {
-        message?: string;
-      };
-    };
-  };
-
-  return value.error?.json?.message ?? value.error?.message ?? null;
+function readErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }
 
-function readUploadSourceId(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
 
-  const value = payload as {
-    result?: {
-      data?:
-        | {
-            json?: {
-              sourceId?: string;
-            };
-            sourceId?: string;
-          }
-        | {
-            sourceId?: string;
-          };
-    };
-  };
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
 
-  const data = value.result?.data;
-  if (!data || typeof data !== "object") return null;
+  const precision = unit === 0 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unit]}`;
+}
 
-  const jsonData = "json" in data && data.json ? data.json : data;
-  if (!jsonData || typeof jsonData !== "object") return null;
+function formatUploadStatus(item: UploadBatchItem): string {
+  switch (item.status) {
+    case "queued":
+      return "Queued";
+    case "uploading":
+      return "Uploading";
+    case "completed":
+      return "Uploaded";
+    case "failed":
+      return item.error ?? "Failed";
+  }
+}
 
-  return "sourceId" in jsonData && typeof jsonData.sourceId === "string"
-    ? jsonData.sourceId
-    : null;
+function createUploadItemId(file: File, index: number): string {
+  return `${Date.now()}-${file.lastModified}-${index}-${file.name}`;
 }
 
 function hasDragFiles(event: DragEvent): boolean {
@@ -112,17 +142,23 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
   const { projectId } = useParams<{ projectId: string }>();
   const utils = api.useUtils();
 
-  const [{ sourceId }, setQueryState] = useQueryStates({
+  const [{ sourceId }] = useQueryStates({
     sourceId: workspaceParams.sourceId,
-    speakerId: workspaceParams.speakerId,
-    activeSegmentId: workspaceParams.activeSegmentId,
   });
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [queueDiarizationOnUpload, setQueueDiarizationOnUpload] =
+    useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadItems, setUploadItems] = useState<UploadBatchItem[]>([]);
+  const [selectedUploads, setSelectedUploads] = useState<SelectedUploadFile[]>(
+    [],
+  );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadFilesRef = useRef<(files: File[]) => void>(() => {});
   const dragDepthRef = useRef(0);
   const prevIngestRef = useRef<{
     sourceId: string;
@@ -175,71 +211,191 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     }
   }, [ingestStatusQuery.data?.ingestStatus, projectId, sourceId, utils]);
 
-  async function uploadFile(file: File) {
-    const contentType = resolveUploadContentType(file);
+  function updateUploadItem(
+    itemId: string,
+    updater: (item: UploadBatchItem) => UploadBatchItem,
+  ) {
+    setUploadItems((prev) =>
+      prev.map((item) => (item.id === itemId ? updater(item) : item)),
+    );
+  }
 
-    if (!contentType) {
-      setUploadError("Unsupported file type. Upload an audio or video file.");
+  async function uploadSingleFile(params: {
+    file: File;
+    contentType: string;
+    itemId: string;
+  }) {
+    updateUploadItem(params.itemId, (item) => ({
+      ...item,
+      status: "uploading",
+      error: null,
+    }));
+
+    try {
+      const response = await utils.client.source.upload.mutate(params.file, {
+        context: {
+          uploadHeaders: {
+            "x-content-type": params.contentType,
+            "x-filename": params.file.name || "upload",
+            "x-project-id": projectId,
+            "x-queue-diarization": queueDiarizationOnUpload ? "true" : "false",
+          },
+        },
+      });
+
+      updateUploadItem(params.itemId, (item) => ({
+        ...item,
+        status: "completed",
+      }));
+
+      return response.sourceId;
+    } catch (error) {
+      const message = readErrorMessage(error, "Failed to upload source");
+      updateUploadItem(params.itemId, (item) => ({
+        ...item,
+        status: "failed",
+        error: message,
+      }));
+      throw new Error(message);
+    }
+  }
+
+  function selectFiles(files: File[]) {
+    if (files.length === 0) {
       return;
     }
 
+    if (isUploading) {
+      setIsUploadDialogOpen(true);
+      setUploadError("An upload is already running. Wait for it to complete.");
+      return;
+    }
+
+    const supportedFiles: SelectedUploadFile[] = [];
+    let unsupportedCount = 0;
+
+    for (const [index, file] of files.entries()) {
+      const contentType = resolveUploadContentType(file);
+      if (!contentType) {
+        unsupportedCount += 1;
+        continue;
+      }
+
+      supportedFiles.push({
+        file,
+        contentType,
+        itemId: createUploadItemId(file, index),
+      });
+    }
+
+    if (supportedFiles.length === 0) {
+      setIsUploadDialogOpen(true);
+      setUploadError("Select at least one supported audio or video file.");
+      return;
+    }
+
+    setIsUploadDialogOpen(true);
+    setSelectedUploads((prev) => [...prev, ...supportedFiles]);
+    setUploadItems((prev) => [
+      ...prev,
+      ...supportedFiles.map((entry) => ({
+        id: entry.itemId,
+        name: entry.file.name || "upload",
+        size: entry.file.size,
+        status: "queued" as const,
+        error: null,
+      })),
+    ]);
+    setUploadError(
+      unsupportedCount > 0
+        ? `${unsupportedCount} unsupported file${unsupportedCount === 1 ? "" : "s"} skipped.`
+        : null,
+    );
+  }
+
+  async function startUploadBatch() {
+    if (isUploading) {
+      return;
+    }
+
+    if (selectedUploads.length === 0) {
+      setUploadError("Select at least one supported audio or video file.");
+      return;
+    }
+
+    const uploadsToRun = [...selectedUploads];
+    const uploadIds = new Set(uploadsToRun.map((entry) => entry.itemId));
+
     setUploadError(null);
+    setUploadItems((prev) =>
+      prev.map((item) =>
+        uploadIds.has(item.id)
+          ? { ...item, status: "queued", error: null }
+          : item,
+      ),
+    );
     setIsUploading(true);
 
+    let failedCount = 0;
+    const failedUploads: SelectedUploadFile[] = [];
+    const uploadedSourceIds: string[] = [];
+
     try {
-      const response = await fetch("/api/trpc/source.upload", {
-        method: "POST",
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-content-type": contentType,
-          "x-filename": file.name || "upload",
-          "x-project-id": projectId,
-        },
-        body: file,
-      });
+      for (const entry of uploadsToRun) {
+        try {
+          const sourceId = await uploadSingleFile({
+            file: entry.file,
+            contentType: entry.contentType,
+            itemId: entry.itemId,
+          });
+          uploadedSourceIds.push(sourceId);
+        } catch {
+          failedCount += 1;
+          failedUploads.push(entry);
+        }
+      }
 
-      const payload = (await response.json()) as unknown;
-      const trpcError = readTrpcError(payload);
-      if (!response.ok || trpcError) {
-        throw new Error(
-          trpcError ?? `Upload failed with status ${response.status}`,
+      if (uploadedSourceIds.length > 0) {
+        await Promise.all([
+          utils.source.listByProject.invalidate({ projectId }),
+          ...uploadedSourceIds.map((id) =>
+            utils.source.getById.invalidate({ id }),
+          ),
+        ]);
+      }
+
+      if (failedCount > 0) {
+        const failedIds = new Set(
+          failedUploads.map((failedUpload) => failedUpload.itemId),
         );
+        setSelectedUploads(failedUploads);
+        setUploadItems((prev) => prev.filter((item) => failedIds.has(item.id)));
+        setUploadError(
+          `${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload.`,
+        );
+        return;
       }
 
-      const nextSourceId = readUploadSourceId(payload);
-      if (!nextSourceId) {
-        throw new Error("Upload succeeded but no source id was returned");
-      }
-
-      await setQueryState({
-        sourceId: nextSourceId,
-        speakerId: null,
-        activeSegmentId: null,
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 2000);
       });
 
-      await Promise.all([
-        utils.source.listByProject.invalidate({ projectId }),
-        utils.source.getById.invalidate({ id: nextSourceId }),
-        utils.segment.getBySource.invalidate({ sourceId: nextSourceId }),
-      ]);
+      setUploadError(null);
+      setSelectedUploads([]);
+      setUploadItems([]);
+      setIsUploadDialogOpen(false);
     } catch (error) {
-      setUploadError(
-        error instanceof Error ? error.message : "Failed to upload source",
-      );
+      setUploadError(readErrorMessage(error, "Failed to upload sources"));
     } finally {
       setIsUploading(false);
     }
   }
 
-  function uploadFirstSupportedFile(files: File[]) {
-    const first = files.find((file) => resolveUploadContentType(file) !== null);
-    if (!first) {
-      setUploadError("Drop an audio or video file to upload.");
-      return;
-    }
-
-    void uploadFile(first);
-  }
+  useEffect(() => {
+    uploadFilesRef.current = (files) => {
+      selectFiles(files);
+    };
+  }, [selectFiles]);
 
   useEffect(() => {
     function handleDragEnter(event: DragEvent) {
@@ -271,7 +427,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
 
       const files = event.dataTransfer?.files;
       if (!files || files.length === 0) return;
-      uploadFirstSupportedFile(Array.from(files));
+      uploadFilesRef.current(Array.from(files));
     }
 
     window.addEventListener("dragenter", handleDragEnter);
@@ -287,8 +443,19 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const totalUploads = uploadItems.length;
+  const completedUploads = uploadItems.filter(
+    (item) => item.status === "completed",
+  ).length;
+  const failedUploads = uploadItems.filter(
+    (item) => item.status === "failed",
+  ).length;
+  const processedUploads = completedUploads + failedUploads;
+  const uploadProgress =
+    totalUploads > 0 ? Math.round((processedUploads / totalUploads) * 100) : 0;
+
   const contextValue: WorkspaceUploadContextValue = {
-    openFilePicker: () => fileInputRef.current?.click(),
+    openFilePicker: () => setIsUploadDialogOpen(true),
     isUploading,
     uploadError,
     ingestStatus: ingestStatusQuery.data?.ingestStatus ?? null,
@@ -307,10 +474,11 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
         type="file"
         className="hidden"
         accept="audio/*,video/*"
+        multiple
         onChange={(event) => {
           const files = event.target.files;
           if (files?.length) {
-            uploadFirstSupportedFile(Array.from(files));
+            selectFiles(Array.from(files));
           }
 
           event.target.value = "";
@@ -321,27 +489,163 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 backdrop-blur-xs">
           <div className="flex w-[360px] flex-col items-center gap-3 rounded-lg border border-primary/60 border-dashed bg-card p-8 text-center">
             <Upload className="size-7 text-primary" />
-            <p className="font-medium text-sm">Drop audio or video to upload</p>
+            <p className="font-medium text-sm">
+              Drop audio or video files to upload
+            </p>
             <p className="text-muted-foreground text-xs">
-              The source will ingest asynchronously in the background.
+              Uploads stream directly to the server and ingest runs in the
+              background.
             </p>
           </div>
         </div>
       )}
 
-      {(isUploading || uploadError) && (
+      <Dialog
+        open={isUploadDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (isUploading) {
+            return;
+          }
+
+          setIsUploadDialogOpen(nextOpen);
+
+          if (!nextOpen && !isUploading) {
+            setSelectedUploads([]);
+            setUploadItems([]);
+            setUploadError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg" showCloseButton={!isUploading}>
+          <DialogHeader>
+            <DialogTitle>Upload sources</DialogTitle>
+            <DialogDescription>
+              Select one or more audio/video files, then click upload when
+              ready.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+              <div className="space-y-1">
+                <p className="font-medium text-sm">
+                  Queue diarization after ingest
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Automatically submit each uploaded source to diarization when
+                  ingest completes after upload.
+                </p>
+              </div>
+              <Switch
+                checked={queueDiarizationOnUpload}
+                disabled={isUploading}
+                onCheckedChange={setQueueDiarizationOnUpload}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                <Upload className="size-4" />
+                Select files
+              </Button>
+              <span className="text-muted-foreground text-xs">
+                {isUploading
+                  ? `${processedUploads}/${totalUploads} processed`
+                  : `${selectedUploads.length} selected`}
+              </span>
+            </div>
+
+            {totalUploads > 0 && (
+              <div className="space-y-2">
+                <Progress value={uploadProgress} />
+                <p className="text-muted-foreground text-xs">
+                  {processedUploads} of {totalUploads} file
+                  {totalUploads === 1 ? "" : "s"} uploaded
+                </p>
+              </div>
+            )}
+
+            {uploadItems.length > 0 && (
+              <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border p-2">
+                {uploadItems.map((item) => (
+                  <div
+                    className="flex items-start justify-between gap-2 rounded px-1 py-1"
+                    key={item.id}
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-sm">{item.name}</p>
+                      <p className="text-muted-foreground text-xs">
+                        {formatBytes(item.size)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5 text-xs">
+                      {item.status === "uploading" && (
+                        <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                      )}
+                      {item.status === "completed" && (
+                        <CheckCircle2 className="size-3.5 text-green-600" />
+                      )}
+                      {item.status === "failed" && (
+                        <XCircle className="size-3.5 text-destructive" />
+                      )}
+                      <span
+                        className={
+                          item.status === "failed"
+                            ? "max-w-[180px] truncate text-destructive"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {formatUploadStatus(item)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-xs">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              disabled={isUploading || selectedUploads.length === 0}
+              onClick={() => {
+                void startUploadBatch();
+              }}
+              type="button"
+            >
+              {isUploading && <Loader2 className="size-4 animate-spin" />}
+              {queueDiarizationOnUpload ? "Upload & diarize" : "Upload"}
+            </Button>
+            <Button
+              disabled={isUploading}
+              onClick={() => setIsUploadDialogOpen(false)}
+              type="button"
+              variant="outline"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {isUploading && (
         <div className="fixed right-4 bottom-4 z-50 rounded-md border bg-card px-3 py-2 shadow">
-          {isUploading ? (
-            <div className="flex items-center gap-2 text-sm">
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
-              <span>Uploading source...</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-destructive text-sm">
-              <AlertCircle className="size-4" />
-              <span>{uploadError}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-sm">
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            <span>
+              Uploading {processedUploads}/{totalUploads} files...
+            </span>
+          </div>
         </div>
       )}
     </WorkspaceUploadContext.Provider>

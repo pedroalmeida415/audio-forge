@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { on } from "node:events";
-import { mkdir, open } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { TRPCError } from "@trpc/server";
 import { octetInputParser } from "@trpc/server/http";
 import { and, eq, inArray, not } from "drizzle-orm";
@@ -46,6 +50,20 @@ function hasSourceBulkPatchFields(
   return Object.values(patch).some((value) => value !== undefined);
 }
 
+function parseBooleanHeader(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
 export const sourceRouter = createTRPCRouter({
   upload: protectedProcedure.input(octetInputParser).mutation(
     async ({ ctx, input }) =>
@@ -56,6 +74,9 @@ export const sourceRouter = createTRPCRouter({
           const contentType = ctx.headers.get("x-content-type")?.toLowerCase();
           const projectId = ctx.headers.get("x-project-id");
           const rawFilename = ctx.headers.get("x-filename") ?? "upload";
+          const queueDiarization = parseBooleanHeader(
+            ctx.headers.get("x-queue-diarization"),
+          );
 
           if (
             !contentType ||
@@ -114,17 +135,14 @@ export const sourceRouter = createTRPCRouter({
 
           yield* Effect.tryPromise({
             try: async () => {
-              const fileHandle = await open(stagingPath, "w");
-              try {
-                const reader = input.getReader();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  await fileHandle.write(value);
-                }
-              } finally {
-                await fileHandle.close();
-              }
+              const readableStream = Readable.fromWeb(
+                input as unknown as NodeReadableStream<Uint8Array>,
+              );
+              const writableStream = createWriteStream(stagingPath, {
+                flags: "w",
+              });
+
+              await pipeline(readableStream, writableStream);
             },
             catch: (error) =>
               new TRPCError({
@@ -163,7 +181,10 @@ export const sourceRouter = createTRPCRouter({
           yield* QueueService.enqueueJob(
             Queues.AudioProcessing,
             AudioJobs.IngestSource,
-            { entryId: source.id },
+            {
+              entryId: source.id,
+              queueDiarization,
+            },
           ).pipe(
             Effect.catchAll((error) =>
               Effect.gen(function* () {
