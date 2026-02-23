@@ -1,5 +1,6 @@
 import type { Readable } from "node:stream";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Data, Effect } from "effect";
 import { env } from "~/env";
@@ -103,14 +104,33 @@ export class StorageService extends Effect.Service<StorageService>()(
         }) =>
           Effect.tryPromise({
             try: async () => {
-              const command = new PutObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-                Body: params.body,
-                ContentType: params.contentType,
-                ContentLength: params.contentLength,
+              const upload = new Upload({
+                client,
+                params: {
+                  Bucket: bucket,
+                  Key: params.key,
+                  Body: params.body,
+                  ContentType: params.contentType,
+                },
               });
-              await client.send(command);
+
+              upload.on("httpUploadProgress", (progress) => {
+                const loaded = progress.loaded ?? 0;
+                if (progress.total) {
+                  const percentage = Math.round(
+                    (loaded / progress.total) * 100,
+                  );
+                  console.log(
+                    `[StorageService] Uploading ${params.key}: ${percentage}% (${loaded}/${progress.total} bytes)`,
+                  );
+                } else {
+                  console.log(
+                    `[StorageService] Uploading ${params.key}: ${loaded} bytes loaded`,
+                  );
+                }
+              });
+
+              await upload.done();
             },
             catch: (error) =>
               new StorageError({
