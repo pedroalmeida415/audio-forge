@@ -1,11 +1,5 @@
-import { createReadStream, createWriteStream, statSync } from "node:fs";
 import type { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Data, Effect } from "effect";
 import { env } from "~/env";
@@ -63,127 +57,71 @@ export class StorageService extends Effect.Service<StorageService>()(
       const bucket = env.CLOUDFLARE_R2_BUCKET;
 
       return {
-        generatePresignedUploadUrl: (params: {
-          fileName: string;
-          contentType: string;
-          userId: string;
-        }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const key = `diarization/${params.userId}/${Date.now()}-${params.fileName}`;
-              const command = new PutObjectCommand({
-                Bucket: bucket,
-                Key: key,
-                ContentType: params.contentType,
-              });
-              const url = await getSignedUrl(client, command, {
-                expiresIn: 3600,
-              });
-              const expiresAt = new Date(Date.now() + 3600 * 1000);
-              return { url, key, expiresAt } satisfies PresignedUrlResult;
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "upload",
-                message: "Failed to generate presigned upload URL",
-                cause: error,
-              }),
-          }),
-
-        generatePresignedDownloadUrl: (params: {
+        generatePresignedUrl: (params: {
           key: string;
+          operation: "upload" | "download";
+          contentType?: string;
           expiresIn?: number;
         }) =>
           Effect.tryPromise({
             try: async () => {
-              const command = new GetObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-              });
-              return getSignedUrl(client, command, {
-                expiresIn: params.expiresIn ?? 3600,
-              });
+              const command =
+                params.operation === "upload"
+                  ? new PutObjectCommand({
+                      Bucket: bucket,
+                      Key: params.key,
+                      ContentType: params.contentType,
+                    })
+                  : new GetObjectCommand({
+                      Bucket: bucket,
+                      Key: params.key,
+                    });
+
+              const expiresIn = params.expiresIn ?? 3600;
+              const url = await getSignedUrl(client, command, { expiresIn });
+              const expiresAt = new Date(Date.now() + expiresIn * 1000);
+              return {
+                url,
+                key: params.key,
+                expiresAt,
+              } satisfies PresignedUrlResult;
             },
             catch: (error) =>
               new StorageError({
-                operation: "download",
-                message: "Failed to generate presigned download URL",
+                operation: params.operation,
+                message: `Failed to generate presigned ${params.operation} URL`,
                 key: params.key,
                 cause: error,
               }),
           }),
 
-        deleteObject: (params: { key: string }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const command = new DeleteObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-              });
-              await client.send(command);
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "delete",
-                message: "Failed to delete object",
-                key: params.key,
-                cause: error,
-              }),
-          }),
-
-        uploadFromPath: (params: {
-          localPath: string;
+        upload: (params: {
           key: string;
-          contentType: string;
-        }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const stats = statSync(params.localPath);
-              const fileStream = createReadStream(params.localPath);
-              const command = new PutObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-                Body: fileStream,
-                ContentType: params.contentType,
-                ContentLength: stats.size,
-              });
-              await client.send(command);
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "upload",
-                message: "Failed to upload file from path",
-                key: params.key,
-                cause: error,
-              }),
-          }),
-
-        uploadBuffer: (params: {
-          key: string;
-          data: Buffer;
-          contentType: string;
+          body: Buffer | Readable | string | Uint8Array;
+          contentType?: string;
+          contentLength?: number;
         }) =>
           Effect.tryPromise({
             try: async () => {
               const command = new PutObjectCommand({
                 Bucket: bucket,
                 Key: params.key,
-                Body: params.data,
+                Body: params.body,
                 ContentType: params.contentType,
-                ContentLength: params.data.length,
+                ContentLength: params.contentLength,
               });
               await client.send(command);
             },
             catch: (error) =>
               new StorageError({
                 operation: "upload",
-                message: "Failed to upload buffer",
+                message: "Failed to upload file",
                 key: params.key,
                 cause: error,
               }),
           }),
 
-        downloadToPath: (params: { key: string; localPath: string }) =>
+        download: (params: { key: string }) =>
           Effect.tryPromise({
             try: async () => {
               const command = new GetObjectCommand({
@@ -191,14 +129,12 @@ export class StorageService extends Effect.Service<StorageService>()(
                 Key: params.key,
               });
               const response = await client.send(command);
-              const stream = response.Body as Readable;
-              const writeStream = createWriteStream(params.localPath);
-              await pipeline(stream, writeStream);
+              return response.Body;
             },
             catch: (error) =>
               new StorageError({
                 operation: "download",
-                message: "Failed to download file to path",
+                message: "Failed to download file",
                 key: params.key,
                 cause: error,
               }),

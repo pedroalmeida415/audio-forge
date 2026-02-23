@@ -31,7 +31,7 @@ export const ServicesLive = Layer.mergeAll(
  *
  * const result = await AppRuntime.runPromise(
  *   Effect.gen(function* () {
- *     yield* StorageService.generatePresignedUploadUrl({ ... });
+ *     yield* StorageService.generatePresignedUrl({ ... });
  *     yield* QueueService.enqueue(Queues.WaveformGeneration, { ... });
  *   })
  * );

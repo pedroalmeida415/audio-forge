@@ -1,8 +1,10 @@
 import {
+  createReadStream,
   createWriteStream,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -216,9 +218,9 @@ const createClipFromBuffer = (params: {
     );
 
     // Upload buffer to R2
-    yield* StorageService.uploadBuffer({
+    yield* StorageService.upload({
       key: clipStorageKey,
-      data: audioBuffer,
+      body: audioBuffer,
       contentType,
     });
 
@@ -328,9 +330,9 @@ const ensureClipExists = (segmentId: string) =>
     const clipStorageKey = `clips/${segment.speaker.userId}/${segmentId}.flac`;
 
     // Upload buffer to R2
-    yield* StorageService.uploadBuffer({
+    yield* StorageService.upload({
       key: clipStorageKey,
-      data: audioBuffer,
+      body: audioBuffer,
       contentType: "audio/flac",
     });
 
@@ -553,10 +555,12 @@ const handleIngestSource: JobHandler = async (job) => {
 
       const audioStorageKey = `sources/${source.userId}/${Date.now()}-${sourceId}.flac`;
       console.log(`[IngestSource] Uploading FLAC to R2 for ${sourceId}`);
-      yield* StorageService.uploadFromPath({
-        localPath: flacPath,
+      const flacStats = statSync(flacPath);
+      yield* StorageService.upload({
         key: audioStorageKey,
+        body: createReadStream(flacPath),
         contentType: "audio/flac",
+        contentLength: flacStats.size,
       });
 
       console.log(`[IngestSource] Generating waveform for ${sourceId}`);
@@ -595,8 +599,9 @@ const handleIngestSource: JobHandler = async (job) => {
         console.log(`[IngestSource] Auto-queueing diarization for ${sourceId}`);
 
         const diarizationUpdate = yield* Effect.gen(function* () {
-          const audioUrl = yield* StorageService.generatePresignedDownloadUrl({
+          const { url: audioUrl } = yield* StorageService.generatePresignedUrl({
             key: audioStorageKey,
+            operation: "download",
             expiresIn: 7200,
           });
 
@@ -1178,18 +1183,21 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           const timestamp = Date.now();
           const exportKey = `exports/${userId}/${timestamp}-${speakerId.slice(0, 8)}.zip`;
 
-          yield* StorageService.uploadFromPath({
-            localPath: zipPath,
+          const zipStats = statSync(zipPath);
+          yield* StorageService.upload({
             key: exportKey,
+            body: createReadStream(zipPath),
             contentType: "application/zip",
+            contentLength: zipStats.size,
           });
 
           console.log(`[LJSpeechExport] Uploaded to R2: ${exportKey}`);
 
           // Generate presigned download URL (24h expiry)
-          const downloadUrl =
-            yield* StorageService.generatePresignedDownloadUrl({
+          const { url: downloadUrl } =
+            yield* StorageService.generatePresignedUrl({
               key: exportKey,
+              operation: "download",
               expiresIn: 24 * 60 * 60, // 24 hours
             });
 

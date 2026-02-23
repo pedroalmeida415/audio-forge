@@ -401,12 +401,12 @@ export const sourceRouter = createTRPCRouter({
             }
 
             // Generate presigned download URL for Pyannote
-            const audioUrl = yield* StorageService.generatePresignedDownloadUrl(
-              {
+            const { url: audioUrl } =
+              yield* StorageService.generatePresignedUrl({
                 key: source.storageKey,
+                operation: "download",
                 expiresIn: 7200,
-              },
-            );
+              });
 
             // Submit diarization job
             const jobResult = yield* PyannoteService.submitJob({
