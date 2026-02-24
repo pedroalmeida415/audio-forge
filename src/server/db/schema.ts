@@ -267,7 +267,7 @@ export const speakers = pgTable(
 
     // Source link (set for diarization speakers)
     sourceId: uuid("source_id").references(() => sources.id, {
-      onDelete: "set null",
+      onDelete: "cascade",
     }),
     origin: speakerOrigin("origin").notNull().default("user"),
 
