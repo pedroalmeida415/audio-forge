@@ -1,5 +1,9 @@
 import type { Readable } from "node:stream";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Data, Effect } from "effect";
@@ -155,6 +159,24 @@ export class StorageService extends Effect.Service<StorageService>()(
               new StorageError({
                 operation: "download",
                 message: "Failed to download file",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        delete: (params: { key: string }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const command = new DeleteObjectCommand({
+                Bucket: bucket,
+                Key: params.key,
+              });
+              await client.send(command);
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "delete",
+                message: "Failed to delete file",
                 key: params.key,
                 cause: error,
               }),

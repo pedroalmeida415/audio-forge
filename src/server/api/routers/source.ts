@@ -390,6 +390,19 @@ export const sourceRouter = createTRPCRouter({
               );
             }
 
+            if (source.storageKey) {
+              yield* StorageService.delete({ key: source.storageKey }).pipe(
+                Effect.catchAll((error) =>
+                  Effect.fail(
+                    new TRPCError({
+                      code: "INTERNAL_SERVER_ERROR",
+                      message: `Failed to delete source audio from R2: ${error.message}`,
+                    }),
+                  ),
+                ),
+              );
+            }
+
             yield* db.delete(sources).where(eq(sources.id, input.id));
 
             return { success: true };
