@@ -1,6 +1,6 @@
 "use client";
 
-import type { ColumnDef, RowData } from "@tanstack/react-table";
+import type { ColumnDef, RowData, Table } from "@tanstack/react-table";
 import { PencilIcon } from "lucide-react";
 import { useQueryStates } from "nuqs";
 import { useSnapshot } from "valtio";
@@ -39,30 +39,82 @@ declare module "@tanstack/react-table" {
 // Cell Components
 // ============================================================================
 
-function SelectAllCheckbox() {
+function SelectAllCheckbox({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
   const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
     useSnapshot(store);
 
-  const checked: boolean | "indeterminate" =
-    isAllSelected && excludedSegmentIds.size === 0
-      ? true
-      : isAllSelected || selectedSegmentIds.size > 0
-        ? "indeterminate"
-        : false;
+  const activeFilters = table.getState().columnFilters.length > 0;
+
+  let checked: boolean | "indeterminate" = false;
+
+  if (!activeFilters) {
+    checked =
+      isAllSelected && excludedSegmentIds.size === 0
+        ? true
+        : isAllSelected || selectedSegmentIds.size > 0
+          ? "indeterminate"
+          : false;
+  } else {
+    const filteredRows = table.getFilteredRowModel().rows;
+    const filteredCount = filteredRows.length;
+
+    if (filteredCount === 0) {
+      checked = false;
+    } else if (isAllSelected && excludedSegmentIds.size === 0) {
+      checked = true;
+    } else if (!isAllSelected && selectedSegmentIds.size === 0) {
+      checked = false;
+    } else {
+      let selectedCount = 0;
+      for (let i = 0; i < filteredCount; i++) {
+        const row = filteredRows[i];
+        if (!row) continue;
+        const id = row.original.id;
+        if (
+          isAllSelected
+            ? !excludedSegmentIds.has(id)
+            : selectedSegmentIds.has(id)
+        ) {
+          selectedCount++;
+        }
+      }
+
+      checked =
+        selectedCount === filteredCount
+          ? true
+          : selectedCount > 0
+            ? "indeterminate"
+            : false;
+    }
+  }
+
+  const handleCheckedChange = (value: boolean | "indeterminate") => {
+    if (activeFilters) {
+      const filteredIds = table
+        .getFilteredRowModel()
+        .rows.map((r) => r.original.id);
+      if (value) {
+        store.selectMultiple(filteredIds);
+      } else {
+        store.deselectMultiple(filteredIds);
+      }
+    } else {
+      if (value) {
+        store.selectAll();
+      } else {
+        store.clearSelection();
+      }
+    }
+  };
 
   return (
     <div className="flex justify-center">
       <Checkbox
         checked={checked}
-        onCheckedChange={(value) => {
-          if (value) {
-            store.selectAll();
-          } else {
-            store.clearSelection();
-          }
-        }}
-        aria-label="Select all"
+        onCheckedChange={handleCheckedChange}
+        aria-label={activeFilters ? "Select all filtered" : "Select all"}
       />
     </div>
   );
@@ -257,7 +309,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
   return [
     {
       id: "select",
-      header: () => <SelectAllCheckbox />,
+      header: ({ table }) => <SelectAllCheckbox table={table} />,
       cell: ({ row }) => <SelectCell segmentId={row.original.id} />,
       size: 40,
       enableSorting: false,
@@ -290,7 +342,9 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     },
     {
       id: "clip",
+      accessorFn: (row) => !!row.clip,
       header: "Clip",
+      filterFn: "equals",
       cell: ({ row }) => {
         const segment = row.original;
         const duration = segment.endTime - segment.startTime;
@@ -310,8 +364,20 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     },
     {
       id: "score",
-      accessorFn: (row) => row.clip?.scores?.DNSMOS?.P808_MOS ?? -1,
+      accessorFn: (row) => row.clip?.scores?.DNSMOS?.P808_MOS ?? null,
       header: "Score",
+      filterFn: (
+        row,
+        columnId,
+        filterValue: [number | undefined, number | undefined],
+      ) => {
+        const value = row.getValue<number | null>(columnId);
+        if (value === null) return false;
+        const [min, max] = filterValue;
+        if (min !== undefined && value < min) return false;
+        if (max !== undefined && value > max) return false;
+        return true;
+      },
       cell: ({ row }) => (
         <ScoreCell
           score={row.original.clip?.scores?.DNSMOS?.P808_MOS ?? null}
@@ -326,6 +392,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       id: "duration",
       accessorFn: (row) => row.endTime - row.startTime,
       header: "Duration",
+      filterFn: "inNumberRange",
       cell: ({ row }) => {
         const duration = row.original.endTime - row.original.startTime;
         return <DurationCell duration={duration} />;
@@ -338,6 +405,12 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     {
       id: "transcription",
       header: "Transcription",
+      accessorFn: (row) => row.transcription,
+      filterFn: (row, columnId, filterValue: boolean) => {
+        if (filterValue === undefined) return true;
+        const hasTrans = !!row.getValue(columnId);
+        return filterValue ? hasTrans : !hasTrans;
+      },
       cell: ({ row }) => (
         <TranscriptionCell transcription={row.original.transcription} />
       ),

@@ -65,6 +65,30 @@ export class WorkspaceStore {
     }
   }
 
+  selectMultiple(ids: string[]) {
+    if (this.isAllSelected) {
+      for (const id of ids) {
+        this.excludedSegmentIds.delete(id);
+      }
+    } else {
+      for (const id of ids) {
+        this.selectedSegmentIds.add(id);
+      }
+    }
+  }
+
+  deselectMultiple(ids: string[]) {
+    if (this.isAllSelected) {
+      for (const id of ids) {
+        this.excludedSegmentIds.add(id);
+      }
+    } else {
+      for (const id of ids) {
+        this.selectedSegmentIds.delete(id);
+      }
+    }
+  }
+
   selectAll() {
     this.isAllSelected = true;
     this.selectedSegmentIds.clear();

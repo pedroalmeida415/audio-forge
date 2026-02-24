@@ -1,0 +1,222 @@
+"use client";
+
+import type { Table } from "@tanstack/react-table";
+import { ListFilter, RotateCcw } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
+import { Separator } from "~/components/ui/separator";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
+
+interface TableFilterPopoverProps {
+  table: Table<SegmentWithClip>;
+}
+
+export function TableFilterPopover({ table }: TableFilterPopoverProps) {
+  "use no memo";
+  const [open, setOpen] = useState(false);
+
+  // Active filters count
+  const activeFilters = table.getState().columnFilters.length;
+
+  const handleReset = useCallback(() => {
+    table.resetColumnFilters();
+  }, [table]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 border-dashed">
+          <ListFilter className="mr-2 size-4" />
+          Filter
+          {activeFilters > 0 && (
+            <>
+              <Separator orientation="vertical" className="mx-2 h-4" />
+              <span className="flex size-5 items-center justify-center rounded bg-secondary font-mono text-[10px]">
+                {activeFilters}
+              </span>
+            </>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-0" align="start">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <span className="font-semibold text-sm">Filter Segments</span>
+          {activeFilters > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleReset}
+              className="h-auto p-1 text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcw className="mr-1 size-3" />
+              <span className="text-xs">Reset</span>
+            </Button>
+          )}
+        </div>
+        <div className="grid gap-4 p-4">
+          <DurationFilter table={table} />
+          <ScoreFilter table={table} />
+          <BooleanFilters table={table} />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function DurationFilter({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
+  const column = table.getColumn("duration");
+  if (!column) return null;
+
+  const filterValue = column.getFilterValue() as [number, number] | undefined;
+  const minMax = column.getFacetedMinMaxValues() as
+    | [number, number]
+    | undefined;
+
+  const min = minMax?.[0] ?? 0;
+  const max = minMax?.[1] ?? 0;
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">Duration (s)</Label>
+        {minMax && (
+          <span className="text-[10px] text-muted-foreground">
+            {min.toFixed(1)} - {max.toFixed(1)}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          placeholder="Min"
+          value={filterValue?.[0] ?? ""}
+          onChange={(e) =>
+            column.setFilterValue((old: [number, number] | undefined) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              if (val === undefined && old?.[1] === undefined) return undefined;
+              return [val, old?.[1]];
+            })
+          }
+          className="h-8 text-xs"
+        />
+        <span className="text-muted-foreground text-xs">-</span>
+        <Input
+          type="number"
+          placeholder="Max"
+          value={filterValue?.[1] ?? ""}
+          onChange={(e) =>
+            column.setFilterValue((old: [number, number] | undefined) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              if (old?.[0] === undefined && val === undefined) return undefined;
+              return [old?.[0], val];
+            })
+          }
+          className="h-8 text-xs"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ScoreFilter({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
+  const column = table.getColumn("score");
+  if (!column) return null;
+
+  const filterValue = column.getFilterValue() as [number, number] | undefined;
+  const minMax = column.getFacetedMinMaxValues() as
+    | [number, number]
+    | undefined;
+
+  const min = minMax?.[0] ?? 0;
+  const max = minMax?.[1] ?? 5; // Default score max is 5
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">Score</Label>
+        {minMax && (
+          <span className="text-[10px] text-muted-foreground">
+            {min.toFixed(1)} - {max.toFixed(1)}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          placeholder="Min"
+          step="0.1"
+          value={filterValue?.[0] ?? ""}
+          onChange={(e) =>
+            column.setFilterValue((old: [number, number] | undefined) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              if (val === undefined && old?.[1] === undefined) return undefined;
+              return [val, old?.[1]];
+            })
+          }
+          className="h-8 text-xs"
+        />
+        <span className="text-muted-foreground text-xs">-</span>
+        <Input
+          type="number"
+          placeholder="Max"
+          step="0.1"
+          value={filterValue?.[1] ?? ""}
+          onChange={(e) =>
+            column.setFilterValue((old: [number, number] | undefined) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              if (old?.[0] === undefined && val === undefined) return undefined;
+              return [old?.[0], val];
+            })
+          }
+          className="h-8 text-xs"
+        />
+      </div>
+    </div>
+  );
+}
+
+function BooleanFilters({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
+  const transColumn = table.getColumn("transcription");
+  const clipColumn = table.getColumn("clip");
+
+  const transValue = transColumn?.getFilterValue() as boolean | undefined;
+  const clipValue = clipColumn?.getFilterValue() as boolean | undefined;
+
+  return (
+    <div className="grid gap-3 pt-2">
+      {transColumn && (
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={transValue === true}
+            onCheckedChange={(checked) => {
+              transColumn.setFilterValue(checked === true ? true : undefined);
+            }}
+          />
+          <span className="text-sm">Has transcription</span>
+        </label>
+      )}
+      {clipColumn && (
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={clipValue === true}
+            onCheckedChange={(checked) => {
+              clipColumn.setFilterValue(checked === true ? true : undefined);
+            }}
+          />
+          <span className="text-sm">Has clip processed</span>
+        </label>
+      )}
+    </div>
+  );
+}

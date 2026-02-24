@@ -4,6 +4,7 @@ import { Loader2, Trash2, UserRoundCog } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
+import type { Table } from "@tanstack/react-table";
 import { useSnapshot } from "valtio";
 import {
   AlertDialog,
@@ -23,9 +24,12 @@ import {
   useWorkspaceDeleteSegmentsMutation,
 } from "~/features/workspace/hooks/use-workspace-mutations";
 import { workspaceParams } from "~/features/workspace/search-params";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { api } from "~/trpc/react";
+import { TableFilterPopover } from "./segments-table-filter";
 
-export function TableToolbar() {
+export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
   const { projectId } = useParams<{ projectId: string }>();
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
@@ -95,26 +99,30 @@ export function TableToolbar() {
   return (
     <>
       <div className="flex shrink-0 items-center justify-between border-border border-b bg-muted/30 px-4 py-2">
-        <div className="text-muted-foreground text-sm">
-          {hasSelection ? (
-            <span>
-              {isAllSelected && excludedSegmentIds.size === 0 ? (
-                <>
-                  <span className="font-medium text-foreground">All</span>{" "}
-                  segments selected ({totalCount})
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">
-                    {selectedCount}
-                  </span>{" "}
-                  segment{selectedCount !== 1 ? "s" : ""} selected
-                </>
-              )}
-            </span>
-          ) : (
-            <span>No segments selected</span>
-          )}
+        <div className="flex items-center gap-4">
+          <TableFilterPopover table={table} />
+
+          <div className="text-muted-foreground text-sm">
+            {hasSelection ? (
+              <span>
+                {isAllSelected && excludedSegmentIds.size === 0 ? (
+                  <>
+                    <span className="font-medium text-foreground">All</span>{" "}
+                    segments selected ({totalCount})
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-foreground">
+                      {selectedCount}
+                    </span>{" "}
+                    segment{selectedCount !== 1 ? "s" : ""} selected
+                  </>
+                )}
+              </span>
+            ) : (
+              <span>No segments selected</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

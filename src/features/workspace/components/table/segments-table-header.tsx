@@ -16,7 +16,7 @@ export function SegmentsTableHeader({ table }: SegmentsTableHeaderProps) {
     <thead className="sticky top-14 z-10 grid rounded-t-lg bg-card">
       <tr style={{ display: "block" }}>
         <th className="block p-0 text-left font-normal">
-          <TableToolbar />
+          <TableToolbar table={table} />
         </th>
       </tr>
       {table.getHeaderGroups().map((headerGroup) => (
