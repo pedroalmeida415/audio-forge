@@ -1,8 +1,29 @@
 "use client";
 
-import { Loader2, Upload } from "lucide-react";
+import { Edit2, Loader2, Trash2, Upload } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryStates } from "nuqs";
+import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
+
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -33,6 +54,28 @@ export function SourcePicker() {
   const selectedStatus = sourceId ? ingestStatus : null;
   const isIngesting =
     selectedStatus === "pending" || selectedStatus === "processing";
+
+  const utils = api.useUtils();
+  const [showRename, setShowRename] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [sourceToManage, setSourceToManage] = useState<{ id: string } | null>(
+    null,
+  );
+
+  const renameMutation = api.source.rename.useMutation({
+    onSuccess: () => {
+      setShowRename(false);
+      void utils.source.listByProject.invalidate();
+    },
+  });
+  const deleteMutation = api.source.delete.useMutation({
+    onSuccess: () => {
+      setShowDelete(false);
+      handleSelectSource(null);
+      void utils.source.listByProject.invalidate();
+    },
+  });
 
   const handleSelectSource = (id: string | null) => {
     void setQueryState({ sourceId: id, activeSegmentId: null });
@@ -79,9 +122,19 @@ export function SourcePicker() {
               </div>
             )}
             {sources.map((source) => (
-              <SelectItem key={source.id} value={source.id}>
-                {source.name ?? source.storageKey?.split("/").pop()}
-              </SelectItem>
+              <SourceItem
+                key={source.id}
+                source={source}
+                onRename={(name) => {
+                  setSourceToManage(source);
+                  setNewName(name);
+                  setShowRename(true);
+                }}
+                onDelete={() => {
+                  setSourceToManage(source);
+                  setShowDelete(true);
+                }}
+              />
             ))}
           </SelectGroup>
         </SelectContent>
@@ -92,6 +145,152 @@ export function SourcePicker() {
       {selectedStatus === "failed" && (
         <span className="text-destructive text-xs">(failed)</span>
       )}
+      {sourceToManage && (
+        <>
+          <Dialog open={showRename} onOpenChange={setShowRename}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename Source</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="source-name">Name</Label>
+                  <Input
+                    id="source-name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newName.trim()) {
+                        renameMutation.mutate({
+                          id: sourceToManage.id,
+                          name: newName.trim(),
+                        });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRename(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() =>
+                    renameMutation.mutate({
+                      id: sourceToManage.id,
+                      name: newName.trim(),
+                    })
+                  }
+                  disabled={!newName.trim() || renameMutation.isPending}
+                >
+                  {renameMutation.isPending && (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  )}
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Source?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete this source and all its
+                  associated segments and clips. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  onClick={() =>
+                    deleteMutation.mutate({ id: sourceToManage.id })
+                  }
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending && (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  )}
+                  Delete Source
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </div>
+  );
+}
+
+function SourceItem({
+  source,
+  onRename,
+  onDelete,
+}: {
+  source: {
+    id: string;
+    name: string | null;
+    storageKey: string | null;
+    duration: number | null;
+    ingestStatus: string | null;
+    ingestError: string | null;
+    waveformStatus: string | null;
+    waveformError: string | null;
+    diarizationStatus: string | null;
+    createdAt: Date;
+  };
+  onRename: (name: string) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <SelectItem value={source.id} className="group pr-20">
+      <span className="flex-1 truncate">
+        {source.name ?? source.storageKey?.split("/").pop()}
+      </span>
+      <div className="absolute right-8 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRename(source.name ?? "");
+          }}
+        >
+          <Edit2 className="size-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Trash2 className="size-3" />
+        </Button>
+      </div>
+    </SelectItem>
   );
 }

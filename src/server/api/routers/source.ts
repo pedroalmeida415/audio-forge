@@ -315,6 +315,7 @@ export const sourceRouter = createTRPCRouter({
                 ingestError: true,
                 waveformStatus: true,
                 waveformError: true,
+                diarizationStatus: true,
                 createdAt: true,
               },
             });
@@ -361,6 +362,41 @@ export const sourceRouter = createTRPCRouter({
         ),
     ),
 
+  // Delete source
+  delete: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+      }),
+    )
+    .mutation(
+      async ({ ctx, input }) =>
+        await ctx.runtime.runPromise(
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const source = yield* db.query.sources.findFirst({
+              where: and(
+                eq(sources.id, input.id),
+                eq(sources.userId, ctx.session.user.id),
+              ),
+            });
+
+            if (!source) {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "Source not found",
+                }),
+              );
+            }
+
+            yield* db.delete(sources).where(eq(sources.id, input.id));
+
+            return { success: true };
+          }),
+        ),
+    ),
+
   // Start diarization for this source
   startDiarization: protectedProcedure
     .input(
@@ -396,6 +432,15 @@ export const sourceRouter = createTRPCRouter({
                 new TRPCError({
                   code: "BAD_REQUEST",
                   message: "Source has no audio data",
+                }),
+              );
+            }
+
+            if (source.diarizationStatus === "completed") {
+              return yield* Effect.fail(
+                new TRPCError({
+                  code: "BAD_REQUEST",
+                  message: "Source has already been diarized",
                 }),
               );
             }
