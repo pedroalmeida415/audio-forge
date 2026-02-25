@@ -90,6 +90,8 @@ async function invalidateWorkspaceSegmentCaches(
     invalidations.push(utils.segment.getBySpeaker.invalidate());
   }
 
+  invalidations.push(utils.speaker.invalidate());
+
   await Promise.all(invalidations);
 }
 

@@ -720,6 +720,16 @@ export const sourceRouter = createTRPCRouter({
               .where(and(...conditions))
               .returning({ id: segments.id });
 
+            if (
+              input.patch.speakerId !== undefined &&
+              currentSpeaker.origin === "diarization" &&
+              excludedSegmentIds.length === 0
+            ) {
+              yield* db
+                .delete(speakers)
+                .where(eq(speakers.id, input.speakerId));
+            }
+
             return { success: true, updatedCount: updatedSegments.length };
           }),
         ),

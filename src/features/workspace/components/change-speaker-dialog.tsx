@@ -41,7 +41,7 @@ interface ChangeSpeakerDialogProps {
   sourceId?: string | null;
   speakerId: string;
   speakerName: string;
-  onSuccess: () => void;
+  onSuccess: (targetSpeakerId: string | null) => void;
 }
 
 export function ChangeSpeakerDialog({
@@ -68,7 +68,7 @@ export function ChangeSpeakerDialog({
     api.speaker.getByProject.useQuery({ projectId }, { enabled: open });
 
   const handleMutationSuccess = () => {
-    onSuccess();
+    onSuccess(selectedSpeakerId);
     onOpenChange(false);
     setSelectedSpeakerId(null);
   };

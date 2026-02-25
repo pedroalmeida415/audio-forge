@@ -1,10 +1,10 @@
 "use client";
 
+import type { Table } from "@tanstack/react-table";
 import { Loader2, Trash2, UserRoundCog } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
-import type { Table } from "@tanstack/react-table";
 import { useSnapshot } from "valtio";
 import {
   AlertDialog,
@@ -32,7 +32,10 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
   "use no memo";
   const { projectId } = useParams<{ projectId: string }>();
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
-  const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
+  const [speakerId, setSpeakerId] = useQueryState(
+    "speakerId",
+    workspaceParams.speakerId,
+  );
 
   const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
@@ -197,7 +200,16 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
           sourceId={sourceId}
           speakerId={speakerId}
           speakerName={currentSpeaker?.name ?? "Unknown"}
-          onSuccess={() => store.clearSelection()}
+          onSuccess={(targetSpeakerId) => {
+            store.clearSelection();
+            if (
+              isAllSelected &&
+              excludedSegmentIds.size === 0 &&
+              targetSpeakerId
+            ) {
+              setSpeakerId(targetSpeakerId).catch(console.error);
+            }
+          }}
         />
       )}
     </>
