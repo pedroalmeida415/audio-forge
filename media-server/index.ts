@@ -98,8 +98,8 @@ app.get("/health", (c) => {
 // Audio streaming endpoint (auth required)
 app.get("/audio", authMiddleware, async (c) => {
   const storageKey = c.req.query("storageKey");
-  const startMsParam = c.req.query("startMs");
-  const endMsParam = c.req.query("endMs");
+  const startParam = c.req.query("start");
+  const endParam = c.req.query("end");
   const format = c.req.query("format"); // "flac" for lossless slice (workers)
 
   // storageKey is already validated by auth middleware
@@ -112,15 +112,15 @@ app.get("/audio", authMiddleware, async (c) => {
     const localPath = await cache.getOrDownload(storageKey);
 
     // If time range provided, return slice
-    if (startMsParam && endMsParam) {
-      const startMs = Number(startMsParam);
-      const endMs = Number(endMsParam);
+    if (startParam && endParam) {
+      const start = Number(startParam);
+      const end = Number(endParam);
 
       if (
-        Number.isNaN(startMs) ||
-        Number.isNaN(endMs) ||
-        startMs < 0 ||
-        endMs <= startMs
+        Number.isNaN(start) ||
+        Number.isNaN(end) ||
+        start < 0 ||
+        end <= start
       ) {
         return c.json({ error: "Invalid time range" }, 400);
       }
@@ -128,10 +128,10 @@ app.get("/audio", authMiddleware, async (c) => {
       // format=flac: Return FLAC slice (for workers needing lossless audio)
       // default: Return fMP4 slice (for browser MSE playback)
       if (format === "flac") {
-        return extractFlacSlice({ localPath, startMs, endMs });
+        return extractFlacSlice({ localPath, start, end });
       }
 
-      return streamAudioSlice({ localPath, startMs, endMs });
+      return streamAudioSlice({ localPath, start, end });
     }
 
     // Otherwise stream raw file (for workers downloading full file)

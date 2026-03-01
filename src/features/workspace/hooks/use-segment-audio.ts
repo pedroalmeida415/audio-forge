@@ -56,15 +56,12 @@ export function useSegmentAudio({
     setSourceState("loading");
 
     try {
-      const startMs = Math.floor(startTime * 1000);
-      const endMs = Math.ceil(endTime * 1000);
-
       const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
       if (!mediaServerUrl) {
         throw new Error("NEXT_PUBLIC_MEDIA_SERVER_URL is not configured");
       }
 
-      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(sessionFileStorageKey)}&startMs=${startMs}&endMs=${endMs}`;
+      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(sessionFileStorageKey)}&start=${startTime}&end=${endTime}`;
 
       const response = await fetch(url, {
         credentials: "include",

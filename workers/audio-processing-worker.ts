@@ -47,12 +47,12 @@ const speechProcessingServerUrl =
  */
 const fetchSliceFromMediaServer = (params: {
   storageKey: string;
-  startMs: number;
-  endMs: number;
+  start: number;
+  end: number;
 }) =>
   Effect.tryPromise({
     try: async () => {
-      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(params.storageKey)}&startMs=${params.startMs}&endMs=${params.endMs}&format=flac`;
+      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(params.storageKey)}&start=${params.start}&end=${params.end}&format=flac`;
       const headers: Record<string, string> = {};
 
       if (mediaServerToken) {
@@ -176,13 +176,10 @@ const extractSegmentAudio = (segmentId: string) =>
     );
 
     // Fetch slice from media server
-    const startMs = segment.startTime * 1000;
-    const endMs = segment.endTime * 1000;
-
     const audioBuffer = yield* fetchSliceFromMediaServer({
       storageKey: sourceStorageKey,
-      startMs,
-      endMs,
+      start: segment.startTime,
+      end: segment.endTime,
     });
 
     const context: SegmentContext = {
@@ -317,13 +314,10 @@ const ensureClipExists = (segmentId: string) =>
     );
 
     // Fetch slice directly from media server (no need for temp files)
-    const startMs = segment.startTime * 1000;
-    const endMs = segment.endTime * 1000;
-
     const audioBuffer = yield* fetchSliceFromMediaServer({
       storageKey: sourceStorageKey,
-      startMs,
-      endMs,
+      start: segment.startTime,
+      end: segment.endTime,
     });
 
     // Generate storage key for clip

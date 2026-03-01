@@ -16,29 +16,28 @@ export interface MSEAudioProviderConfig {
   sliceSize?: number; // Seconds per slice, defaults to 15
 }
 
-// Preload next slice when within this many ms of slice boundary
-const PRELOAD_THRESHOLD_MS = 5000;
+const PRELOAD_THRESHOLD = 5.0; // seconds
 
 // Debounce seeking to avoid downloading every slice during scrubbing
 const SEEK_DEBOUNCE_MS = 200;
 
 interface PendingSlice {
-  startMs: number;
-  endMs: number;
+  start: number;
+  end: number;
   promise: Promise<ArrayBuffer>;
 }
 
 export class MSEAudioProvider {
   private storageKey: string;
-  private durationMs: number;
-  private sliceSizeMs: number;
+  private duration: number;
+  private sliceSize: number;
 
   private mediaSource: MediaSource;
   private sourceBuffer: SourceBuffer | null = null;
 
   private pendingSlices: Map<number, PendingSlice> = new Map();
   private fetchedSlices: Set<number> = new Set();
-  private appendQueue: { data: ArrayBuffer; offsetMs: number }[] = [];
+  private appendQueue: { data: ArrayBuffer; offset: number }[] = [];
   private isAppending = false;
   private seekDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -51,8 +50,8 @@ export class MSEAudioProvider {
 
   constructor(config: MSEAudioProviderConfig) {
     this.storageKey = config.storageKey;
-    this.durationMs = Math.round(config.duration * 1000);
-    this.sliceSizeMs = (config.sliceSize ?? 15) * 1000;
+    this.duration = config.duration;
+    this.sliceSize = config.sliceSize ?? 15;
 
     // Bind handlers once for proper cleanup
     this.handleTimeUpdate = this.onTimeUpdate.bind(this);
@@ -143,7 +142,7 @@ export class MSEAudioProvider {
       'audio/mp4; codecs="mp4a.40.2"',
     );
 
-    this.mediaSource.duration = this.durationMs / 1000;
+    this.mediaSource.duration = this.duration;
 
     this.sourceBuffer.addEventListener("updateend", () => {
       this.isAppending = false;
@@ -164,19 +163,18 @@ export class MSEAudioProvider {
   private loadAtTime(time: number): void {
     if (!this.sourceBuffer) return;
 
-    const timeMs = Math.round(time * 1000);
-    const currentSliceIndex = Math.floor(timeMs / this.sliceSizeMs);
+    const currentSliceIndex = Math.floor(time / this.sliceSize);
 
     // Always load current slice
     this.loadSlice(currentSliceIndex);
 
     // Preload next slice if within threshold of slice boundary
-    const nextSliceStartMs = (currentSliceIndex + 1) * this.sliceSizeMs;
-    const msUntilNextSlice = nextSliceStartMs - timeMs;
+    const nextSliceStart = (currentSliceIndex + 1) * this.sliceSize;
+    const timeUntilNextSlice = nextSliceStart - time;
 
     if (
-      msUntilNextSlice <= PRELOAD_THRESHOLD_MS &&
-      nextSliceStartMs < this.durationMs
+      timeUntilNextSlice <= PRELOAD_THRESHOLD &&
+      nextSliceStart < this.duration
     ) {
       this.loadSlice(currentSliceIndex + 1);
     }
@@ -186,38 +184,38 @@ export class MSEAudioProvider {
    * Load a specific slice by index (if not already loaded)
    */
   private loadSlice(sliceIndex: number): void {
-    const startMs = sliceIndex * this.sliceSizeMs;
+    const start = sliceIndex * this.sliceSize;
 
-    if (startMs >= this.durationMs) return;
+    if (start >= this.duration) return;
     if (this.fetchedSlices.has(sliceIndex)) return;
 
-    const endMs = Math.min(startMs + this.sliceSizeMs, this.durationMs);
+    const end = Math.min(start + this.sliceSize, this.duration);
 
     // Check if already buffered
-    const checkTimeMs = Math.min(endMs - 100, startMs + this.sliceSizeMs / 2);
-    if (this.isTimeBuffered(checkTimeMs / 1000)) return;
+    const checkTime = Math.min(end - 0.1, start + this.sliceSize / 2);
+    if (this.isTimeBuffered(checkTime)) return;
 
-    this.fetchAndAppendSlice(sliceIndex, startMs, endMs);
+    this.fetchAndAppendSlice(sliceIndex, start, end);
   }
 
   private async fetchAndAppendSlice(
     sliceIndex: number,
-    startMs: number,
-    endMs: number,
+    start: number,
+    end: number,
   ): Promise<void> {
     this.fetchedSlices.add(sliceIndex);
 
-    const fetchPromise = this.fetchSlice(startMs, endMs);
+    const fetchPromise = this.fetchSlice(start, end);
 
     this.pendingSlices.set(sliceIndex, {
-      startMs,
-      endMs,
+      start,
+      end,
       promise: fetchPromise,
     });
 
     try {
       const data = await fetchPromise;
-      this.queueAppend(data, startMs);
+      this.queueAppend(data, start);
     } catch (e) {
       this.fetchedSlices.delete(sliceIndex);
       console.error("[MSEAudioProvider] Failed to fetch slice:", e);
@@ -226,16 +224,13 @@ export class MSEAudioProvider {
     }
   }
 
-  private async fetchSlice(
-    startMs: number,
-    endMs: number,
-  ): Promise<ArrayBuffer> {
+  private async fetchSlice(start: number, end: number): Promise<ArrayBuffer> {
     const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
     if (!mediaServerUrl) {
       throw new Error("NEXT_PUBLIC_MEDIA_SERVER_URL is not configured");
     }
 
-    const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(this.storageKey)}&startMs=${startMs}&endMs=${endMs}`;
+    const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(this.storageKey)}&start=${start}&end=${end}`;
 
     const response = await fetch(url, {
       credentials: "include",
@@ -248,8 +243,8 @@ export class MSEAudioProvider {
     return response.arrayBuffer();
   }
 
-  private queueAppend(data: ArrayBuffer, offsetMs: number): void {
-    this.appendQueue.push({ data, offsetMs });
+  private queueAppend(data: ArrayBuffer, offset: number): void {
+    this.appendQueue.push({ data, offset });
     this.processAppendQueue();
   }
 
@@ -269,7 +264,7 @@ export class MSEAudioProvider {
     this.isAppending = true;
 
     try {
-      this.sourceBuffer.timestampOffset = item.offsetMs / 1000;
+      this.sourceBuffer.timestampOffset = item.offset;
       this.sourceBuffer.appendBuffer(item.data);
     } catch (e) {
       console.error("[MSEAudioProvider] Error appending buffer:", e);

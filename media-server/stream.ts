@@ -29,9 +29,8 @@ const TEMP_DIR = (() => {
 
 interface StreamSliceOptions {
   localPath: string;
-  startMs: number;
-  endMs: number;
-  bitrate?: string;
+  start: number;
+  end: number;
 }
 
 /**
@@ -43,12 +42,12 @@ interface StreamSliceOptions {
  * - default_base_moof: Required for MSE
  */
 export function streamAudioSlice(options: StreamSliceOptions): Response {
-  const { localPath, startMs, endMs, bitrate = "128k" } = options;
-  const durationMs = endMs - startMs;
+  const { localPath, start, end } = options;
+  const duration = end - start;
 
-  // Convert ms to seconds with 3 decimal places for FFmpeg
-  const startSec = (startMs / 1000).toFixed(3);
-  const durationSec = (durationMs / 1000).toFixed(3);
+  // Convert to string format for FFmpeg
+  const startSec = start.toFixed(6);
+  const durationSec = duration.toFixed(6);
 
   // FFmpeg args for fMP4 streaming
   // -ss before -i for fast seeking (input seeking)
@@ -62,7 +61,7 @@ export function streamAudioSlice(options: StreamSliceOptions): Response {
     "-c:a",
     "aac",
     "-b:a",
-    bitrate,
+    "128k",
     "-f",
     "mp4",
     "-movflags",
@@ -130,17 +129,20 @@ export function streamAudioSlice(options: StreamSliceOptions): Response {
  */
 export async function extractFlacSlice(options: {
   localPath: string;
-  startMs: number;
-  endMs: number;
+  start: number;
+  end: number;
 }): Promise<Response> {
-  const { localPath, startMs, endMs } = options;
-  const durationMs = endMs - startMs;
+  const { localPath, start, end } = options;
+  const duration = end - start;
 
-  const startSec = (startMs / 1000).toFixed(3);
-  const durationSec = (durationMs / 1000).toFixed(3);
+  const startSec = start.toFixed(6);
+  const durationSec = duration.toFixed(6);
 
   // Use a temp file so FFmpeg can seek back and finalize the FLAC header
-  const tempPath = join(TEMP_DIR, `flac-slice-${Date.now()}-${Math.random().toString(36).slice(2)}.flac`);
+  const tempPath = join(
+    TEMP_DIR,
+    `flac-slice-${Date.now()}-${Math.random().toString(36).slice(2)}.flac`,
+  );
 
   const args = [
     "-ss",
@@ -200,10 +202,13 @@ export async function extractFlacSlice(options: {
       } catch (err) {
         console.error("[extractFlacSlice] Failed to read temp file:", err);
         resolve(
-          new Response(JSON.stringify({ error: "Failed to read extracted audio" }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }),
+          new Response(
+            JSON.stringify({ error: "Failed to read extracted audio" }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
         );
       }
     });
