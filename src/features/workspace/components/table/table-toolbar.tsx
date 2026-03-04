@@ -1,10 +1,19 @@
 "use client";
 
 import type { Table } from "@tanstack/react-table";
-import { Loader2, Trash2, UserRoundCog } from "lucide-react";
+import {
+  ChevronDown,
+  Loader2,
+  Sparkles,
+  Subtitles,
+  Trash2,
+  UserRoundCog,
+  Wand2,
+} from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useSnapshot } from "valtio";
 import {
   AlertDialog,
@@ -17,6 +26,12 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { ChangeSpeakerDialog } from "~/features/workspace/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import {
@@ -99,6 +114,42 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
     setShowDeleteDialog(false);
   };
 
+  const queueProcessingMutation = api.segment.queueProcessing.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        `Enqueued ${data.operation} for ${data.segmentCount} segment(s)`,
+      );
+    },
+    onError: (error) => {
+      toast.error(`Failed to enqueue processing: ${error.message}`);
+    },
+  });
+
+  const handleProcess = (
+    operation: "denoise" | "transcribe" | "remove_overlap",
+  ) => {
+    if (!hasSelection) return;
+
+    let segmentIds: string[] = [];
+    if (isAllSelected) {
+      const contextSegments =
+        sourceId && speakerId
+          ? cachedSegments.filter((s) => s.speakerId === speakerId)
+          : cachedSegments;
+
+      segmentIds = contextSegments
+        .filter((s) => !excludedSegmentIds.has(s.id))
+        .map((s) => s.id);
+    } else {
+      segmentIds = Array.from(selectedSegmentIds);
+    }
+
+    if (segmentIds.length === 0) return;
+
+    queueProcessingMutation.mutate({ segmentIds, operation });
+    store.clearSelection();
+  };
+
   return (
     <>
       <div className="flex shrink-0 items-center justify-between border-border border-b bg-muted/30 px-4 py-2">
@@ -129,6 +180,34 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasSelection || queueProcessingMutation.isPending}
+              >
+                {queueProcessingMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="size-4" />
+                )}
+                Process
+                <ChevronDown className="size-3 text-muted-foreground opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleProcess("denoise")}>
+                <Wand2 className="mr-2 size-4" />
+                Denoise Audio
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleProcess("transcribe")}>
+                <Subtitles className="mr-2 size-4" />
+                Transcribe Speech
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="outline"
             size="sm"
