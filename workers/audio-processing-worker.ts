@@ -1275,10 +1275,6 @@ const worker = new Worker(
   {
     connection,
     concurrency: 4, // Process up to 4 jobs in parallel
-    limiter: {
-      max: 20,
-      duration: 60000, // Max 20 jobs per minute
-    },
   },
 );
 
