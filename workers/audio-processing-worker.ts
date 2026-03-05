@@ -835,7 +835,6 @@ const handleRemoveOverlap: JobHandler = async (job) => {
  * Transcribe a segment's audio.
  * entryId = segmentId
  * Ensures clip exists, then transcribes and saves to segment.
- * TODO: Implement actual transcription logic (likely via external API)
  */
 const handleTranscribe: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
@@ -843,19 +842,38 @@ const handleTranscribe: JobHandler = async (job) => {
 
   return await AppRuntime.runPromise(
     Effect.gen(function* () {
+      const db = yield* Database;
+
       // Ensure clip exists (creates if needed)
       const result = yield* ensureClipExists(segmentId);
       console.log(`[Transcribe] Clip ready: ${result.clip.storageKey}`);
 
-      // TODO: Implement transcription
-      // 1. Download audio from result.clip.storageKey
-      // 2. Send to transcription API (Whisper, etc.)
-      // 3. Update segment.transcription with result:
-      //    const db = yield* Database;
-      //    yield* db.update(segments).set({ transcription: result }).where(eq(segments.id, segmentId));
+      // Fetch audio from media server
+      const audioBuffer = yield* fetchAudioBuffer(result.clip.storageKey);
       console.log(
-        `[Transcribe] Segment ${segmentId} - processing not yet implemented`,
+        `[Transcribe] Fetched ${audioBuffer.length} bytes from media server`,
       );
+
+      // Call transcription server
+      const transcriptionResult = yield* callTranscriptionServer(audioBuffer);
+      console.log(
+        `[Transcribe] Transcription received:`,
+        transcriptionResult.text,
+      );
+
+      // Update segment.transcription
+      yield* Effect.catchAll(
+        db
+          .update(segments)
+          .set({ transcription: transcriptionResult.text })
+          .where(eq(segments.id, segmentId)),
+        (error) => {
+          console.error(`[Transcribe] Failed to save transcription:`, error);
+          return Effect.fail(error);
+        },
+      );
+
+      console.log(`[Transcribe] Transcription saved for segment ${segmentId}`);
 
       return result satisfies ClipJobResult;
     }),
@@ -900,6 +918,44 @@ const callScoringServer = (audioBuffer: Buffer) =>
     catch: (error) =>
       new Error(
         `Failed to call scoring server: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
+
+/** transcription response from scoring server */
+interface TranscriptionResponse {
+  text: string;
+}
+
+/**
+ * Call the speech processing server to transcribe audio.
+ */
+const callTranscriptionServer = (audioBuffer: Buffer) =>
+  Effect.tryPromise({
+    try: async () => {
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }),
+        "audio.flac",
+      );
+
+      const response = await fetch(`${speechProcessingServerUrl}/transcribe`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `Transcription server error: ${response.status} - ${text}`,
+        );
+      }
+
+      return (await response.json()) as TranscriptionResponse;
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to call transcription server: ${error instanceof Error ? error.message : String(error)}`,
       ),
   });
 
@@ -1293,11 +1349,9 @@ const audioQueue = new Queue<AudioJobPayload>(Queues.AudioProcessing, {
   connection,
 });
 
-// Processing jobs that should trigger automatic scoring on completion
 const PROCESSING_JOBS: AudioJobName[] = [
   AudioJobs.Denoise,
   AudioJobs.RemoveOverlap,
-  AudioJobs.Transcribe,
 ];
 
 const worker = new Worker(
