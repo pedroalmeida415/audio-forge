@@ -15,6 +15,13 @@ import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import IORedis from "ioredis";
 
+if (typeof Bun === "undefined") {
+  console.error(
+    "❌ Error: This worker relies on Bun-specific APIs and MUST be run with the Bun runtime.",
+  );
+  process.exit(1);
+}
+
 import { env } from "../src/env";
 import { isVideoMimeType } from "../src/lib/video-types";
 import { clips, segments, sources, speakers } from "../src/server/db/schema";
@@ -958,6 +965,35 @@ const fetchAudioBuffer = (storageKey: string) =>
   });
 
 /**
+ * Download audio from media server directly to disk.
+ */
+const downloadAudioFile = (storageKey: string, outputPath: string) =>
+  Effect.tryPromise({
+    try: async () => {
+      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(storageKey)}`;
+      const headers: Record<string, string> = {};
+
+      if (mediaServerToken) {
+        headers.Authorization = `Bearer ${mediaServerToken}`;
+      }
+
+      const response = await fetch(url, { headers });
+
+      if (!response.ok) {
+        throw new Error(
+          `Media server error: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      await Bun.write(outputPath, response);
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to download from media server: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });
+
+/**
  * Calculate DNSMOS quality scores for a segment's audio.
  * entryId = segmentId
  *
@@ -1092,53 +1128,64 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
 
           const metadataLines: string[] = [];
           let totalDuration = 0;
+          let processedCount = 0;
 
-          // Process each segment
-          for (const [i, segment] of exportableSegments.entries()) {
-            const clipStorageKey = segment.clip.storageKey;
-            const transcription = segment.transcription.trim();
+          // Process each segment with concurrency
+          const processResults = yield* Effect.forEach(
+            exportableSegments,
+            (segment, i) =>
+              Effect.gen(function* () {
+                const clipStorageKey = segment.clip.storageKey;
+                const transcription = segment.transcription.trim();
 
-            // Report progress
-            yield* Effect.promise(() =>
-              job.updateProgress({
-                type: "export",
-                processed: i,
-                total: exportableSegments.length,
+                // Generate filename (1-indexed, zero-padded)
+                const index = String(i + 1).padStart(5, "0");
+                const filename = `${speakerPrefix}_${index}`;
+                const wavPath = join(wavsDir, `${filename}.wav`);
+
+                // Download audio directly to temp file
+                const inputPath = join(tempDir, `input_${index}.flac`);
+                yield* downloadAudioFile(clipStorageKey, inputPath);
+
+                // Convert to WAV: mono, 16-bit PCM, specified sample rate
+                yield* AudioProcessingService.convertToWav({
+                  inputPath,
+                  outputPath: wavPath,
+                  sampleRate,
+                  channels: 1,
+                  bitDepth: 16,
+                });
+
+                // Update metrics
+                processedCount += 1;
+                const duration = segment.endTime - segment.startTime;
+
+                // Report progress safely
+                yield* Effect.promise(() =>
+                  job.updateProgress({
+                    type: "export",
+                    processed: processedCount,
+                    total: exportableSegments.length,
+                  }),
+                );
+
+                console.log(
+                  `[LJSpeechExport] Processed ${processedCount}/${exportableSegments.length}: ${filename}`,
+                );
+
+                return {
+                  metadataLine: `${filename}|${transcription}`,
+                  duration,
+                };
               }),
-            );
+            { concurrency: 5 },
+          );
 
-            // Generate filename (1-indexed, zero-padded)
-            const index = String(i + 1).padStart(5, "0");
-            const filename = `${speakerPrefix}_${index}`;
-            const wavPath = join(wavsDir, `${filename}.wav`);
-
-            // Fetch audio from media server
-            const audioBuffer = yield* fetchAudioBuffer(clipStorageKey);
-
-            // Write to temp file for ffmpeg input
-            const inputPath = join(tempDir, `input_${index}.flac`);
-            writeFileSync(inputPath, audioBuffer);
-
-            // Convert to WAV: mono, 16-bit PCM, specified sample rate
-            yield* AudioProcessingService.convertToWav({
-              inputPath,
-              outputPath: wavPath,
-              sampleRate,
-              channels: 1,
-              bitDepth: 16,
-            });
-
-            // Clean up input file
-            rmSync(inputPath);
-
-            // Add to metadata (filename|transcription)
-            metadataLines.push(`${filename}|${transcription}`);
-            totalDuration += segment.endTime - segment.startTime;
-
-            console.log(
-              `[LJSpeechExport] Processed ${i + 1}/${exportableSegments.length}: ${filename}`,
-            );
-          }
+          metadataLines.push(...processResults.map((r) => r.metadataLine));
+          totalDuration = processResults.reduce(
+            (sum, r) => sum + r.duration,
+            0,
+          );
 
           // Write metadata.csv (no header, pipe-delimited)
           const metadataPath = join(tempDir, "metadata.csv");
@@ -1193,6 +1240,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
               key: exportKey,
               operation: "download",
               expiresIn: 24 * 60 * 60, // 24 hours
+              responseContentDisposition: `attachment; filename="${speakerPrefix}_dataset.zip"`,
             });
 
           console.log(

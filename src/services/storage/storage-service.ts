@@ -67,6 +67,7 @@ export class StorageService extends Effect.Service<StorageService>()(
           operation: "upload" | "download";
           contentType?: string;
           expiresIn?: number;
+          responseContentDisposition?: string;
         }) =>
           Effect.tryPromise({
             try: async () => {
@@ -80,6 +81,8 @@ export class StorageService extends Effect.Service<StorageService>()(
                   : new GetObjectCommand({
                       Bucket: bucket,
                       Key: params.key,
+                      ResponseContentDisposition:
+                        params.responseContentDisposition,
                     });
 
               const expiresIn = params.expiresIn ?? 3600;
