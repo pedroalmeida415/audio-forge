@@ -1230,7 +1230,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
                 );
 
                 return {
-                  metadataLine: `${filename}|${transcription}`,
+                  metadataLine: `wavs/${filename}.wav|${transcription}`,
                   duration,
                 };
               }),
