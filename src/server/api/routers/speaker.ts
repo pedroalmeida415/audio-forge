@@ -54,24 +54,6 @@ export const speakerRouter = createTRPCRouter({
         ),
     ),
 
-  // Get speaker stats (stub with mocked values for now)
-  getStats: protectedProcedure
-    .input(
-      z.object({
-        speakerId: z.string().uuid(),
-      }),
-    )
-    .query(async () => {
-      // TODO: Implement real stats when requirements are clear
-      return {
-        totalSegments: 0,
-        totalDuration: 0,
-        clipsCount: 0,
-        transcribedCount: 0,
-        avgScore: null as number | null,
-      };
-    }),
-
   // Create a new speaker (project-level, optionally linked to a source)
   create: protectedProcedure
     .input(
