@@ -80,8 +80,6 @@ function ClipStudioTimelineInner({
   speakerId: string | null;
 }) {
   const utils = api.useUtils();
-  const [isAwaitingDiarizationCompletion, setIsAwaitingDiarizationCompletion] =
-    useState(false);
 
   const {
     data: source,
@@ -123,11 +121,9 @@ function ClipStudioTimelineInner({
 
   const startDiarizationMutation = api.source.startDiarization.useMutation({
     onSuccess: () => {
-      setIsAwaitingDiarizationCompletion(true);
       void utils.source.getById.invalidate({ id: sourceId });
     },
     onError: (error) => {
-      setIsAwaitingDiarizationCompletion(false);
       toast.error(
         error instanceof Error
           ? `Failed to start diarization: ${error.message}`
@@ -135,47 +131,6 @@ function ClipStudioTimelineInner({
       );
     },
   });
-
-  api.source.onDiarizationComplete.useSubscription(
-    { sourceId },
-    {
-      enabled:
-        !!source &&
-        (isSourceDiarizationRunning || isAwaitingDiarizationCompletion),
-      onData: (event) => {
-        if (event.status === "completed") {
-          toast.success("Diarization completed");
-        }
-        if (event.status === "failed") {
-          toast.error("Diarization failed");
-        }
-
-        void Promise.all([
-          utils.segment.getBySource.invalidate({ sourceId }),
-          utils.speaker.getBySource.invalidate({ sourceId }),
-          utils.source.getById.invalidate({ id: sourceId }),
-        ]);
-        setIsAwaitingDiarizationCompletion(false);
-      },
-      onError: (error) => {
-        toast.error(
-          error instanceof Error
-            ? `Diarization updates disconnected: ${error.message}`
-            : "Diarization updates disconnected",
-        );
-        setIsAwaitingDiarizationCompletion(false);
-      },
-    },
-  );
-
-  useEffect(() => {
-    if (
-      isAwaitingDiarizationCompletion &&
-      (diarizationStatus === "completed" || diarizationStatus === "failed")
-    ) {
-      setIsAwaitingDiarizationCompletion(false);
-    }
-  }, [diarizationStatus, isAwaitingDiarizationCompletion]);
 
   const allSpeakers = projectSpeakers.concat(sourceSpeakers);
 

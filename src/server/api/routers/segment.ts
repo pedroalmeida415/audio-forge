@@ -1,12 +1,9 @@
-import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { segments, sources, speakers } from "~/server/db/schema";
-import { type ClipEvent, clipEvents } from "~/server/events/clip-events";
-import { initClipEventsBridge } from "~/server/events/clip-events-bridge";
 import { Database } from "~/services/infra/database";
 import {
   type AudioJobPayload,
@@ -396,21 +393,4 @@ export const segmentRouter = createTRPCRouter({
           }),
         ),
     ),
-
-  // SSE subscription for clip completion events
-  onClipCreated: protectedProcedure
-    .input(z.object({ speakerId: z.string().uuid() }))
-    .subscription(async function* (opts) {
-      const { speakerId } = opts.input;
-
-      initClipEventsBridge();
-
-      const eventName = `clip:speaker:${speakerId}`;
-
-      for await (const [event] of on(clipEvents, eventName, {
-        signal: opts.signal,
-      })) {
-        yield event as ClipEvent;
-      }
-    }),
 });

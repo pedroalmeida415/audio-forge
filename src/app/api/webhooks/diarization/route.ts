@@ -4,7 +4,6 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEFAULT_LOCAL_SPEAKER_COLOR } from "~/lib/speaker-colors";
 import { segments, sources, speakers } from "~/server/db/schema";
-import { diarizationEvents } from "~/server/events/diarization-events";
 import { AppRuntime } from "~/services";
 import { Database } from "~/services/infra/database";
 
@@ -132,9 +131,6 @@ const handleWebhook = (request: NextRequest) =>
         })
         .where(eq(sources.id, source.id));
 
-      // Emit completion event for SSE subscribers
-      diarizationEvents.emitCompletion(source.id, "completed");
-
       console.log(
         `[Diarization] Completed for source ${source.id}: ${speakerRows.length} speakers, ${payload.output.diarization.length} segments`,
       );
@@ -151,9 +147,6 @@ const handleWebhook = (request: NextRequest) =>
               : "Diarization failed",
         })
         .where(eq(sources.id, source.id));
-
-      // Emit failure event for SSE subscribers
-      diarizationEvents.emitCompletion(source.id, "failed");
     } else if (payload.status === "running") {
       // Update status to running
       yield* db

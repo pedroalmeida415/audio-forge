@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { on } from "node:events";
 import { createWriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,10 +13,6 @@ import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { projects, segments, sources, speakers } from "~/server/db/schema";
-import {
-  type DiarizationEvent,
-  diarizationEvents,
-} from "~/server/events/diarization-events";
 import { PyannoteService } from "~/services/diarization/pyannote-service";
 import { Database } from "~/services/infra/database";
 import {
@@ -734,27 +729,4 @@ export const sourceRouter = createTRPCRouter({
           }),
         ),
     ),
-
-  // Subscribe to diarization completion events
-  onDiarizationComplete: protectedProcedure
-    .input(z.object({ sourceId: z.string().uuid() }))
-    .subscription(async function* (opts) {
-      const { sourceId } = opts.input;
-
-      const eventName = `diarization:${sourceId}`;
-
-      for await (const [event] of on(diarizationEvents, eventName, {
-        signal: opts.signal,
-      })) {
-        const diarizationEvent = event as DiarizationEvent;
-        yield diarizationEvent;
-
-        if (
-          diarizationEvent.status === "completed" ||
-          diarizationEvent.status === "failed"
-        ) {
-          return;
-        }
-      }
-    }),
 });

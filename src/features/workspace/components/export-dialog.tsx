@@ -45,7 +45,6 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
     useState<string>("");
 
   const [jobId, setJobId] = useState<string | null>(null);
-  const [exportProgress, setExportProgress] = useState(0);
   const [exportStatus, setExportStatus] = useState<
     "idle" | "processing" | "completed" | "failed"
   >("idle");
@@ -64,7 +63,6 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
     if (!open) {
       const timer = setTimeout(() => {
         setJobId(null);
-        setExportProgress(0);
         setExportStatus("idle");
         setDownloadUrl(null);
         setErrorMsg(null);
@@ -162,38 +160,12 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
     onSuccess: (data) => {
       setJobId(data.jobId);
       setExportStatus("processing");
-      setExportProgress(0);
     },
     onError: (err) => {
       setExportStatus("failed");
       setErrorMsg(err.message);
     },
   });
-
-  api.export.onExportProgress.useSubscription(
-    { jobId: jobId ?? "" },
-    {
-      enabled: !!jobId && exportStatus === "processing",
-      onData: (data) => {
-        if (data.total > 0) {
-          setExportProgress(Math.round((data.processed / data.total) * 100));
-        }
-
-        if (data.status === "completed") {
-          setExportStatus("completed");
-          setExportProgress(100);
-          setDownloadUrl(data.downloadUrl ?? null);
-        } else if (data.status === "failed") {
-          setExportStatus("failed");
-          setErrorMsg(data.error ?? "Export failed");
-        }
-      },
-      onError: (err) => {
-        setExportStatus("failed");
-        setErrorMsg(err.message);
-      },
-    },
-  );
 
   const handleExport = () => {
     if (!selectedSpeakerId) return;
@@ -319,11 +291,9 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
 
           {isExporting && (
             <div className="space-y-2 pt-4">
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-center text-sm">
                 <span>Processing clips...</span>
-                <span>{exportProgress}%</span>
               </div>
-              <Progress value={exportProgress} className="h-2" />
             </div>
           )}
 
