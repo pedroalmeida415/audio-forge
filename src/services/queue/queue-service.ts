@@ -19,7 +19,6 @@ export type QueueName = (typeof Queues)[keyof typeof Queues];
 export const AudioJobs = {
   IngestSource: "ingest_source",
   Denoise: "denoise",
-  RemoveOverlap: "remove_overlap",
   Transcribe: "transcribe",
   CalculateScore: "calculate_score",
   LJSpeechExport: "ljspeech_export",
@@ -30,7 +29,7 @@ export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
 // Job payload - single generic type for all audio jobs
 // The job name determines how entryId is interpreted:
 // - ingest_source: entryId is sourceId
-// - denoise, remove_overlap, transcribe: entryId is segmentId (worker ensures clip exists)
+// - denoise, transcribe: entryId is segmentId (worker ensures clip exists)
 
 /** Payload for all audio processing jobs */
 export interface AudioJobPayload {

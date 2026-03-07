@@ -95,7 +95,7 @@ export const segmentRouter = createTRPCRouter({
     .input(
       z.object({
         segmentIds: z.array(z.string().uuid()).min(1),
-        operation: z.enum(["denoise", "remove_overlap", "transcribe"]),
+        operation: z.enum(["denoise", "transcribe"]),
       }),
     )
     .mutation(
@@ -138,7 +138,6 @@ export const segmentRouter = createTRPCRouter({
 
             const jobName = {
               denoise: AudioJobs.Denoise,
-              remove_overlap: AudioJobs.RemoveOverlap,
               transcribe: AudioJobs.Transcribe,
             }[input.operation];
 

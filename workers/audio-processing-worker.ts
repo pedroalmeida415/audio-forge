@@ -803,35 +803,6 @@ const handleDenoise: JobHandler = async (job) => {
 };
 
 /**
- * Remove overlapping speech from a segment's audio.
- * entryId = segmentId
- * Ensures clip exists, then removes overlapping speech.
- * TODO: Implement actual overlap removal logic
- */
-const handleRemoveOverlap: JobHandler = async (job) => {
-  const segmentId = job.data.entryId;
-  console.log(`[RemoveOverlap] Processing segment ${segmentId}`);
-
-  return await AppRuntime.runPromise(
-    Effect.gen(function* () {
-      // Ensure clip exists (creates if needed)
-      const result = yield* ensureClipExists(segmentId);
-      console.log(`[RemoveOverlap] Clip ready: ${result.clip.storageKey}`);
-
-      // TODO: Implement overlap removal
-      // 1. Download audio from result.clip.storageKey
-      // 2. Detect and remove overlapping speech regions
-      // 3. Upload processed audio (update clip or create new version)
-      console.log(
-        `[RemoveOverlap] Segment ${segmentId} - processing not yet implemented`,
-      );
-
-      return result satisfies ClipJobResult;
-    }),
-  );
-};
-
-/**
  * Transcribe a segment's audio.
  * entryId = segmentId
  * Ensures clip exists, then transcribes and saves to segment.
@@ -1367,7 +1338,6 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
 const handlers: HandlerRegistry = {
   [AudioJobs.IngestSource]: handleIngestSource,
   [AudioJobs.Denoise]: handleDenoise,
-  [AudioJobs.RemoveOverlap]: handleRemoveOverlap,
   [AudioJobs.Transcribe]: handleTranscribe,
   [AudioJobs.CalculateScore]: handleCalculateScore,
 };
@@ -1389,10 +1359,7 @@ const audioQueue = new Queue<AudioJobPayload>(Queues.AudioProcessing, {
   connection,
 });
 
-const PROCESSING_JOBS: AudioJobName[] = [
-  AudioJobs.Denoise,
-  AudioJobs.RemoveOverlap,
-];
+const PROCESSING_JOBS: AudioJobName[] = [AudioJobs.Denoise];
 
 const worker = new Worker(
   Queues.AudioProcessing,

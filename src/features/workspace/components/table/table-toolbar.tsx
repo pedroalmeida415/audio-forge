@@ -125,9 +125,7 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
     },
   });
 
-  const handleProcess = (
-    operation: "denoise" | "transcribe" | "remove_overlap",
-  ) => {
+  const handleProcess = (operation: "denoise" | "transcribe") => {
     if (!hasSelection) return;
 
     let segmentIds: string[] = [];

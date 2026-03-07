@@ -271,7 +271,6 @@ Standalone Hono server (`media-server/`) handles audio streaming with LRU cache.
 Single audio processing queue with job types:
 - `GenerateWaveform`: source -> .dat waveform file -> R2
 - `Denoise`: segment -> extract slice -> denoise -> create clip
-- `RemoveOverlap`: segment audio overlap removal
 - `Transcribe`: segment -> transcription text
 - `CalculateScore`: segment/clip -> DNSMOS quality scores
 - `LJSpeechExport`: speaker -> ZIP archive with WAV files + metadata.csv
