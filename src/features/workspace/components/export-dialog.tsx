@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
+import { Slider } from "~/components/ui/slider";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
 
@@ -37,6 +38,11 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState<string>("");
   const [sampleRate, setSampleRate] = useState<number>(24000);
+
+  const [durationRange, setDurationRange] = useState<[number, number]>([0, 30]);
+  const [scoreRange, setScoreRange] = useState<[number, number]>([1, 5]);
+  const [hasSetDefaultsForSpeaker, setHasSetDefaultsForSpeaker] =
+    useState<string>("");
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
@@ -63,6 +69,9 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
         setDownloadUrl(null);
         setErrorMsg(null);
         setSampleRate(24000);
+        setDurationRange([0, 30]);
+        setScoreRange([1, 5]);
+        setHasSetDefaultsForSpeaker("");
       }, 300);
       return () => clearTimeout(timer);
     }
@@ -76,6 +85,72 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
   const { data: sourceSpeakers = [] } = api.speaker.getBySource.useQuery(
     { sourceId: sourceId ?? "" },
     { enabled: open && !!sourceId, refetchOnWindowFocus: false },
+  );
+
+  const { data: segmentsData } = api.segment.getBySpeaker.useQuery(
+    { speakerId: selectedSpeakerId },
+    { enabled: open && !!selectedSpeakerId, refetchOnWindowFocus: false },
+  );
+
+  const exportableSegments =
+    segmentsData?.segments.filter(
+      (s) =>
+        s.clip?.storageKey != null &&
+        s.transcription != null &&
+        s.transcription.trim().length > 0,
+    ) ?? [];
+
+  const maxPossibleDuration = Math.max(
+    10,
+    Math.ceil(
+      exportableSegments.length > 0
+        ? Math.max(...exportableSegments.map((s) => s.endTime - s.startTime))
+        : 30,
+    ),
+  );
+
+  useEffect(() => {
+    if (
+      selectedSpeakerId &&
+      exportableSegments.length > 0 &&
+      hasSetDefaultsForSpeaker !== selectedSpeakerId
+    ) {
+      setDurationRange([0, maxPossibleDuration]);
+      setScoreRange([1, 5]);
+      setHasSetDefaultsForSpeaker(selectedSpeakerId);
+    }
+  }, [
+    selectedSpeakerId,
+    exportableSegments.length,
+    maxPossibleDuration,
+    hasSetDefaultsForSpeaker,
+  ]);
+
+  const filteredSegments = exportableSegments.filter((s) => {
+    const durRaw = s.endTime - s.startTime;
+    const dur = Number(durRaw.toFixed(1));
+    if (dur < durationRange[0] || dur > durationRange[1]) return false;
+
+    type ScoreData = { DNSMOS?: { P808_MOS?: number } };
+    const clipScores = s.clip?.scores as ScoreData | null;
+    const segmentScores = s.scores as ScoreData | null;
+    const rawScore =
+      clipScores?.DNSMOS?.P808_MOS ?? segmentScores?.DNSMOS?.P808_MOS;
+
+    const isFullScoreRange = scoreRange[0] <= 1 && scoreRange[1] >= 5;
+    if (rawScore == null) {
+      if (!isFullScoreRange) return false;
+    } else {
+      const score = Number(rawScore.toFixed(1));
+      if (score < scoreRange[0] || score > scoreRange[1]) return false;
+    }
+
+    return true;
+  });
+
+  const totalFilteredDuration = filteredSegments.reduce(
+    (sum, s) => sum + (s.endTime - s.startTime),
+    0,
   );
 
   const allSpeakers = [...projectSpeakers, ...sourceSpeakers];
@@ -122,7 +197,14 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
 
   const handleExport = () => {
     if (!selectedSpeakerId) return;
-    exportMutation.mutate({ speakerId: selectedSpeakerId, sampleRate });
+    exportMutation.mutate({
+      speakerId: selectedSpeakerId,
+      sampleRate,
+      minDuration: durationRange[0],
+      maxDuration: durationRange[1],
+      minScore: scoreRange[0],
+      maxScore: scoreRange[1],
+    });
   };
 
   const isExporting = exportMutation.isPending || exportStatus === "processing";
@@ -186,6 +268,53 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
                 <SelectItem value="48000">48000 Hz</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid gap-6 py-2">
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label>Duration Range (s)</Label>
+                <span className="font-medium text-muted-foreground text-sm">
+                  {durationRange[0].toFixed(1)}s - {durationRange[1].toFixed(1)}
+                  s
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={maxPossibleDuration}
+                step={0.1}
+                value={durationRange}
+                onValueChange={(v) => setDurationRange(v as [number, number])}
+                disabled={isExporting || isCompleted}
+              />
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <Label>Score Range (MOS)</Label>
+                <span className="font-medium text-muted-foreground text-sm">
+                  {scoreRange[0].toFixed(1)} - {scoreRange[1].toFixed(1)}
+                </span>
+              </div>
+              <Slider
+                min={1}
+                max={5}
+                step={0.1}
+                value={scoreRange}
+                onValueChange={(v) => setScoreRange(v as [number, number])}
+                disabled={isExporting || isCompleted}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 rounded-md border bg-muted/50 p-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Export Summary</span>
+              <span className="font-medium">
+                {filteredSegments.length} segments (
+                {totalFilteredDuration.toFixed(1)}s)
+              </span>
+            </div>
           </div>
 
           {isExporting && (

@@ -28,6 +28,10 @@ export const exportRouter = createTRPCRouter({
       z.object({
         speakerId: z.string().uuid(),
         sampleRate: z.number().int().min(8000).max(48000).default(24000),
+        minDuration: z.number().positive().optional(),
+        maxDuration: z.number().positive().optional(),
+        minScore: z.number().min(1).max(5).optional(),
+        maxScore: z.number().min(1).max(5).optional(),
       }),
     )
     .mutation(
@@ -58,6 +62,10 @@ export const exportRouter = createTRPCRouter({
               speakerId: input.speakerId,
               userId: ctx.session.user.id,
               sampleRate: input.sampleRate,
+              minDuration: input.minDuration,
+              maxDuration: input.maxDuration,
+              minScore: input.minScore,
+              maxScore: input.maxScore,
             };
 
             const result = yield* QueueService.enqueueJob(
@@ -70,6 +78,10 @@ export const exportRouter = createTRPCRouter({
               jobId: result.jobId,
               speakerId: input.speakerId,
               sampleRate: input.sampleRate,
+              minDuration: input.minDuration,
+              maxDuration: input.maxDuration,
+              minScore: input.minScore,
+              maxScore: input.maxScore,
             };
           }),
         ),

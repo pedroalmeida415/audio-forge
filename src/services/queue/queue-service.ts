@@ -44,6 +44,10 @@ export interface LJSpeechExportPayload {
   speakerId: string;
   userId: string;
   sampleRate: number;
+  minDuration?: number;
+  maxDuration?: number;
+  minScore?: number;
+  maxScore?: number;
 }
 
 // ============================================================================

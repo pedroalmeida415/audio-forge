@@ -1113,9 +1113,17 @@ const handleCalculateScore: JobHandler = async (job) => {
  * 5. Upload to R2 and generate presigned download URL
  */
 const handleLJSpeechExport: ExportJobHandler = async (job) => {
-  const { speakerId, userId, sampleRate } = job.data;
+  const {
+    speakerId,
+    userId,
+    sampleRate,
+    minDuration,
+    maxDuration,
+    minScore,
+    maxScore,
+  } = job.data;
   console.log(
-    `[LJSpeechExport] Starting export for speaker ${speakerId} at ${sampleRate}Hz`,
+    `[LJSpeechExport] Starting export for speaker ${speakerId} at ${sampleRate}Hz (Filters: dur ${minDuration}-${maxDuration}, score ${minScore}-${maxScore})`,
   );
 
   return await AppRuntime.runPromise(
@@ -1152,10 +1160,42 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           };
 
           const exportableSegments = segmentResults.filter(
-            (s): s is ExportableSegment =>
-              s.clip?.storageKey != null &&
-              s.transcription != null &&
-              s.transcription.trim().length > 0,
+            (s): s is ExportableSegment => {
+              if (
+                s.clip?.storageKey == null ||
+                s.transcription == null ||
+                s.transcription.trim().length === 0
+              ) {
+                return false;
+              }
+
+              // Duration filter
+              const durRaw = s.endTime - s.startTime;
+              const dur = Number(durRaw.toFixed(1));
+              if (minDuration != null && dur < minDuration) return false;
+              if (maxDuration != null && dur > maxDuration) return false;
+
+              // Score filter (prefer clip score over segment original score)
+              type ScoreData = { DNSMOS?: { P808_MOS?: number } };
+              const clipScores = s.clip.scores as ScoreData | null;
+              const segmentScores = s.scores as ScoreData | null;
+              const rawScore =
+                clipScores?.DNSMOS?.P808_MOS ?? segmentScores?.DNSMOS?.P808_MOS;
+
+              if (minScore != null || maxScore != null) {
+                const minS = minScore ?? 1;
+                const maxS = maxScore ?? 5;
+                const isFullRange = minS <= 1 && maxS >= 5;
+                if (rawScore == null) {
+                  if (!isFullRange) return false;
+                } else {
+                  const score = Number(rawScore.toFixed(1));
+                  if (score < minS || score > maxS) return false;
+                }
+              }
+
+              return true;
+            },
           );
 
           const skippedCount =
