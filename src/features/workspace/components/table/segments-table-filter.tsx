@@ -153,7 +153,9 @@ function ScoreFilter({ table }: { table: Table<SegmentWithClip> }) {
   const column = table.getColumn("score");
   if (!column) return null;
 
-  const filterValue = column.getFilterValue() as [number, number] | undefined;
+  const filterValue = column.getFilterValue() as
+    | { min?: number; max?: number; showMissingOnly?: boolean }
+    | undefined;
   const minMax = column.getFacetedMinMaxValues() as
     | [number, number]
     | undefined;
@@ -165,7 +167,7 @@ function ScoreFilter({ table }: { table: Table<SegmentWithClip> }) {
     <div className="grid gap-2">
       <div className="flex items-center justify-between">
         <Label className="text-xs">Score</Label>
-        {minMax && (
+        {minMax && !filterValue?.showMissingOnly && (
           <span className="text-[10px] text-muted-foreground">
             {min.toFixed(1)} - {max.toFixed(1)}
           </span>
@@ -176,13 +178,21 @@ function ScoreFilter({ table }: { table: Table<SegmentWithClip> }) {
           type="number"
           placeholder="Min"
           step="0.1"
-          value={filterValue?.[0] ?? ""}
+          value={filterValue?.min ?? ""}
+          disabled={filterValue?.showMissingOnly}
           onChange={(e) =>
-            column.setFilterValue((old: [number, number] | undefined) => {
-              const val = e.target.value ? Number(e.target.value) : undefined;
-              if (val === undefined && old?.[1] === undefined) return undefined;
-              return [val, old?.[1]];
-            })
+            column.setFilterValue(
+              (
+                old:
+                  | { min?: number; max?: number; showMissingOnly?: boolean }
+                  | undefined,
+              ) => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                if (val === undefined && old?.max === undefined)
+                  return undefined;
+                return { ...old, min: val, showMissingOnly: false };
+              },
+            )
           }
           className="h-8 text-xs"
         />
@@ -191,17 +201,40 @@ function ScoreFilter({ table }: { table: Table<SegmentWithClip> }) {
           type="number"
           placeholder="Max"
           step="0.1"
-          value={filterValue?.[1] ?? ""}
+          value={filterValue?.max ?? ""}
+          disabled={filterValue?.showMissingOnly}
           onChange={(e) =>
-            column.setFilterValue((old: [number, number] | undefined) => {
-              const val = e.target.value ? Number(e.target.value) : undefined;
-              if (old?.[0] === undefined && val === undefined) return undefined;
-              return [old?.[0], val];
-            })
+            column.setFilterValue(
+              (
+                old:
+                  | { min?: number; max?: number; showMissingOnly?: boolean }
+                  | undefined,
+              ) => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                if (old?.min === undefined && val === undefined)
+                  return undefined;
+                return { ...old, max: val, showMissingOnly: false };
+              },
+            )
           }
           className="h-8 text-xs"
         />
       </div>
+      <label className="mt-1 flex items-center gap-2">
+        <Checkbox
+          checked={filterValue?.showMissingOnly === true}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              column.setFilterValue({ showMissingOnly: true });
+            } else {
+              column.setFilterValue(undefined);
+            }
+          }}
+        />
+        <span className="text-muted-foreground text-xs">
+          Missing score only
+        </span>
+      </label>
     </div>
   );
 }
@@ -215,28 +248,64 @@ function BooleanFilters({ table }: { table: Table<SegmentWithClip> }) {
   const clipValue = clipColumn?.getFilterValue() as boolean | undefined;
 
   return (
-    <div className="grid gap-3 pt-2">
+    <div className="grid gap-4 pt-2">
       {transColumn && (
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={transValue === true}
-            onCheckedChange={(checked) => {
-              transColumn.setFilterValue(checked === true ? true : undefined);
-            }}
-          />
-          <span className="text-sm">Has transcription</span>
-        </label>
+        <div className="grid gap-2">
+          <Label className="text-xs">Transcription</Label>
+          <div className="grid gap-2 pl-2">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={transValue === true}
+                onCheckedChange={(checked) => {
+                  transColumn.setFilterValue(
+                    checked === true ? true : undefined,
+                  );
+                }}
+              />
+              <span className="text-sm">Has transcription</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={transValue === false}
+                onCheckedChange={(checked) => {
+                  transColumn.setFilterValue(
+                    checked === true ? false : undefined,
+                  );
+                }}
+              />
+              <span className="text-sm">Missing transcription</span>
+            </label>
+          </div>
+        </div>
       )}
       {clipColumn && (
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={clipValue === true}
-            onCheckedChange={(checked) => {
-              clipColumn.setFilterValue(checked === true ? true : undefined);
-            }}
-          />
-          <span className="text-sm">Has clip processed</span>
-        </label>
+        <div className="grid gap-2">
+          <Label className="text-xs">Processed Clip</Label>
+          <div className="grid gap-2 pl-2">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={clipValue === true}
+                onCheckedChange={(checked) => {
+                  clipColumn.setFilterValue(
+                    checked === true ? true : undefined,
+                  );
+                }}
+              />
+              <span className="text-sm">Has processed clip</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={clipValue === false}
+                onCheckedChange={(checked) => {
+                  clipColumn.setFilterValue(
+                    checked === true ? false : undefined,
+                  );
+                }}
+              />
+              <span className="text-sm">Missing processed clip</span>
+            </label>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -370,13 +370,26 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       filterFn: (
         row,
         columnId,
-        filterValue: [number | undefined, number | undefined],
+        filterValue:
+          | { min?: number; max?: number; showMissingOnly?: boolean }
+          | undefined,
       ) => {
+        if (!filterValue) return true;
+
         const value = row.getValue<number | null>(columnId);
+
+        if (filterValue.showMissingOnly) {
+          return value === null;
+        }
+
         if (value === null) return false;
-        const [min, max] = filterValue;
-        if (min !== undefined && value < min) return false;
-        if (max !== undefined && value > max) return false;
+
+        const roundedValue = Number(value.toFixed(1));
+
+        if (filterValue.min !== undefined && roundedValue < filterValue.min)
+          return false;
+        if (filterValue.max !== undefined && roundedValue > filterValue.max)
+          return false;
         return true;
       },
       cell: ({ row }) => (
@@ -393,7 +406,18 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       id: "duration",
       accessorFn: (row) => row.endTime - row.startTime,
       header: "Duration",
-      filterFn: "inNumberRange",
+      filterFn: (
+        row,
+        columnId,
+        filterValue: [number | undefined, number | undefined],
+      ) => {
+        const rawValue = row.getValue<number>(columnId);
+        const roundedValue = Number(rawValue.toFixed(1));
+        const [min, max] = filterValue;
+        if (min !== undefined && roundedValue < min) return false;
+        if (max !== undefined && roundedValue > max) return false;
+        return true;
+      },
       cell: ({ row }) => {
         const duration = row.original.endTime - row.original.startTime;
         return <DurationCell duration={duration} />;
@@ -407,7 +431,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       id: "transcription",
       header: "Transcription",
       accessorFn: (row) => row.transcription,
-      filterFn: (row, columnId, filterValue: boolean) => {
+      filterFn: (row, columnId, filterValue: boolean | undefined) => {
         if (filterValue === undefined) return true;
         const hasTrans = !!row.getValue(columnId);
         return filterValue ? hasTrans : !hasTrans;
