@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import archiver from "archiver";
 import { type Job, Queue, Worker } from "bullmq";
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import IORedis from "ioredis";
 
@@ -121,6 +121,7 @@ interface EnsureClipResult {
   segmentId: string;
   speakerId: string;
   clip: ClipData;
+  segmentTags?: string[] | null;
 }
 
 /** Result returned from clip job handlers for SSE notifications */
@@ -128,6 +129,7 @@ export interface ClipJobResult {
   segmentId: string;
   speakerId: string;
   clip: ClipData;
+  segmentTags?: string[] | null;
 }
 
 /** Context needed to create a clip from an audio buffer */
@@ -214,8 +216,8 @@ const createClipFromBuffer = (params: {
     const { audioBuffer, context, contentType, extension } = params;
     const db = yield* Database;
 
-    // Generate storage key for clip
-    const clipStorageKey = `clips/${context.userId}/${context.segmentId}.${extension}`;
+    // Generate storage key for clip (using timestamp to avoid media server caching)
+    const clipStorageKey = `clips/${context.userId}/${context.segmentId}_${Date.now()}.${extension}`;
 
     console.log(
       `[createClipFromBuffer] Uploading clip for segment ${context.segmentId}: ${clipStorageKey}`,
@@ -270,19 +272,21 @@ const createClipFromBuffer = (params: {
 
 /**
  * Ensures a clip exists for the given segment.
- * If no clip exists, extracts audio from the source file and creates one.
- * Also scores the source audio and stores in segment.scores.
+ * If no clip exists (or forceNewClip is true), extracts audio from the source file and creates one.
  * Returns the clip info for further processing.
  */
-const ensureClipExists = (segmentId: string) =>
+const ensureClipExists = (segmentId: string, forceNewClip?: boolean) =>
   Effect.gen(function* () {
     const db = yield* Database;
 
-    // Look up segment with clip and source relations
+    // Look up segment with clips (latest first) and source relations
     const segment = yield* db.query.segments.findFirst({
       where: eq(segments.id, segmentId),
       with: {
-        clip: true,
+        clips: {
+          orderBy: [desc(clips.createdAt)],
+          limit: 1,
+        },
         source: true,
         speaker: true,
       },
@@ -292,23 +296,28 @@ const ensureClipExists = (segmentId: string) =>
       return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
     }
 
-    // If clip already exists, return its info
-    if (segment.clip?.storageKey) {
+    const latestClip = segment.clips[0];
+
+    // If a clip exists and we aren't forcing a new one, return it
+    if (!forceNewClip && latestClip?.storageKey) {
+      console.log(
+        `[ensureClipExists] Found existing clip for segment ${segmentId}: ${latestClip.storageKey}`,
+      );
       return {
         segmentId,
         speakerId: segment.speakerId,
         clip: {
-          id: segment.clip.id,
+          id: latestClip.id,
           segmentId,
-          userId: segment.clip.userId,
-          storageKey: segment.clip.storageKey,
-          duration: segment.clip.duration,
-          createdAt: segment.clip.createdAt.toISOString(),
+          userId: latestClip.userId,
+          storageKey: latestClip.storageKey,
+          duration: latestClip.duration,
+          createdAt: latestClip.createdAt.toISOString(),
         },
       } satisfies EnsureClipResult;
     }
 
-    // No clip exists - need to create one
+    // Need to create one (either it didn't exist or we are explicitly overriding it)
     const sourceStorageKey = segment.source.storageKey;
     if (!sourceStorageKey) {
       return yield* Effect.fail(
@@ -327,8 +336,8 @@ const ensureClipExists = (segmentId: string) =>
       end: segment.endTime,
     });
 
-    // Generate storage key for clip
-    const clipStorageKey = `clips/${segment.speaker.userId}/${segmentId}.flac`;
+    // Generate storage key for clip (using timestamp to avoid media server caching the old slice)
+    const clipStorageKey = `clips/${segment.speaker.userId}/${segmentId}_${Date.now()}.flac`;
 
     // Upload buffer to R2
     yield* StorageService.upload({
@@ -357,43 +366,17 @@ const ensureClipExists = (segmentId: string) =>
       );
     }
 
+    // Remove 'Outdated Clip' tag if it exists, as the new clip is in sync with segment bounds
+    yield* db
+      .update(segments)
+      .set({
+        tags: sql`array_remove(${segments.tags}, 'Outdated Clip')`,
+      })
+      .where(eq(segments.id, segmentId));
+
     console.log(
       `[ensureClipExists] Created clip for segment ${segmentId}: ${clipStorageKey}`,
     );
-
-    // Score the source audio and store in segments.scores
-    // This represents the quality of the original audio before any processing
-    console.log(
-      `[ensureClipExists] Scoring source audio for segment ${segmentId}`,
-    );
-    const sourceScores = yield* callScoringServer(audioBuffer).pipe(
-      Effect.catchAll((error) => {
-        console.warn(
-          `[ensureClipExists] Failed to score source audio: ${error.message}`,
-        );
-        return Effect.succeed(null);
-      }),
-    );
-
-    if (sourceScores) {
-      yield* Effect.catchAll(
-        db
-          .update(segments)
-          .set({ scores: { DNSMOS: sourceScores.DNSMOS } })
-          .where(eq(segments.id, segmentId)),
-        (error) => {
-          console.error(
-            `[ensureClipExists] Failed to save source scores:`,
-            error,
-          );
-          return Effect.fail(error);
-        },
-      );
-      console.log(
-        `[ensureClipExists] Source scores saved for segment ${segmentId}:`,
-        sourceScores.DNSMOS,
-      );
-    }
 
     return {
       segmentId,
@@ -701,24 +684,27 @@ const handleIngestSource: JobHandler = async (job) => {
  * Flow:
  * 1. Check if clip already exists → return early if so
  * 2. Extract raw audio from source file (no R2 upload yet)
- * 3. Score source audio → save to segment.scores
- * 4. Denoise audio via speech processing server
- * 5. Upload denoised audio to R2 and create clip record
- * 6. Return result (auto-triggers scoring of processed clip)
+ * 3. Denoise audio via speech processing server
+ * 4. Upload denoised audio to R2 and create clip record
+ * 5. Return result (auto-triggers scoring of processed clip)
  */
 const handleDenoise: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
+  const useExistingClip = job.data.useExistingClip;
+
   console.log(`[Denoise] Processing segment ${segmentId}`);
 
   return await AppRuntime.runPromise(
     Effect.gen(function* () {
       const db = yield* Database;
 
-      // Check if clip already exists
       const existingSegment = yield* db.query.segments.findFirst({
         where: eq(segments.id, segmentId),
         with: {
-          clip: true,
+          clips: {
+            orderBy: [desc(clips.createdAt)],
+            limit: 1,
+          },
           speaker: true,
         },
       });
@@ -727,58 +713,34 @@ const handleDenoise: JobHandler = async (job) => {
         return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
       }
 
-      // Return early if clip already exists
-      if (existingSegment.clip?.storageKey) {
+      const latestClip = existingSegment.clips[0];
+
+      let audioBuffer: Buffer;
+      let context: SegmentContext;
+
+      if (useExistingClip && latestClip?.storageKey) {
         console.log(
-          `[Denoise] Clip already exists for segment ${segmentId}, skipping`,
+          `[Denoise] Extracting audio from existing clip ${latestClip.storageKey}`,
         );
-        return {
+        audioBuffer = yield* fetchAudioBuffer(latestClip.storageKey);
+        context = {
           segmentId,
           speakerId: existingSegment.speakerId,
-          clip: {
-            id: existingSegment.clip.id,
-            segmentId,
-            userId: existingSegment.clip.userId,
-            storageKey: existingSegment.clip.storageKey,
-            duration: existingSegment.clip.duration,
-            createdAt: existingSegment.clip.createdAt.toISOString(),
-          },
-        } satisfies ClipJobResult;
+          userId: latestClip.userId,
+          startTime: existingSegment.startTime,
+          endTime: existingSegment.endTime,
+        };
+      } else {
+        // Extract raw audio from source file
+        console.log(`[Denoise] Extracting audio for segment ${segmentId}`);
+        const extracted = yield* extractSegmentAudio(segmentId);
+        audioBuffer = extracted.audioBuffer;
+        context = extracted.context;
       }
 
-      // Extract raw audio from source file
-      console.log(`[Denoise] Extracting audio for segment ${segmentId}`);
-      const { audioBuffer, context } = yield* extractSegmentAudio(segmentId);
       console.log(
-        `[Denoise] Extracted ${audioBuffer.length} bytes from source`,
+        `[Denoise] Extracted ${audioBuffer.length} bytes for processing`,
       );
-
-      // Score source audio and save to segment.scores
-      console.log(`[Denoise] Scoring source audio for segment ${segmentId}`);
-      const sourceScores = yield* callScoringServer(audioBuffer).pipe(
-        Effect.catchAll((error) => {
-          console.warn(
-            `[Denoise] Failed to score source audio: ${error.message}`,
-          );
-          return Effect.succeed(null);
-        }),
-      );
-
-      if (sourceScores) {
-        yield* db
-          .update(segments)
-          .set({ scores: { DNSMOS: sourceScores.DNSMOS } })
-          .where(eq(segments.id, segmentId))
-          .pipe(
-            Effect.catchAll((error) => {
-              console.error(`[Denoise] Failed to save source scores:`, error);
-              return Effect.void;
-            }),
-          );
-        console.log(
-          `[Denoise] Source scores saved: OVRL=${sourceScores.DNSMOS.OVRL.toFixed(2)}`,
-        );
-      }
 
       // Denoise audio via speech processing server
       console.log(`[Denoise] Denoising audio for segment ${segmentId}`);
@@ -795,6 +757,14 @@ const handleDenoise: JobHandler = async (job) => {
         extension: "flac",
       });
 
+      // Remove 'Outdated Clip' tag if it exists, as the new clip is in sync with segment bounds
+      yield* db
+        .update(segments)
+        .set({
+          tags: sql`array_remove(${segments.tags}, 'Outdated Clip')`,
+        })
+        .where(eq(segments.id, segmentId));
+
       console.log(`[Denoise] Clip created: ${result.clip.storageKey}`);
 
       return result satisfies ClipJobResult;
@@ -809,6 +779,8 @@ const handleDenoise: JobHandler = async (job) => {
  */
 const handleTranscribe: JobHandler = async (job) => {
   const segmentId = job.data.entryId;
+  const useExistingClip = job.data.useExistingClip;
+
   console.log(`[Transcribe] Processing segment ${segmentId}`);
 
   return await AppRuntime.runPromise(
@@ -816,7 +788,10 @@ const handleTranscribe: JobHandler = async (job) => {
       const db = yield* Database;
 
       // Ensure clip exists (creates if needed)
-      const result = yield* ensureClipExists(segmentId);
+      const result = yield* ensureClipExists(
+        segmentId,
+        useExistingClip === false,
+      );
       console.log(`[Transcribe] Clip ready: ${result.clip.storageKey}`);
 
       // Fetch audio from media server
@@ -832,21 +807,34 @@ const handleTranscribe: JobHandler = async (job) => {
         transcriptionResult.text,
       );
 
-      // Update segment.transcription
-      yield* Effect.catchAll(
-        db
-          .update(segments)
-          .set({ transcription: transcriptionResult.text })
-          .where(eq(segments.id, segmentId)),
-        (error) => {
-          console.error(`[Transcribe] Failed to save transcription:`, error);
-          return Effect.fail(error);
-        },
-      );
+      const existingSegment = yield* db.query.segments.findFirst({
+        where: eq(segments.id, segmentId),
+      });
+
+      if (!existingSegment) {
+        return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
+      }
+
+      // Update segment.transcription and remove tag
+      const updateResult = yield* db
+        .update(segments)
+        .set({
+          transcription: transcriptionResult.text,
+          tags: sql`array_remove(${segments.tags}, 'Outdated Transcription')`,
+        })
+        .where(eq(segments.id, segmentId))
+        .returning({ tags: segments.tags });
+
+      const updatedSegment = Array.isArray(updateResult)
+        ? updateResult[0]
+        : undefined;
 
       console.log(`[Transcribe] Transcription saved for segment ${segmentId}`);
 
-      return result satisfies ClipJobResult;
+      return {
+        ...result,
+        segmentTags: updatedSegment?.tags ?? existingSegment.tags,
+      } satisfies ClipJobResult;
     }),
   );
 };
@@ -1049,17 +1037,11 @@ const handleCalculateScore: JobHandler = async (job) => {
       const scores = yield* callScoringServer(audioBuffer);
       console.log(`[CalculateScore] Scores received:`, scores.DNSMOS);
 
-      // Update clip scores only (segment source scores are set in ensureClipExists)
-      yield* Effect.catchAll(
-        db
-          .update(clips)
-          .set({ scores: { DNSMOS: scores.DNSMOS } })
-          .where(eq(clips.segmentId, segmentId)),
-        (error) => {
-          console.error(`[CalculateScore] Failed to save clip scores:`, error);
-          return Effect.fail(error);
-        },
-      );
+      // Update clip scores only
+      yield* db
+        .update(clips)
+        .set({ scores: { DNSMOS: scores.DNSMOS } })
+        .where(eq(clips.id, result.clip.id));
 
       console.log(
         `[CalculateScore] Clip scores saved for segment ${segmentId}`,
@@ -1114,13 +1096,21 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           const db = yield* Database;
 
           // Fetch all segments for speaker with clips and transcriptions
-          const segmentResults = yield* db.query.segments.findMany({
+          const dbSegments = yield* db.query.segments.findMany({
             where: eq(segments.speakerId, speakerId),
             with: {
-              clip: true,
+              clips: {
+                orderBy: [desc(clips.createdAt)],
+                limit: 1,
+              },
             },
             orderBy: (segments, { asc }) => [asc(segments.startTime)],
           });
+
+          const segmentResults = dbSegments.map((s) => ({
+            ...s,
+            clip: s.clips[0] ?? null,
+          }));
 
           // Filter to only segments with both clip AND transcription
           type ExportableSegment = (typeof segmentResults)[number] & {
@@ -1146,12 +1136,10 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
               if (minDuration != null && dur < minDuration) return false;
               if (maxDuration != null && dur > maxDuration) return false;
 
-              // Score filter (prefer clip score over segment original score)
+              // Score filter (only use clip scores)
               type ScoreData = { DNSMOS?: { P808_MOS?: number } };
               const clipScores = s.clip.scores as ScoreData | null;
-              const segmentScores = s.scores as ScoreData | null;
-              const rawScore =
-                clipScores?.DNSMOS?.P808_MOS ?? segmentScores?.DNSMOS?.P808_MOS;
+              const rawScore = clipScores?.DNSMOS?.P808_MOS;
 
               if (minScore != null || maxScore != null) {
                 const minS = minScore ?? 1;

@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { segments, sources, speakers } from "~/server/db/schema";
+import { clips, segments, sources, speakers } from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
 import {
   type AudioJobPayload,
@@ -55,14 +55,22 @@ export const segmentRouter = createTRPCRouter({
               where: eq(segments.speakerId, input.speakerId),
               orderBy: [asc(segments.startTime)],
               with: {
-                clip: true,
+                clips: {
+                  orderBy: [desc(clips.createdAt)],
+                  limit: 1,
+                },
                 source: {
                   columns: { id: true, name: true, storageKey: true },
                 },
               },
             });
 
-            return { segments: items };
+            return {
+              segments: items.map((item) => {
+                const { clips, ...rest } = item;
+                return { ...rest, clip: clips[0] ?? null };
+              }),
+            };
           }),
         ),
     ),
@@ -78,14 +86,22 @@ export const segmentRouter = createTRPCRouter({
               where: eq(segments.sourceId, input.sourceId),
               orderBy: [asc(segments.startTime)],
               with: {
-                clip: true,
+                clips: {
+                  orderBy: [desc(clips.createdAt)],
+                  limit: 1,
+                },
                 source: {
                   columns: { id: true, name: true, storageKey: true },
                 },
               },
             });
 
-            return { segments: results };
+            return {
+              segments: results.map((item) => {
+                const { clips, ...rest } = item;
+                return { ...rest, clip: clips[0] ?? null };
+              }),
+            };
           }),
         ),
     ),
@@ -96,6 +112,7 @@ export const segmentRouter = createTRPCRouter({
       z.object({
         segmentIds: z.array(z.string().uuid()).min(1),
         operation: z.enum(["denoise", "transcribe"]),
+        useExistingClip: z.boolean().optional(),
       }),
     )
     .mutation(
@@ -108,7 +125,10 @@ export const segmentRouter = createTRPCRouter({
               where: inArray(segments.id, input.segmentIds),
               with: {
                 speaker: true,
-                clip: true,
+                clips: {
+                  orderBy: [desc(clips.createdAt)],
+                  limit: 1,
+                },
                 source: true,
               },
             });
@@ -143,6 +163,7 @@ export const segmentRouter = createTRPCRouter({
 
             const payloads: AudioJobPayload[] = segmentResults.map((seg) => ({
               entryId: seg.id,
+              useExistingClip: input.useExistingClip,
             }));
 
             const results = yield* QueueService.enqueueJobBatch(
@@ -250,6 +271,44 @@ export const segmentRouter = createTRPCRouter({
           Effect.gen(function* () {
             const db = yield* Database;
 
+            const timeChanged =
+              patch.startTime !== undefined || patch.endTime !== undefined;
+
+            const tagsUpdate =
+              patch.tags !== undefined
+                ? patch.tags
+                : timeChanged
+                  ? sql`
+                      (
+                        WITH updated_tags AS (
+                          SELECT 
+                            CASE 
+                              WHEN EXISTS (SELECT 1 FROM ${clips} WHERE ${clips.segmentId} = ${segments.id}) 
+                              THEN 
+                                CASE 
+                                  WHEN ${segments.tags} IS NULL THEN ARRAY['Outdated Clip']::text[]
+                                  WHEN NOT ('Outdated Clip' = ANY(${segments.tags})) THEN array_append(${segments.tags}, 'Outdated Clip')
+                                  ELSE ${segments.tags}
+                                END
+                              ELSE ${segments.tags}
+                            END AS pass1
+                        )
+                        SELECT 
+                          CASE
+                            WHEN ${segments.transcription} IS NOT NULL AND ${segments.transcription} != ''
+                            THEN
+                              CASE
+                                WHEN pass1 IS NULL THEN ARRAY['Outdated Transcription']::text[]
+                                WHEN NOT ('Outdated Transcription' = ANY(pass1)) THEN array_append(pass1, 'Outdated Transcription')
+                                ELSE pass1
+                              END
+                            ELSE pass1
+                          END
+                        FROM updated_tags
+                      )
+                    `
+                  : undefined;
+
             const updatedSegments = yield* db
               .update(segments)
               .set({
@@ -265,8 +324,8 @@ export const segmentRouter = createTRPCRouter({
                 ...(patch.transcription !== undefined && {
                   transcription: patch.transcription,
                 }),
-                ...(patch.tags !== undefined && {
-                  tags: patch.tags,
+                ...(tagsUpdate !== undefined && {
+                  tags: tagsUpdate,
                 }),
               })
               .where(inArray(segments.id, segmentIds))
@@ -339,7 +398,38 @@ export const segmentRouter = createTRPCRouter({
 
             yield* db
               .update(segments)
-              .set({ endTime: input.splitTime })
+              .set({
+                endTime: input.splitTime,
+                tags: sql`
+                  (
+                    WITH updated_tags AS (
+                      SELECT 
+                        CASE 
+                          WHEN EXISTS (SELECT 1 FROM ${clips} WHERE ${clips.segmentId} = ${segments.id}) 
+                          THEN 
+                            CASE 
+                              WHEN ${segments.tags} IS NULL THEN ARRAY['Outdated Clip']::text[]
+                              WHEN NOT ('Outdated Clip' = ANY(${segments.tags})) THEN array_append(${segments.tags}, 'Outdated Clip')
+                              ELSE ${segments.tags}
+                            END
+                          ELSE ${segments.tags}
+                        END AS pass1
+                    )
+                    SELECT 
+                      CASE
+                        WHEN ${segments.transcription} IS NOT NULL AND ${segments.transcription} != ''
+                        THEN
+                          CASE
+                            WHEN pass1 IS NULL THEN ARRAY['Outdated Transcription']::text[]
+                            WHEN NOT ('Outdated Transcription' = ANY(pass1)) THEN array_append(pass1, 'Outdated Transcription')
+                            ELSE pass1
+                          END
+                        ELSE pass1
+                      END
+                    FROM updated_tags
+                  )
+                `,
+              })
               .where(eq(segments.id, input.segmentId));
 
             const [secondSegment] = yield* db

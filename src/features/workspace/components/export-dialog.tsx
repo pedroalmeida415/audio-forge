@@ -15,7 +15,6 @@ import {
   DialogTrigger,
 } from "~/components/ui/dialog";
 import { Label } from "~/components/ui/label";
-import { Progress } from "~/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -44,7 +43,6 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
   const [hasSetDefaultsForSpeaker, setHasSetDefaultsForSpeaker] =
     useState<string>("");
 
-  const [jobId, setJobId] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<
     "idle" | "processing" | "completed" | "failed"
   >("idle");
@@ -62,7 +60,6 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!open) {
       const timer = setTimeout(() => {
-        setJobId(null);
         setExportStatus("idle");
         setDownloadUrl(null);
         setErrorMsg(null);
@@ -131,9 +128,7 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
 
     type ScoreData = { DNSMOS?: { P808_MOS?: number } };
     const clipScores = s.clip?.scores as ScoreData | null;
-    const segmentScores = s.scores as ScoreData | null;
-    const rawScore =
-      clipScores?.DNSMOS?.P808_MOS ?? segmentScores?.DNSMOS?.P808_MOS;
+    const rawScore = clipScores?.DNSMOS?.P808_MOS;
 
     const isFullScoreRange = scoreRange[0] <= 1 && scoreRange[1] >= 5;
     if (rawScore == null) {
@@ -158,7 +153,6 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
 
   const exportMutation = api.export.startLJSpeechExport.useMutation({
     onSuccess: (data) => {
-      setJobId(data.jobId);
       setExportStatus("processing");
     },
     onError: (err) => {

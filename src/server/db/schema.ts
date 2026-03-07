@@ -308,7 +308,6 @@ export const segments = pgTable(
 
     transcription: text("transcription"),
     tags: text("tags").array(),
-    scores: jsonb("scores").$type<AudioScores>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -330,7 +329,7 @@ export const segments = pgTable(
  *
  * Self-contained: stores its own storageKey and duration directly
  * (no longer references a separate file record).
- * 1:1 relationship with segments.
+ * 1:N relationship with segments.
  */
 export const clips = pgTable(
   "clip",
@@ -338,8 +337,7 @@ export const clips = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     segmentId: uuid("segment_id")
       .notNull()
-      .references(() => segments.id, { onDelete: "cascade" })
-      .unique(),
+      .references(() => segments.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -407,7 +405,7 @@ export const speakerRelations = relations(speakers, ({ one, many }) => ({
   segments: many(segments),
 }));
 
-export const segmentRelations = relations(segments, ({ one }) => ({
+export const segmentRelations = relations(segments, ({ one, many }) => ({
   source: one(sources, {
     fields: [segments.sourceId],
     references: [sources.id],
@@ -416,7 +414,7 @@ export const segmentRelations = relations(segments, ({ one }) => ({
     fields: [segments.speakerId],
     references: [speakers.id],
   }),
-  clip: one(clips),
+  clips: many(clips),
 }));
 
 export const clipRelations = relations(clips, ({ one }) => ({

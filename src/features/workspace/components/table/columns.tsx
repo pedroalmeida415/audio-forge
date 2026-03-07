@@ -357,6 +357,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
         );
       },
       size: 48,
+      enableSorting: false,
 
       meta: {
         center: true,
@@ -415,13 +416,23 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
         <TranscriptionCell transcription={row.original.transcription} />
       ),
       meta: { flex: true },
+      enableSorting: false,
     },
     {
       id: "tags",
       header: "Tags",
+      accessorFn: (row) => row.tags,
+      filterFn: (row, columnId, filterValue: string) => {
+        if (!filterValue) return true;
+        const tags = row.getValue<string[] | null>(columnId);
+        if (!tags || tags.length === 0) return false;
+        const lowerQuery = filterValue.toLowerCase();
+        return tags.some((t) => t.toLowerCase().includes(lowerQuery));
+      },
       cell: ({ row }) => (
         <TagsCell tags={row.original.tags} segmentId={row.original.id} />
       ),
+      enableSorting: false,
       size: 200,
     },
     {

@@ -77,6 +77,10 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showChangeSpeakerDialog, setShowChangeSpeakerDialog] = useState(false);
+  const [pendingProcess, setPendingProcess] = useState<{
+    operation: "denoise" | "transcribe";
+    segmentIds: string[];
+  } | null>(null);
 
   // Fetch current speaker for the dialog description
   const { data: speakers } = api.speaker.getByProject.useQuery(
@@ -123,28 +127,56 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
     onError: (error) => {
       toast.error(`Failed to enqueue processing: ${error.message}`);
     },
+    onSettled: () => {
+      setPendingProcess(null);
+    },
   });
 
-  const handleProcess = (operation: "denoise" | "transcribe") => {
-    if (!hasSelection) return;
-
-    let segmentIds: string[] = [];
+  const getSelectedSegmentIds = () => {
     if (isAllSelected) {
       const contextSegments =
         sourceId && speakerId
           ? cachedSegments.filter((s) => s.speakerId === speakerId)
           : cachedSegments;
 
-      segmentIds = contextSegments
+      return contextSegments
         .filter((s) => !excludedSegmentIds.has(s.id))
         .map((s) => s.id);
-    } else {
-      segmentIds = Array.from(selectedSegmentIds);
     }
+    return Array.from(selectedSegmentIds);
+  };
 
+  const handleProcess = (operation: "denoise" | "transcribe") => {
+    if (!hasSelection) return;
+
+    const segmentIds = getSelectedSegmentIds();
     if (segmentIds.length === 0) return;
 
-    queueProcessingMutation.mutate({ segmentIds, operation });
+    // Check if any selected segment has a clip
+    const hasExistingClips = cachedSegments.some(
+      (s) => segmentIds.includes(s.id) && s.clip !== null,
+    );
+
+    // If it's a transcription job, we don't ask about overriding audio since it doesn't modify audio
+    if (hasExistingClips && operation !== "transcribe") {
+      setPendingProcess({ operation, segmentIds });
+    } else {
+      queueProcessingMutation.mutate({
+        segmentIds,
+        operation,
+        useExistingClip: false,
+      });
+      store.clearSelection();
+    }
+  };
+
+  const confirmProcess = (useExistingClip: boolean) => {
+    if (!pendingProcess) return;
+    queueProcessingMutation.mutate({
+      segmentIds: pendingProcess.segmentIds,
+      operation: pendingProcess.operation,
+      useExistingClip,
+    });
     store.clearSelection();
   };
 
@@ -228,6 +260,46 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
           </Button>
         </div>
       </div>
+
+      <AlertDialog
+        open={pendingProcess !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingProcess(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Process existing clips?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Some of the selected segments already have processed clips. How do
+              you want to apply this operation?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:space-x-0">
+            <Button
+              variant="outline"
+              onClick={() => confirmProcess(false)}
+              disabled={queueProcessingMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Process original audio (Replace existing clips)
+            </Button>
+            <Button
+              onClick={() => confirmProcess(true)}
+              disabled={queueProcessingMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Apply on top of existing clips (Keep current processing)
+            </Button>
+            <AlertDialogCancel
+              disabled={queueProcessingMutation.isPending}
+              className="mt-2 w-full sm:w-auto"
+            >
+              Cancel
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>

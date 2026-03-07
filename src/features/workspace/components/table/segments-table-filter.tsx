@@ -62,12 +62,33 @@ export function TableFilterPopover({ table }: TableFilterPopoverProps) {
           )}
         </div>
         <div className="grid gap-4 p-4">
+          <TagsFilter table={table} />
           <DurationFilter table={table} />
           <ScoreFilter table={table} />
           <BooleanFilters table={table} />
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function TagsFilter({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
+  const column = table.getColumn("tags");
+  if (!column) return null;
+
+  const filterValue = column.getFilterValue() as string | undefined;
+
+  return (
+    <div className="grid gap-2">
+      <Label className="text-xs">Tags</Label>
+      <Input
+        placeholder="Filter by tag..."
+        value={filterValue ?? ""}
+        onChange={(e) => column.setFilterValue(e.target.value || undefined)}
+        className="h-8 text-xs"
+      />
+    </div>
   );
 }
 

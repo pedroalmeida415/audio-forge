@@ -36,6 +36,8 @@ export interface AudioJobPayload {
   entryId: string;
   // Only used by ingest_source jobs.
   queueDiarization?: boolean;
+  // Used by denoise/remove_overlap to apply processing on top of existing clip instead of source.
+  useExistingClip?: boolean;
 }
 
 /** Payload for LJSpeech export jobs */
