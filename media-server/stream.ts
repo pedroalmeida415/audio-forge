@@ -236,6 +236,30 @@ export async function extractFlacSlice(options: {
 export function streamRawFile(options: { localPath: string }): Response {
   const { localPath } = options;
 
+  // Infer content type from file extension
+  const ext = localPath.split(".").pop()?.toLowerCase();
+  let contentType = "application/octet-stream";
+  if (ext === "flac") {
+    contentType = "audio/flac";
+  } else if (ext === "wav") {
+    contentType = "audio/wav";
+  } else if (ext === "mp3") {
+    contentType = "audio/mpeg";
+  }
+
+  // Use Bun's native file serving if available, which automatically handles
+  // backpressure, range requests, Content-Length, and optimized streaming.
+  if (typeof Bun !== "undefined") {
+    const file = Bun.file(localPath);
+    return new Response(file, {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  }
+
+  // Fallback to Node's fs for non-Bun environments
   // Get file size for Content-Length header
   const stats = statSync(localPath);
   const fileSize = stats.size;
@@ -262,17 +286,6 @@ export function streamRawFile(options: { localPath: string }): Response {
       nodeStream.destroy();
     },
   });
-
-  // Infer content type from file extension
-  const ext = localPath.split(".").pop()?.toLowerCase();
-  let contentType = "application/octet-stream";
-  if (ext === "flac") {
-    contentType = "audio/flac";
-  } else if (ext === "wav") {
-    contentType = "audio/wav";
-  } else if (ext === "mp3") {
-    contentType = "audio/mpeg";
-  }
 
   return new Response(webStream, {
     headers: {
