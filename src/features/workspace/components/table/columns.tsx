@@ -21,6 +21,7 @@ import { useSegmentAudio } from "~/features/workspace/hooks/use-segment-audio";
 import { workspaceParams } from "~/features/workspace/search-params";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { cn } from "~/lib/utils";
+import { formatDuration } from "~/lib/time-utils";
 import { TagsCell } from "./tags-cell";
 
 // ============================================================================
@@ -229,7 +230,7 @@ function DurationCell({ duration }: { duration: number }) {
   return (
     <div className="flex justify-center">
       <Badge variant="secondary" className="font-mono text-xs">
-        {duration.toFixed(1)}s
+        {formatDuration(duration, { decimals: 1 })}
       </Badge>
     </div>
   );

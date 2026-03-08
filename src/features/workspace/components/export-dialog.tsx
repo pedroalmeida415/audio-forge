@@ -25,6 +25,7 @@ import {
 import { Slider } from "~/components/ui/slider";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
+import { formatDuration } from "~/lib/time-utils";
 
 export function ExportDialog({ children }: { children: React.ReactNode }) {
   const { projectId } = useParams<{ projectId: string }>();
@@ -152,7 +153,7 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
   );
 
   const exportMutation = api.export.startLJSpeechExport.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       setExportStatus("processing");
     },
     onError: (err) => {
@@ -278,7 +279,7 @@ export function ExportDialog({ children }: { children: React.ReactNode }) {
               <span className="text-muted-foreground">Export Summary</span>
               <span className="font-medium">
                 {filteredSegments.length} segments (
-                {totalFilteredDuration.toFixed(1)}s)
+                {formatDuration(totalFilteredDuration)})
               </span>
             </div>
           </div>

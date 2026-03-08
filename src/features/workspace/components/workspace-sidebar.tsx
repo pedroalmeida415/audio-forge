@@ -5,16 +5,8 @@ import { useQueryState } from "nuqs";
 import { useMemo } from "react";
 import { DurationHistogram } from "~/features/workspace/components/duration-histogram";
 import { api } from "~/trpc/react";
+import { formatDuration } from "~/lib/time-utils";
 import { workspaceParams } from "../search-params";
-
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  if (hours > 0) return `${hours}h ${mins}m`;
-  if (mins > 0) return `${mins}m ${secs}s`;
-  return `${secs}s`;
-}
 
 export function WorkspaceSidebar() {
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);

@@ -28,17 +28,8 @@ import {
   useWorkspaceCreateSpeakerMutation,
 } from "~/features/workspace/hooks/use-workspace-mutations";
 import { cn } from "~/lib/utils";
+import { formatTimestampWithMs } from "~/lib/time-utils";
 import type { Speaker } from "~/server/db/schema";
-
-/**
- * Formats time in MM:SS.mmm format
- */
-function formatTimeWithMs(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 1000);
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
-}
 
 interface InlineSelectionControlsProps {
   speakers: Speaker[];
@@ -147,9 +138,9 @@ export function InlineSelectionControls({
         data-testid="selection-time-range"
         className="flex items-center gap-1 rounded bg-muted px-2 py-1 font-mono text-muted-foreground text-xs"
       >
-        <span>{formatTimeWithMs(range.start)}</span>
+        <span>{formatTimestampWithMs(range.start)}</span>
         <span className="text-muted-foreground/60">{"\u2192"}</span>
-        <span>{formatTimeWithMs(range.end)}</span>
+        <span>{formatTimestampWithMs(range.end)}</span>
       </div>
 
       {/* Speaker combobox */}
