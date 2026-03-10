@@ -15,7 +15,6 @@ interface DurationBucket {
 
 interface DurationHistogramProps {
   buckets: DurationBucket[];
-  className?: string;
 }
 
 const chartConfig = {
@@ -25,10 +24,7 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function DurationHistogram({
-  buckets,
-  className,
-}: DurationHistogramProps) {
+export function DurationHistogram({ buckets }: DurationHistogramProps) {
   // Don't render if no data
   if (buckets.length === 0) {
     return (
@@ -39,20 +35,29 @@ export function DurationHistogram({
   }
 
   return (
-    <ChartContainer config={chartConfig} className={className}>
+    <ChartContainer
+      config={chartConfig}
+      className="aspect-auto h-full w-full text-muted-foreground [&_.recharts-surface]:overflow-visible"
+    >
       <BarChart
         data={buckets}
-        margin={{ left: 0, right: 0, top: 0, bottom: 0 }}
+        margin={{ left: 0, right: 0, top: 0, bottom: 10 }}
       >
         <XAxis
           dataKey="range"
+          height={2}
           tickLine={false}
-          axisLine={false}
-          tick={{ fontSize: 12 }}
-          tickMargin={8}
+          axisLine={true}
+          tick={{ fontSize: 12, fill: "currentColor" }}
+          tickMargin={0}
           interval="preserveStartEnd"
         />
-        <YAxis type="number" hide />
+        <YAxis
+          type="number"
+          hide
+          domain={[0, "dataMax"]}
+          padding={{ top: 0, bottom: 0 }}
+        />
         <ChartTooltip
           cursor={false}
           content={<ChartTooltipContent hideLabel />}
@@ -60,7 +65,7 @@ export function DurationHistogram({
         <Bar
           dataKey="count"
           fill="var(--color-primary)"
-          radius={[4, 4, 0, 0]}
+          radius={[3, 3, 0, 0]}
         />
       </BarChart>
     </ChartContainer>

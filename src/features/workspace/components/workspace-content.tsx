@@ -6,8 +6,8 @@ import { useEffect } from "react";
 import { api } from "~/trpc/react";
 import { useWorkspaceStore } from "../context/workspace-store-context";
 import { workspaceParams } from "../search-params";
+import { SegmentsStatisticsBar } from "./segments-statistics-bar";
 import { SegmentsTable } from "./table/segments-table";
-import { WorkspaceSidebar } from "./workspace-sidebar";
 
 export function WorkspaceContent() {
   const { store } = useWorkspaceStore();
@@ -56,11 +56,11 @@ export function WorkspaceContent() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-w-0 flex-1 p-4">
         <SegmentsTable segments={segments} />
       </div>
-      <WorkspaceSidebar />
+      <SegmentsStatisticsBar />
     </div>
   );
 }

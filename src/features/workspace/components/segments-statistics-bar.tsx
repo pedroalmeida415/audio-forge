@@ -4,11 +4,11 @@ import { Loader2 } from "lucide-react";
 import { useQueryState } from "nuqs";
 import { useMemo } from "react";
 import { DurationHistogram } from "~/features/workspace/components/duration-histogram";
-import { api } from "~/trpc/react";
 import { formatDuration } from "~/lib/time-utils";
+import { api } from "~/trpc/react";
 import { workspaceParams } from "../search-params";
 
-export function WorkspaceSidebar() {
+export function SegmentsStatisticsBar() {
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
@@ -118,56 +118,67 @@ export function WorkspaceSidebar() {
 
   if (isLoading || !stats) {
     return (
-      <aside className="sticky top-14 flex h-[calc(100vh-6rem)] w-60 shrink-0 items-center justify-center overflow-y-auto border-border border-l bg-background p-4">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <aside className="flex h-16 shrink-0 items-center justify-center border-border border-t bg-background px-4">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </aside>
     );
   }
 
   return (
-    <aside className="sticky top-14 h-[calc(100vh-6rem)] w-60 shrink-0 overflow-y-auto border-border border-l bg-background p-4">
-      <div className="flex h-full flex-col gap-6">
-        <div className="flex flex-col gap-6">
-          <div>
-            <div className="text-muted-foreground text-xs"># of Segments</div>
-            <div className="font-bold font-mono text-5xl text-foreground tabular-nums">
+    <aside className="sticky bottom-10 z-10 shrink-0 border-border border-t bg-background px-6 pt-3 pb-2 leading-none shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+      <div className="flex items-stretch gap-12">
+        <div className="flex flex-1 items-stretch justify-start gap-10">
+          <div className="flex flex-col gap-2">
+            <div className="whitespace-nowrap font-medium text-[10px] text-muted-foreground uppercase leading-none tracking-wider">
+              Total Segments
+            </div>
+            <div className="font-bold font-mono text-5xl text-foreground tabular-nums leading-none">
               {stats.totalSegments}
             </div>
           </div>
-          <div>
-            <div className="text-muted-foreground text-xs"># of Clips</div>
-            <div className="font-bold font-mono text-5xl text-foreground tabular-nums">
+          <div className="flex flex-col gap-2">
+            <div className="whitespace-nowrap font-medium text-[10px] text-muted-foreground uppercase leading-none tracking-wider">
+              With Clips
+            </div>
+            <div className="font-bold font-mono text-5xl text-foreground tabular-nums leading-none">
               {stats.totalProcessed}
             </div>
           </div>
-          <div>
-            <div className="text-muted-foreground text-xs"># Transcribed</div>
-            <div className="font-bold font-mono text-5xl text-foreground tabular-nums">
+          <div className="flex flex-col gap-2">
+            <div className="whitespace-nowrap font-medium text-[10px] text-muted-foreground uppercase leading-none tracking-wider">
+              Transcribed
+            </div>
+            <div className="font-bold font-mono text-5xl text-foreground tabular-nums leading-none">
               {stats.totalTranscribed}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted-foreground text-xs">
-              Avg. Clip Quality
-            </div>
-            <div className="font-bold font-mono text-5xl text-primary tabular-nums">
-              {stats.avgQuality.toFixed(2)}
             </div>
           </div>
         </div>
 
-        <div className="mt-auto flex flex-col gap-4">
-          <div>
-            <div className="text-muted-foreground text-xs">Total Duration</div>
-            <div className="font-bold font-mono text-5xl text-foreground tabular-nums">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="whitespace-nowrap font-medium text-[10px] text-muted-foreground uppercase leading-none tracking-wider">
+            Avg Quality
+          </div>
+          <div className="font-bold font-mono text-5xl text-primary tabular-nums leading-none">
+            {stats.avgQuality.toFixed(2)}
+          </div>
+        </div>
+
+        <div className="flex flex-1 items-stretch justify-end gap-10">
+          <div className="flex flex-col gap-2">
+            <div className="whitespace-nowrap font-medium text-[10px] text-muted-foreground uppercase leading-none tracking-wider">
+              Total Duration
+            </div>
+            <div className="font-bold font-mono text-5xl text-foreground tabular-nums leading-none">
               {formatDuration(stats.totalDuration)}
             </div>
           </div>
-          <div>
-            <div className="text-muted-foreground text-xs">
-              Duration Distribution
+          <div className="flex w-48 flex-col gap-2">
+            <div className="whitespace-nowrap font-medium text-[10px] text-muted-foreground uppercase leading-none tracking-wider">
+              Clip Length Distribution
             </div>
-            <DurationHistogram buckets={stats.buckets} />
+            <div className="flex-1">
+              <DurationHistogram buckets={stats.buckets} />
+            </div>
           </div>
         </div>
       </div>
