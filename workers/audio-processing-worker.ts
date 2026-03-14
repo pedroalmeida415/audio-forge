@@ -1200,12 +1200,16 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           const timestamp = Date.now();
           const exportKey = `exports/${userId}/${timestamp}-${speakerId.slice(0, 8)}.tar.gz`;
 
-          const archiveBlob = yield* Effect.promise(() => archive.blob());
+          // Write archive to disk first to avoid loading GBs into memory
+          const archivePath = join(tempDir, "dataset.tar.gz");
+          yield* Effect.promise(() => Bun.write(archivePath, archive));
+
+          const archiveFile = Bun.file(archivePath);
           yield* StorageService.upload({
             key: exportKey,
-            body: archiveBlob,
+            body: archiveFile,
             contentType: "application/gzip",
-            contentLength: archiveBlob.size,
+            contentLength: archiveFile.size,
           });
 
           console.log(`[LJSpeechExport] Uploaded to R2: ${exportKey}`);
