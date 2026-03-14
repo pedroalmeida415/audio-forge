@@ -318,6 +318,7 @@ const runFlacConversion = (inputPath: string, outputPath: string) =>
       "-nostdin",
       "-i",
       inputPath,
+      "-vn",
       "-acodec",
       "flac",
       "-ac",
