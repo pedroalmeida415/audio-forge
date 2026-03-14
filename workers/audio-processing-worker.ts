@@ -427,7 +427,16 @@ const handleIngestSource: JobHandler = async (job) => {
             if (!response.ok) {
               throw new Error(`R2 download failed: ${response.statusText}`);
             }
-            await Bun.write(stagedPath, response);
+            if (!response.body) {
+              throw new Error("R2 response has no body");
+            }
+            // Bun.write(path, response) hangs for large remote responses (known Bun bug https://github.com/oven-sh/bun/issues/13237).
+            // Stream through Bun.file().writer() to avoid the hang without buffering.
+            const writer = Bun.file(stagedPath).writer();
+            for await (const chunk of response.body) {
+              writer.write(chunk);
+            }
+            await writer.end();
           },
           catch: (error) =>
             new Error(`Failed to download raw upload: ${error}`),
