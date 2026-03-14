@@ -164,7 +164,9 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
       queueProcessingMutation.mutate({
         segmentIds,
         operation,
-        useExistingClip: false,
+        // Transcription should always use existing clips (not create new ones).
+        // For non-transcribe without existing clips, false is fine (will create the first clip).
+        useExistingClip: operation === "transcribe",
       });
       store.clearSelection();
     }

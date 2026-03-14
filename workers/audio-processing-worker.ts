@@ -220,10 +220,10 @@ const createClipFromBuffer = (params: {
 
 /**
  * Ensures a clip exists for the given segment.
- * If no clip exists (or forceNewClip is true), extracts audio from the source file and creates one.
+ * If no clip exists (or useExistingClip is false), extracts audio from the source file and creates one.
  * Returns the clip info for further processing.
  */
-const ensureClipExists = (segmentId: string, forceNewClip?: boolean) =>
+const ensureClipExists = (segmentId: string, useExistingClip?: boolean) =>
   Effect.gen(function* () {
     const db = yield* Database;
 
@@ -246,8 +246,8 @@ const ensureClipExists = (segmentId: string, forceNewClip?: boolean) =>
 
     const latestClip = segment.clips[0];
 
-    // If a clip exists and we aren't forcing a new one, return it
-    if (!forceNewClip && latestClip?.storageKey) {
+    // If a clip exists and we want to reuse it (or no preference), return it
+    if (useExistingClip !== false && latestClip?.storageKey) {
       console.log(
         `[ensureClipExists] Found existing clip for segment ${segmentId}: ${latestClip.storageKey}`,
       );
@@ -733,10 +733,7 @@ const handleTranscribe: JobHandler = async (job) => {
       const db = yield* Database;
 
       // Ensure clip exists (creates if needed)
-      const result = yield* ensureClipExists(
-        segmentId,
-        useExistingClip === false,
-      );
+      const result = yield* ensureClipExists(segmentId, useExistingClip);
       console.log(`[Transcribe] Clip ready: ${result.clip.storageKey}`);
 
       // Generate presigned URL and construct media server URL for the clip
