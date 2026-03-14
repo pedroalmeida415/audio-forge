@@ -1,21 +1,13 @@
+import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-import { createAuthMiddleware } from "./auth";
 import { MediaCache } from "./cache";
-import { extractFlacSlice, streamAudioSlice, streamRawFile } from "./stream";
+import { processAudio } from "./stream";
 
 // ============================================================================
 // Environment Variables
 // ============================================================================
-
-function getEnvOrThrow(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
 
 function getEnvNumber(name: string, defaultValue: number): number {
   const value = process.env[name];
@@ -29,21 +21,12 @@ function getEnvNumber(name: string, defaultValue: number): number {
 
 const config = {
   port: getEnvNumber("MEDIA_SERVER_PORT", 3002),
-  internalToken: getEnvOrThrow("MEDIA_SERVER_INTERNAL_TOKEN"),
-  databaseUrl: getEnvOrThrow("DATABASE_URL"),
-  authSecret: getEnvOrThrow("BETTER_AUTH_SECRET"),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
   cache: {
     dir: process.env.MEDIA_CACHE_DIR ?? "/tmp/media-cache",
     maxSizeBytes:
       getEnvNumber("MEDIA_CACHE_MAX_SIZE_GB", 10) * 1024 * 1024 * 1024,
     maxAgeMs: getEnvNumber("MEDIA_CACHE_MAX_AGE_HOURS", 24) * 60 * 60 * 1000,
-  },
-  r2: {
-    endpoint: getEnvOrThrow("CLOUDFLARE_R2_ENDPOINT"),
-    accessKeyId: getEnvOrThrow("CLOUDFLARE_R2_ACCESS_KEY_ID"),
-    secretAccessKey: getEnvOrThrow("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
-    bucket: getEnvOrThrow("CLOUDFLARE_R2_BUCKET"),
   },
 };
 
@@ -55,16 +38,6 @@ const cache = new MediaCache({
   cacheDir: config.cache.dir,
   maxSizeBytes: config.cache.maxSizeBytes,
   maxAgeMs: config.cache.maxAgeMs,
-  r2Endpoint: config.r2.endpoint,
-  r2AccessKeyId: config.r2.accessKeyId,
-  r2SecretAccessKey: config.r2.secretAccessKey,
-  r2Bucket: config.r2.bucket,
-});
-
-const authMiddleware = createAuthMiddleware({
-  internalToken: config.internalToken,
-  databaseUrl: config.databaseUrl,
-  authSecret: config.authSecret,
 });
 
 // ============================================================================
@@ -82,7 +55,7 @@ app.use(
   }),
 );
 
-// Health check (no auth required)
+// Health check
 app.get("/health", (c) => {
   const stats = cache.getStats();
   return c.json({
@@ -95,54 +68,103 @@ app.get("/health", (c) => {
   });
 });
 
-// Audio streaming endpoint (auth required)
-app.get("/audio", authMiddleware, async (c) => {
-  const storageKey = c.req.query("storageKey");
-  const startParam = c.req.query("start");
-  const endParam = c.req.query("end");
-  const format = c.req.query("format"); // "flac" for lossless slice (workers)
-
-  // storageKey is already validated by auth middleware
-  if (!storageKey) {
-    return c.json({ error: "Missing storageKey" }, 400);
+// Common validation middleware for presigned URL
+const validatePresignedUrl = async (c: Context, next: Next) => {
+  const presignedUrl = c.req.query("url");
+  if (!presignedUrl) {
+    return c.json({ error: "Missing url parameter" }, 400);
   }
 
   try {
-    // Get or download file from cache
-    const localPath = await cache.getOrDownload(storageKey);
+    new URL(presignedUrl);
+  } catch {
+    return c.json({ error: "Invalid url parameter" }, 400);
+  }
 
-    // If time range provided, return slice
-    if (startParam && endParam) {
-      const start = Number(startParam);
-      const end = Number(endParam);
+  await next();
+};
 
-      if (
-        Number.isNaN(start) ||
-        Number.isNaN(end) ||
-        start < 0 ||
-        end <= start
-      ) {
-        return c.json({ error: "Invalid time range" }, 400);
-      }
+app.use("/audio/*", validatePresignedUrl);
 
-      // format=flac: Return FLAC slice (for workers needing lossless audio)
-      // default: Return fMP4 slice (for browser MSE playback)
-      if (format === "flac") {
-        return extractFlacSlice({ localPath, start, end });
-      }
+function getContentType(ext: string): string {
+  if (ext === "flac") return "audio/flac";
+  if (ext === "wav") return "audio/wav";
+  if (ext === "mp3") return "audio/mpeg";
+  if (ext === "m4a" || ext === "mp4" || ext === "fmp4") return "audio/mp4";
+  return "application/octet-stream";
+}
 
-      return streamAudioSlice({ localPath, start, end });
+/**
+ * Unified Audio streaming endpoint.
+ * Serves the raw file if no modifications are needed, or transcodes/slices on-the-fly.
+ */
+app.get("/audio", async (c) => {
+  const presignedUrl = c.req.query("url") as string;
+  const startParam = c.req.query("start");
+  const endParam = c.req.query("end");
+  const format = c.req.query("format");
+
+  if (!format) {
+    return c.json({ error: "Format parameter is required" }, 400);
+  }
+
+  let start: number | undefined;
+  let end: number | undefined;
+
+  if (startParam || endParam) {
+    if (!startParam || !endParam) {
+      return c.json(
+        { error: "Both start and end parameters are required for slicing" },
+        400,
+      );
     }
 
-    // Otherwise stream raw file (for workers downloading full file)
-    return streamRawFile({ localPath });
-  } catch (error) {
-    console.error("[media-server] Error streaming audio:", error);
+    start = Number(startParam);
+    end = Number(endParam);
 
-    if (error instanceof Error && error.message.includes("NoSuchKey")) {
+    if (Number.isNaN(start) || Number.isNaN(end) || start < 0 || end <= start) {
+      return c.json({ error: "Invalid time range" }, 400);
+    }
+  }
+
+  try {
+    const localPath = await cache.getOrDownload(presignedUrl);
+
+    const ext = localPath.split(".").pop()?.toLowerCase() || "";
+
+    // Serve raw file directly if no processing or transcoding is needed
+    if (start === undefined && end === undefined && format === ext) {
+      return new Response(Bun.file(localPath), {
+        headers: {
+          "Content-Type": getContentType(ext),
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
+    }
+
+    const { stream, contentType } = await processAudio({
+      localPath,
+      start,
+      end,
+      format,
+      signal: c.req.raw.signal,
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "no-cache",
+        "Accept-Ranges": "none",
+      },
+    });
+  } catch (error) {
+    console.error("[media-server] Error processing audio req:", error);
+    if (
+      error instanceof Error &&
+      (error.message.includes("403") || error.message.includes("NoSuchKey"))
+    ) {
       return c.json({ error: "Not found" }, 404);
     }
-
     return c.json({ error: "Internal server error" }, 500);
   }
 });

@@ -14,6 +14,12 @@ export interface MSEAudioProviderConfig {
   storageKey: string;
   duration: number; // Duration in seconds (from audio metadata)
   sliceSize?: number; // Seconds per slice, defaults to 15
+  /**
+   * Callback to get a presigned download URL for the storage key.
+   * Called once on initialization and the URL is reused for all slice requests
+   * (presigned URLs typically last 1 hour, well beyond a session).
+   */
+  getPresignedUrl: (storageKey: string) => Promise<string>;
 }
 
 const PRELOAD_THRESHOLD = 5.0; // seconds
@@ -31,6 +37,8 @@ export class MSEAudioProvider {
   private storageKey: string;
   private duration: number;
   private sliceSize: number;
+  private getPresignedUrl: (storageKey: string) => Promise<string>;
+  private presignedUrlPromise: Promise<string> | null = null;
 
   private mediaSource: MediaSource;
   private sourceBuffer: SourceBuffer | null = null;
@@ -52,6 +60,10 @@ export class MSEAudioProvider {
     this.storageKey = config.storageKey;
     this.duration = config.duration;
     this.sliceSize = config.sliceSize ?? 15;
+    this.getPresignedUrl = config.getPresignedUrl;
+
+    // Pre-fetch the presigned URL eagerly so it's ready for the first slice
+    this.presignedUrlPromise = this.getPresignedUrl(this.storageKey);
 
     // Bind handlers once for proper cleanup
     this.handleTimeUpdate = this.onTimeUpdate.bind(this);
@@ -93,6 +105,7 @@ export class MSEAudioProvider {
     this.pendingSlices.clear();
     this.fetchedSlices.clear();
     this.appendQueue = [];
+    this.presignedUrlPromise = null;
   }
 
   /**
@@ -224,17 +237,26 @@ export class MSEAudioProvider {
     }
   }
 
+  /**
+   * Get the presigned URL, using the cached promise to avoid redundant calls.
+   */
+  private async getOrFetchPresignedUrl(): Promise<string> {
+    if (!this.presignedUrlPromise) {
+      this.presignedUrlPromise = this.getPresignedUrl(this.storageKey);
+    }
+    return this.presignedUrlPromise;
+  }
+
   private async fetchSlice(start: number, end: number): Promise<ArrayBuffer> {
     const mediaServerUrl = env.NEXT_PUBLIC_MEDIA_SERVER_URL;
     if (!mediaServerUrl) {
       throw new Error("NEXT_PUBLIC_MEDIA_SERVER_URL is not configured");
     }
 
-    const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(this.storageKey)}&start=${start}&end=${end}`;
+    const presignedUrl = await this.getOrFetchPresignedUrl();
+    const url = `${mediaServerUrl}/audio?url=${encodeURIComponent(presignedUrl)}&start=${start}&end=${end}&format=fmp4`;
 
-    const response = await fetch(url, {
-      credentials: "include",
-    });
+    const response = await fetch(url);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch slice: ${response.status}`);

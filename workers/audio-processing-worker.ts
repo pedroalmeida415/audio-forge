@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import archiver from "archiver";
 import { type Job, Queue, Worker } from "bullmq";
 import { desc, eq, sql } from "drizzle-orm";
@@ -23,9 +23,8 @@ if (typeof Bun === "undefined") {
 }
 
 import { env } from "../src/env";
-import { isVideoMimeType } from "../src/lib/video-types";
 import { clips, segments, sources, speakers } from "../src/server/db/schema";
-import { AppRuntime, disposeRuntime } from "../src/services";
+import { AppRuntime } from "../src/services";
 import { AudioProcessingService } from "../src/services/audio/audio-processing-service";
 import { PyannoteService } from "../src/services/diarization/pyannote-service";
 import { Database } from "../src/services/infra/database";
@@ -43,43 +42,63 @@ import { StorageService } from "../src/services/storage/storage-service";
 // ============================================================================
 
 const mediaServerUrl = process.env.MEDIA_SERVER_URL ?? "http://localhost:3002";
-const mediaServerToken = process.env.MEDIA_SERVER_INTERNAL_TOKEN;
 const speechProcessingServerUrl =
   process.env.SPEECH_PROCESSING_SERVER_URL ?? "http://localhost:8000";
 
 /**
+ * Generate a presigned download URL for a storage key.
+ * Short helper to reduce boilerplate in handlers.
+ */
+const generatePresignedDownloadUrl = (storageKey: string) =>
+  StorageService.generatePresignedUrl({
+    key: storageKey,
+    operation: "download",
+    expiresIn: 3600,
+  }).pipe(
+    Effect.map((result) => result.url),
+    Effect.catchTag("StorageError", (error) =>
+      Effect.fail(
+        new Error(
+          `Failed to generate presigned URL for ${storageKey}: ${error.message}`,
+        ),
+      ),
+    ),
+  );
+
+/**
  * Fetch a FLAC slice from the media server.
- * The media server extracts the slice using FFmpeg and returns it as a buffer.
- * Used for creating clips without needing to download the full source file.
+ * Generates a presigned URL, passes it to the media server which extracts
+ * the slice using FFmpeg and returns it as a buffer.
  */
 const fetchSliceFromMediaServer = (params: {
   storageKey: string;
   start: number;
   end: number;
 }) =>
-  Effect.tryPromise({
-    try: async () => {
-      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(params.storageKey)}&start=${params.start}&end=${params.end}&format=flac`;
-      const headers: Record<string, string> = {};
+  Effect.gen(function* () {
+    const presignedUrl = yield* generatePresignedDownloadUrl(params.storageKey);
+    const mediaUrl = buildMediaServerUrl({
+      presignedUrl,
+      start: params.start,
+      end: params.end,
+      format: "flac",
+    });
 
-      if (mediaServerToken) {
-        headers.Authorization = `Bearer ${mediaServerToken}`;
-      }
-
-      const response = await fetch(url, { headers });
-
-      if (!response.ok) {
-        throw new Error(
-          `Media server error: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      return Buffer.from(await response.arrayBuffer());
-    },
-    catch: (error) =>
-      new Error(
-        `Failed to fetch slice from media server: ${error instanceof Error ? error.message : String(error)}`,
-      ),
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(mediaUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Media server error: ${response.status} ${response.statusText}`,
+          );
+        }
+        return Buffer.from(await response.arrayBuffer());
+      },
+      catch: (error) =>
+        new Error(
+          `Failed to fetch slice from media server: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    });
   });
 
 // ============================================================================
@@ -140,67 +159,6 @@ interface SegmentContext {
   startTime: number;
   endTime: number;
 }
-
-/** Result of extractSegmentAudio */
-interface ExtractSegmentResult {
-  audioBuffer: Buffer;
-  context: SegmentContext;
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Extract audio buffer from a segment's source file.
- * Does NOT create any DB records or upload to R2.
- * Returns the raw audio buffer and context needed for further processing.
- */
-const extractSegmentAudio = (segmentId: string) =>
-  Effect.gen(function* () {
-    const db = yield* Database;
-
-    // Look up segment with source relation (no clip needed)
-    const segment = yield* db.query.segments.findFirst({
-      where: eq(segments.id, segmentId),
-      with: {
-        source: true,
-        speaker: true,
-      },
-    });
-
-    if (!segment) {
-      return yield* Effect.fail(new Error(`Segment ${segmentId} not found`));
-    }
-
-    const sourceStorageKey = segment.source.storageKey;
-    if (!sourceStorageKey) {
-      return yield* Effect.fail(
-        new Error(`Source file not found for segment ${segmentId}`),
-      );
-    }
-
-    console.log(
-      `[extractSegmentAudio] Extracting audio for segment ${segmentId} (${segment.startTime}s - ${segment.endTime}s)`,
-    );
-
-    // Fetch slice from media server
-    const audioBuffer = yield* fetchSliceFromMediaServer({
-      storageKey: sourceStorageKey,
-      start: segment.startTime,
-      end: segment.endTime,
-    });
-
-    const context: SegmentContext = {
-      segmentId,
-      speakerId: segment.speakerId,
-      userId: segment.speaker.userId,
-      startTime: segment.startTime,
-      endTime: segment.endTime,
-    };
-
-    return { audioBuffer, context } satisfies ExtractSegmentResult;
-  });
 
 /**
  * Upload an audio buffer to R2 and create a clip DB record.
@@ -396,19 +354,6 @@ const ensureClipExists = (segmentId: string, forceNewClip?: boolean) =>
 // Job Handlers
 // ============================================================================
 
-function isFlacInput(params: {
-  contentType: string | null;
-  filename: string | null;
-}) {
-  const mime = params.contentType?.toLowerCase() ?? "";
-  if (mime === "audio/flac" || mime === "audio/x-flac") {
-    return true;
-  }
-
-  const name = params.filename?.toLowerCase() ?? "";
-  return name.endsWith(".flac");
-}
-
 function toFlacName(filename: string | null, sourceId: string): string {
   if (!filename) {
     return `${sourceId}.flac`;
@@ -438,84 +383,84 @@ const handleIngestSource: JobHandler = async (job) => {
   const shouldQueueDiarization = job.data.queueDiarization === true;
   console.log(`[IngestSource] Processing source ${sourceId}`);
 
-  await AppRuntime.runPromise(
-    Effect.gen(function* () {
-      const db = yield* Database;
-      const source = yield* db.query.sources.findFirst({
-        where: eq(sources.id, sourceId),
-      });
+  let tempDirToClean: string | null = null;
 
-      if (!source) {
-        return yield* Effect.fail(new Error(`Source ${sourceId} not found`));
-      }
+  try {
+    await AppRuntime.runPromise(
+      Effect.gen(function* () {
+        const db = yield* Database;
+        const source = yield* db.query.sources.findFirst({
+          where: eq(sources.id, sourceId),
+        });
 
-      const stagedPath = source.ingestLocalPath;
-      if (!stagedPath) {
-        return yield* Effect.fail(
-          new Error(`Source ${sourceId} has no staged file path`),
-        );
-      }
-      console.log(`[IngestSource] Using staged path: ${stagedPath}`);
-
-      yield* db
-        .update(sources)
-        .set({
-          ingestStatus: "processing",
-          ingestError: null,
-          waveformStatus: "processing",
-          waveformError: null,
-        })
-        .where(eq(sources.id, sourceId));
-
-      const ingestContentType = source.ingestContentType ?? "";
-      const ingestFilename =
-        source.ingestOriginalFilename ??
-        source.originalFileName ??
-        source.name ??
-        "source";
-
-      const stagedDir = dirname(stagedPath);
-      const normalizedFlacPath = join(stagedDir, `${sourceId}.flac`);
-      const waveformPath = join(stagedDir, `${sourceId}.dat`);
-
-      // Clear stale intermediates from previous attempts so retries don't block.
-      yield* Effect.sync(() => {
-        if (normalizedFlacPath !== stagedPath) {
-          rmSync(normalizedFlacPath, { force: true });
+        if (!source) {
+          return yield* Effect.fail(new Error(`Source ${sourceId} not found`));
         }
-        rmSync(waveformPath, { force: true });
-      });
 
-      let flacPath = stagedPath;
-      let duration = 0;
-      let createdNormalizedFlac = false;
+        const rawStorageKey = source.storageKey;
+        if (!rawStorageKey) {
+          return yield* Effect.fail(
+            new Error(`Source ${sourceId} has no storage key`),
+          );
+        }
 
-      if (
-        isFlacInput({
-          contentType: ingestContentType,
-          filename: ingestFilename,
-        })
-      ) {
-        console.log(`[IngestSource] FLAC passthrough for ${sourceId}`);
+        const stagedDir = mkdtempSync(
+          join(tmpdir(), `audio-forge-ingest-${sourceId}-`),
+        );
+        tempDirToClean = stagedDir;
+        const stagedPath = join(stagedDir, "raw-upload");
+        const normalizedFlacPath = join(stagedDir, `${sourceId}.flac`);
+        const waveformPath = join(stagedDir, `${sourceId}.dat`);
+
+        console.log(`[IngestSource] Downloading raw upload: ${rawStorageKey}`);
+        const { url: downloadUrl } = yield* StorageService.generatePresignedUrl(
+          {
+            key: rawStorageKey,
+            operation: "download",
+            expiresIn: 3600,
+          },
+        );
+
+        yield* Effect.tryPromise({
+          try: async () => {
+            const response = await fetch(downloadUrl);
+            if (!response.ok) {
+              throw new Error(`R2 download failed: ${response.statusText}`);
+            }
+            await Bun.write(stagedPath, response);
+          },
+          catch: (error) =>
+            new Error(`Failed to download raw upload: ${error}`),
+        });
+
+        // We already marked it as processing in the pull system loop, but just to be sure
+        yield* db
+          .update(sources)
+          .set({
+            status: "processing",
+            error: null,
+          })
+          .where(eq(sources.id, sourceId));
+
+        // We no longer have ingestContentType, let's use originalFileName to guess format
+        const ingestFilename =
+          source.originalFileName ?? source.name ?? "source";
+
+        let flacPath = stagedPath;
+        let duration = 0;
+
+        // For simplicity, just probe the downloaded file using AudioProcessingService
+        console.log(`[IngestSource] Probing file for ${sourceId}`);
         const metadata = yield* AudioProcessingService.probe({
           inputPath: stagedPath,
         });
+
         if (!metadata.hasAudio) {
           return yield* Effect.fail(
-            new Error(`Staged FLAC has no audio for source ${sourceId}`),
+            new Error(`Staged file has no audio for source ${sourceId}`),
           );
-        }
-        duration = metadata.durationSeconds;
-      } else if (isVideoMimeType(ingestContentType)) {
-        console.log(`[IngestSource] Extracting video audio for ${sourceId}`);
-        const extracted = yield* AudioProcessingService.extractFromVideo({
-          inputPath: stagedPath,
-          outputPath: normalizedFlacPath,
-        });
-        flacPath = extracted.outputPath;
-        duration = extracted.durationSeconds;
-        createdNormalizedFlac = true;
-      } else if (ingestContentType.startsWith("audio/")) {
+        } // Wait, we can convert all formats to FLAC securely without an explicit switch
+
         console.log(`[IngestSource] Converting audio to FLAC for ${sourceId}`);
         const converted = yield* AudioProcessingService.convertToFlac({
           inputPath: stagedPath,
@@ -523,156 +468,146 @@ const handleIngestSource: JobHandler = async (job) => {
         });
         flacPath = converted.outputPath;
         duration = converted.durationSeconds;
-        createdNormalizedFlac = true;
-      } else {
-        return yield* Effect.fail(
-          new Error(`Unsupported ingest content type: ${ingestContentType}`),
-        );
-      }
-
-      if (!Number.isFinite(duration) || duration <= 0) {
-        const metadata = yield* AudioProcessingService.probe({
-          inputPath: flacPath,
-        });
-        duration = metadata.durationSeconds;
-      }
-
-      const audioStorageKey = `sources/${source.userId}/${Date.now()}-${sourceId}.flac`;
-      console.log(`[IngestSource] Uploading FLAC to R2 for ${sourceId}`);
-      const flacStats = statSync(flacPath);
-      yield* StorageService.upload({
-        key: audioStorageKey,
-        body: createReadStream(flacPath),
-        contentType: "audio/flac",
-        contentLength: flacStats.size,
-      });
-
-      console.log(`[IngestSource] Generating waveform for ${sourceId}`);
-      yield* AudioProcessingService.generateWaveform({
-        inputPath: flacPath,
-        outputPath: waveformPath,
-        samplesPerPixel: 256,
-      });
-
-      const waveformBuffer = yield* Effect.try({
-        try: () => readFileSync(waveformPath),
-        catch: (error) =>
-          new Error(
-            `Failed to read generated waveform for source ${sourceId}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          ),
-      });
-
-      const displayName = toFlacName(ingestFilename, sourceId);
-
-      const update: Partial<typeof sources.$inferInsert> = {
-        storageKey: audioStorageKey,
-        duration,
-        name: displayName,
-        originalFileName: ingestFilename,
-        ingestStatus: "completed",
-        ingestError: null,
-        ingestLocalPath: null,
-        waveformStatus: "completed",
-        waveformError: null,
-        waveformData: waveformBuffer,
-      };
-
-      if (shouldQueueDiarization) {
-        console.log(`[IngestSource] Auto-queueing diarization for ${sourceId}`);
-
-        const diarizationUpdate = yield* Effect.gen(function* () {
-          const { url: audioUrl } = yield* StorageService.generatePresignedUrl({
-            key: audioStorageKey,
-            operation: "download",
-            expiresIn: 7200,
+        if (!Number.isFinite(duration) || duration <= 0) {
+          const metadata = yield* AudioProcessingService.probe({
+            inputPath: flacPath,
           });
+          duration = metadata.durationSeconds;
+        }
 
-          const diarizationJob = yield* PyannoteService.submitJob({
-            audioUrl,
-          }).pipe(
-            Effect.catchTag("PyannoteError", (error) =>
-              Effect.fail(new Error(error.message)),
+        const audioStorageKey = `sources/${source.userId}/${Date.now()}-${sourceId}.flac`;
+        console.log(`[IngestSource] Uploading FLAC to R2 for ${sourceId}`);
+        const flacStats = statSync(flacPath);
+        yield* StorageService.upload({
+          key: audioStorageKey,
+          body: createReadStream(flacPath),
+          contentType: "audio/flac",
+          contentLength: flacStats.size,
+        });
+
+        console.log(`[IngestSource] Generating waveform for ${sourceId}`);
+        yield* AudioProcessingService.generateWaveform({
+          inputPath: flacPath,
+          outputPath: waveformPath,
+          samplesPerPixel: 256,
+        });
+
+        const waveformBuffer = yield* Effect.try({
+          try: () => readFileSync(waveformPath),
+          catch: (error) =>
+            new Error(
+              `Failed to read generated waveform for source ${sourceId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
             ),
-          );
+        });
 
+        const displayName = toFlacName(ingestFilename, sourceId);
+
+        const update: Partial<typeof sources.$inferInsert> = {
+          storageKey: audioStorageKey,
+          duration,
+          name: displayName,
+          originalFileName: ingestFilename,
+          status: "completed",
+          error: null,
+          waveformData: waveformBuffer,
+        };
+
+        if (shouldQueueDiarization) {
           console.log(
-            `[IngestSource] Auto-diarization queued for ${sourceId}: ${diarizationJob.jobId}`,
+            `[IngestSource] Auto-queueing diarization for ${sourceId}`,
           );
 
-          return {
-            diarizationJobId: diarizationJob.jobId,
-            diarizationStatus: "pending" as const,
-            diarizationStartedAt: new Date(),
-            diarizationCompletedAt: null,
-            diarizationError: null,
-          };
-        }).pipe(
-          Effect.catchAll((error) => {
-            const message =
-              error instanceof Error
-                ? error.message
-                : "Failed to queue diarization";
+          const diarizationUpdate = yield* Effect.gen(function* () {
+            const { url: audioUrl } =
+              yield* StorageService.generatePresignedUrl({
+                key: audioStorageKey,
+                operation: "download",
+                expiresIn: 7200,
+              });
 
-            console.error(
-              `[IngestSource] Auto-diarization failed for ${sourceId}:`,
-              message,
+            const diarizationJob = yield* PyannoteService.submitJob({
+              audioUrl,
+            }).pipe(
+              Effect.catchTag("PyannoteError", (error) =>
+                Effect.fail(new Error(error.message)),
+              ),
             );
 
-            return Effect.succeed({
-              diarizationJobId: null,
-              diarizationStatus: "failed" as const,
-              diarizationStartedAt: null,
-              diarizationCompletedAt: new Date(),
-              diarizationError: message,
-            });
-          }),
-        );
+            console.log(
+              `[IngestSource] Auto-diarization queued for ${sourceId}: ${diarizationJob.jobId}`,
+            );
 
-        Object.assign(update, diarizationUpdate);
-      }
+            return {
+              diarizationJobId: diarizationJob.jobId,
+              diarizationStatus: "pending" as const,
+              diarizationStartedAt: new Date(),
+              diarizationCompletedAt: null,
+              diarizationError: null,
+            };
+          }).pipe(
+            Effect.catchAll((error) => {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Failed to queue diarization";
 
-      yield* db.update(sources).set(update).where(eq(sources.id, sourceId));
+              console.error(
+                `[IngestSource] Auto-diarization failed for ${sourceId}:`,
+                message,
+              );
 
-      // Delete staged artifacts only after full success.
-      yield* Effect.sync(() => {
-        rmSync(waveformPath, { force: true });
-        rmSync(stagedPath, { force: true });
-        if (createdNormalizedFlac) {
-          rmSync(flacPath, { force: true });
-        }
-      });
-
-      console.log(`[IngestSource] Source ${sourceId} completed`);
-    }).pipe(
-      Effect.catchAll((error) =>
-        Effect.gen(function* () {
-          const db = yield* Database;
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown ingest error";
-
-          console.error(
-            `[IngestSource] Source ${sourceId} failed:`,
-            errorMessage,
+              return Effect.succeed({
+                diarizationJobId: null,
+                diarizationStatus: "failed" as const,
+                diarizationStartedAt: null,
+                diarizationCompletedAt: new Date(),
+                diarizationError: message,
+              });
+            }),
           );
 
-          yield* db
-            .update(sources)
-            .set({
-              ingestStatus: "failed",
-              ingestError: errorMessage,
-              waveformStatus: "failed",
-              waveformError: errorMessage,
-            })
-            .where(eq(sources.id, sourceId))
-            .pipe(Effect.catchAll(() => Effect.void));
+          Object.assign(update, diarizationUpdate);
+        }
 
-          return yield* Effect.fail(error);
-        }),
+        yield* db.update(sources).set(update).where(eq(sources.id, sourceId));
+        console.log(`[IngestSource] Source ${sourceId} completed`);
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.gen(function* () {
+            const db = yield* Database;
+            const errorMessage =
+              error instanceof Error ? error.message : "Unknown ingest error";
+
+            console.error(
+              `[IngestSource] Source ${sourceId} failed:`,
+              errorMessage,
+            );
+
+            yield* db
+              .update(sources)
+              .set({
+                status: "failed",
+                error: errorMessage,
+              })
+              .where(eq(sources.id, sourceId))
+              .pipe(Effect.catchAll(() => Effect.void));
+
+            return yield* Effect.fail(error);
+          }),
+        ),
       ),
-    ),
-  );
+    );
+  } finally {
+    if (tempDirToClean) {
+      try {
+        rmSync(tempDirToClean, { recursive: true, force: true });
+      } catch (e) {
+        console.error(`Failed to clean up staging directory: ${e}`);
+      }
+    }
+  }
 
   return undefined;
 };
@@ -705,6 +640,7 @@ const handleDenoise: JobHandler = async (job) => {
             orderBy: [desc(clips.createdAt)],
             limit: 1,
           },
+          source: true,
           speaker: true,
         },
       });
@@ -715,14 +651,19 @@ const handleDenoise: JobHandler = async (job) => {
 
       const latestClip = existingSegment.clips[0];
 
-      let audioBuffer: Buffer;
+      let audioUrl: string;
       let context: SegmentContext;
 
       if (useExistingClip && latestClip?.storageKey) {
-        console.log(
-          `[Denoise] Extracting audio from existing clip ${latestClip.storageKey}`,
+        // Use existing clip audio via media server URL
+        console.log(`[Denoise] Using existing clip ${latestClip.storageKey}`);
+        const presignedUrl = yield* generatePresignedDownloadUrl(
+          latestClip.storageKey,
         );
-        audioBuffer = yield* fetchAudioBuffer(latestClip.storageKey);
+        audioUrl = buildMediaServerUrl({
+          presignedUrl,
+          format: "flac",
+        });
         context = {
           segmentId,
           speakerId: existingSegment.speakerId,
@@ -731,20 +672,34 @@ const handleDenoise: JobHandler = async (job) => {
           endTime: existingSegment.endTime,
         };
       } else {
-        // Extract raw audio from source file
-        console.log(`[Denoise] Extracting audio for segment ${segmentId}`);
-        const extracted = yield* extractSegmentAudio(segmentId);
-        audioBuffer = extracted.audioBuffer;
-        context = extracted.context;
+        // Construct media server URL for the source file slice
+        const sourceStorageKey = existingSegment.source.storageKey;
+        if (!sourceStorageKey) {
+          return yield* Effect.fail(
+            new Error(`Source file not found for segment ${segmentId}`),
+          );
+        }
+        console.log(`[Denoise] Using source slice for segment ${segmentId}`);
+        const presignedUrl =
+          yield* generatePresignedDownloadUrl(sourceStorageKey);
+        audioUrl = buildMediaServerUrl({
+          presignedUrl,
+          start: existingSegment.startTime,
+          end: existingSegment.endTime,
+          format: "flac",
+        });
+        context = {
+          segmentId,
+          speakerId: existingSegment.speakerId,
+          userId: existingSegment.speaker.userId,
+          startTime: existingSegment.startTime,
+          endTime: existingSegment.endTime,
+        };
       }
 
-      console.log(
-        `[Denoise] Extracted ${audioBuffer.length} bytes for processing`,
-      );
-
-      // Denoise audio via speech processing server
+      // Denoise audio via speech processing server (URL-based)
       console.log(`[Denoise] Denoising audio for segment ${segmentId}`);
-      const denoisedBuffer = yield* callDenoiseServer(audioBuffer);
+      const denoisedBuffer = yield* callDenoiseServer(audioUrl);
       console.log(
         `[Denoise] Denoised audio: ${denoisedBuffer.length} bytes (FLAC 48kHz)`,
       );
@@ -794,14 +749,17 @@ const handleTranscribe: JobHandler = async (job) => {
       );
       console.log(`[Transcribe] Clip ready: ${result.clip.storageKey}`);
 
-      // Fetch audio from media server
-      const audioBuffer = yield* fetchAudioBuffer(result.clip.storageKey);
-      console.log(
-        `[Transcribe] Fetched ${audioBuffer.length} bytes from media server`,
+      // Generate presigned URL and construct media server URL for the clip
+      const presignedUrl = yield* generatePresignedDownloadUrl(
+        result.clip.storageKey,
       );
+      const audioUrl = buildMediaServerUrl({
+        presignedUrl,
+        format: "flac",
+      });
 
-      // Call transcription server
-      const transcriptionResult = yield* callTranscriptionServer(audioBuffer);
+      // Call transcription server with URL
+      const transcriptionResult = yield* callTranscriptionServer(audioUrl);
       console.log(
         `[Transcribe] Transcription received:`,
         transcriptionResult.text,
@@ -839,6 +797,33 @@ const handleTranscribe: JobHandler = async (job) => {
   );
 };
 
+// ============================================================================
+// Media Server URL Builder
+// ============================================================================
+
+/**
+ * Build a media server URL for a given presigned URL.
+ * The presigned URL is passed as the `url` query parameter.
+ * Optionally includes start/end for time-sliced access and format.
+ */
+const buildMediaServerUrl = (params: {
+  presignedUrl: string;
+  start?: number;
+  end?: number;
+  format: string;
+}): string => {
+  const url = new URL(`${mediaServerUrl}/audio`);
+  url.searchParams.set("url", params.presignedUrl);
+  if (params.start != null) url.searchParams.set("start", String(params.start));
+  if (params.end != null) url.searchParams.set("end", String(params.end));
+  url.searchParams.set("format", params.format);
+  return url.toString();
+};
+
+// ============================================================================
+// Speech Processing Server Callers (URL-based)
+// ============================================================================
+
 /** DNSMOS score response from scoring server */
 interface DNSMOSResponse {
   DNSMOS: {
@@ -851,20 +836,15 @@ interface DNSMOSResponse {
 
 /**
  * Call the speech scoring server to calculate DNSMOS scores.
+ * Sends a URL that the scoring server will download from.
  */
-const callScoringServer = (audioBuffer: Buffer) =>
+const callScoringServer = (audioUrl: string) =>
   Effect.tryPromise({
     try: async () => {
-      const formData = new FormData();
-      formData.append(
-        "file",
-        new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }),
-        "audio.flac",
-      );
-
       const response = await fetch(`${speechProcessingServerUrl}/score`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: audioUrl }),
       });
 
       if (!response.ok) {
@@ -887,20 +867,15 @@ interface TranscriptionResponse {
 
 /**
  * Call the speech processing server to transcribe audio.
+ * Sends a URL that the transcription server will download from.
  */
-const callTranscriptionServer = (audioBuffer: Buffer) =>
+const callTranscriptionServer = (audioUrl: string) =>
   Effect.tryPromise({
     try: async () => {
-      const formData = new FormData();
-      formData.append(
-        "file",
-        new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }),
-        "audio.flac",
-      );
-
       const response = await fetch(`${speechProcessingServerUrl}/transcribe`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: audioUrl }),
       });
 
       if (!response.ok) {
@@ -920,21 +895,16 @@ const callTranscriptionServer = (audioBuffer: Buffer) =>
 
 /**
  * Call the speech processing server to denoise audio.
+ * Sends a URL that the denoise server will download from.
  * Returns the denoised audio as a FLAC buffer (48kHz).
  */
-const callDenoiseServer = (audioBuffer: Buffer) =>
+const callDenoiseServer = (audioUrl: string) =>
   Effect.tryPromise({
     try: async () => {
-      const formData = new FormData();
-      formData.append(
-        "file",
-        new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }),
-        "audio.flac",
-      );
-
       const response = await fetch(`${speechProcessingServerUrl}/denoise`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: audioUrl }),
       });
 
       if (!response.ok) {
@@ -951,61 +921,32 @@ const callDenoiseServer = (audioBuffer: Buffer) =>
   });
 
 /**
- * Fetch audio buffer from media server.
- */
-const fetchAudioBuffer = (storageKey: string) =>
-  Effect.tryPromise({
-    try: async () => {
-      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(storageKey)}`;
-      const headers: Record<string, string> = {};
-
-      if (mediaServerToken) {
-        headers.Authorization = `Bearer ${mediaServerToken}`;
-      }
-
-      const response = await fetch(url, { headers });
-
-      if (!response.ok) {
-        throw new Error(
-          `Media server error: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      return Buffer.from(await response.arrayBuffer());
-    },
-    catch: (error) =>
-      new Error(
-        `Failed to fetch from media server: ${error instanceof Error ? error.message : String(error)}`,
-      ),
-  });
-
-/**
  * Download audio from media server directly to disk.
+ * Generates a presigned URL for the storage key and passes it to the media server.
  */
 const downloadAudioFile = (storageKey: string, outputPath: string) =>
-  Effect.tryPromise({
-    try: async () => {
-      const url = `${mediaServerUrl}/audio?storageKey=${encodeURIComponent(storageKey)}`;
-      const headers: Record<string, string> = {};
+  Effect.gen(function* () {
+    const presignedUrl = yield* generatePresignedDownloadUrl(storageKey);
+    const mediaUrl = buildMediaServerUrl({
+      presignedUrl,
+      format: "flac",
+    });
 
-      if (mediaServerToken) {
-        headers.Authorization = `Bearer ${mediaServerToken}`;
-      }
-
-      const response = await fetch(url, { headers });
-
-      if (!response.ok) {
-        throw new Error(
-          `Media server error: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      await Bun.write(outputPath, response);
-    },
-    catch: (error) =>
-      new Error(
-        `Failed to download from media server: ${error instanceof Error ? error.message : String(error)}`,
-      ),
+    yield* Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(mediaUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Media server error: ${response.status} ${response.statusText}`,
+          );
+        }
+        await Bun.write(outputPath, response);
+      },
+      catch: (error) =>
+        new Error(
+          `Failed to download from media server: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    });
   });
 
 /**
@@ -1027,14 +968,17 @@ const handleCalculateScore: JobHandler = async (job) => {
       const result = yield* ensureClipExists(segmentId);
       console.log(`[CalculateScore] Clip ready: ${result.clip.storageKey}`);
 
-      // Fetch audio from media server
-      const audioBuffer = yield* fetchAudioBuffer(result.clip.storageKey);
-      console.log(
-        `[CalculateScore] Fetched ${audioBuffer.length} bytes from media server`,
+      // Generate presigned URL and construct media server URL for the clip
+      const presignedUrl = yield* generatePresignedDownloadUrl(
+        result.clip.storageKey,
       );
+      const audioUrl = buildMediaServerUrl({
+        presignedUrl,
+        format: "flac",
+      });
 
-      // Call scoring server
-      const scores = yield* callScoringServer(audioBuffer);
+      // Call scoring server with URL
+      const scores = yield* callScoringServer(audioUrl);
       console.log(`[CalculateScore] Scores received:`, scores.DNSMOS);
 
       // Update clip scores only
@@ -1425,12 +1369,77 @@ console.log(
 
 async function shutdown() {
   console.log("[AudioWorker] Shutting down...");
+  if (pollInterval) clearInterval(pollInterval);
   await worker.close();
   await audioQueue.close();
   await connection.quit();
-  await disposeRuntime();
   process.exit(0);
 }
+
+// ============================================================================
+// Pull System for pending uploads
+// ============================================================================
+
+const startPollingPendingSources = () => {
+  return setInterval(() => {
+    AppRuntime.runPromise(
+      Effect.gen(function* () {
+        const db = yield* Database;
+        const pendingSources = yield* db.query.sources.findMany({
+          where: eq(sources.status, "pending"),
+        });
+
+        for (const source of pendingSources) {
+          if (!source.storageKey) continue;
+
+          try {
+            const { url } = yield* StorageService.generatePresignedUrl({
+              key: source.storageKey,
+              operation: "download",
+              expiresIn: 3600,
+            });
+
+            const responseOk = yield* Effect.tryPromise({
+              try: async () => {
+                const response = await fetch(url, { method: "HEAD" });
+                return response.ok;
+              },
+              catch: () => false,
+            });
+
+            if (responseOk) {
+              // File is completely uploaded!
+              yield* db
+                .update(sources)
+                .set({ status: "processing" })
+                .where(eq(sources.id, source.id));
+
+              yield* Effect.tryPromise({
+                try: () =>
+                  audioQueue.add(AudioJobs.IngestSource, {
+                    entryId: source.id,
+                    queueDiarization: source.diarizationStatus === "pending",
+                  }),
+                catch: (error) => new Error(`Failed to enqueue: ${error}`),
+              });
+
+              console.log(
+                `[PullSystem] Enqueued ingest for source ${source.id}`,
+              );
+            }
+          } catch (error) {
+            console.error(
+              `[PullSystem] Error checking source ${source.id}:`,
+              error,
+            );
+          }
+        }
+      }),
+    ).catch(console.error);
+  }, 10000); // 10 seconds
+};
+
+const pollInterval = startPollingPendingSources();
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

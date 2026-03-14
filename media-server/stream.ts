@@ -1,12 +1,4 @@
-import { spawn } from "node:child_process";
-import {
-  createReadStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,7 +8,6 @@ import { join } from "node:path";
  * Falls back to OS temp dir if /dev/shm is not available.
  *
  * Note: /dev/shm is cleared on reboot and shared with other processes.
- * Files are deleted immediately after use, so memory pressure is minimal.
  */
 const TEMP_DIR = (() => {
   const baseDir = existsSync("/dev/shm") ? "/dev/shm" : tmpdir();
@@ -27,271 +18,157 @@ const TEMP_DIR = (() => {
   return dir;
 })();
 
-interface StreamSliceOptions {
+export interface ProcessAudioOptions {
   localPath: string;
-  start: number;
-  end: number;
+  start?: number;
+  end?: number;
+  format?: string;
+  signal?: AbortSignal;
+}
+
+export interface ProcessAudioResult {
+  stream: ReadableStream;
+  contentType: string;
 }
 
 /**
- * Stream a slice of audio as fMP4 (fragmented MP4) for MSE compatibility
+ * Handle audio processing, slicing, and transcoding.
  *
- * Uses FFmpeg with flags optimized for streaming:
- * - frag_keyframe: Fragment at each keyframe
- * - empty_moov: No samples in moov (init segment only)
- * - default_base_moof: Required for MSE
+ * If the format is stdout-friendly (e.g., fmp4, mp3), leverages Bun.spawn to stream
+ * FFmpeg stdout optimally with native backpressure.
+ *
+ * For formats that require finalized headers (e.g., flac, wav), uses a temporary
+ * file in /dev/shm, waits for completion, reads into memory, and cleans up immediately.
  */
-export function streamAudioSlice(options: StreamSliceOptions): Response {
-  const { localPath, start, end } = options;
-  const duration = end - start;
+export async function processAudio(
+  options: ProcessAudioOptions,
+): Promise<ProcessAudioResult> {
+  const { localPath, start, end, format } = options;
 
-  // Convert to string format for FFmpeg
-  const startSec = start.toFixed(6);
-  const durationSec = duration.toFixed(6);
+  const requiresSlicing = start !== undefined && end !== undefined;
+  const outputFormat = format || "flac";
 
-  // FFmpeg args for fMP4 streaming
-  // -ss before -i for fast seeking (input seeking)
-  const args = [
-    "-ss",
-    startSec,
-    "-i",
-    localPath,
-    "-t",
-    durationSec,
-    "-c:a",
-    "aac",
-    "-b:a",
-    "128k",
-    "-f",
-    "mp4",
-    "-movflags",
-    "frag_keyframe+empty_moov+default_base_moof",
-    "-", // Output to stdout
-  ];
+  const args: string[] = ["-hide_banner", "-loglevel", "error"];
 
-  const ffmpeg = spawn("ffmpeg", args, {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  // Fast-seek input: -ss before -i
+  if (requiresSlicing) {
+    args.push("-ss", start.toFixed(6), "-t", (end - start).toFixed(6));
+  }
 
-  // Convert Node stream to Web ReadableStream
-  const nodeStream = ffmpeg.stdout;
+  args.push("-i", localPath);
 
-  const webStream = new ReadableStream({
-    start(controller) {
-      nodeStream.on("data", (chunk: Buffer) => {
-        controller.enqueue(new Uint8Array(chunk));
-      });
+  let contentType = "application/octet-stream";
 
-      nodeStream.on("end", () => {
-        controller.close();
-      });
+  if (outputFormat === "fmp4") {
+    contentType = "audio/mp4";
+    args.push(
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-f",
+      "mp4",
+      "-movflags",
+      "frag_keyframe+empty_moov+default_base_moof",
+    );
+  } else if (outputFormat === "flac") {
+    contentType = "audio/flac";
+    args.push("-c:a", "flac", "-f", "flac");
+  } else if (outputFormat === "wav") {
+    contentType = "audio/wav";
+    args.push("-c:a", "pcm_s16le", "-f", "wav");
+  } else if (outputFormat === "mp3") {
+    contentType = "audio/mpeg";
+    args.push("-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3");
+  } else {
+    // Fallback format
+    contentType = "audio/mpeg";
+    args.push("-f", outputFormat);
+  }
 
-      nodeStream.on("error", (err) => {
-        console.error("[stream-audio] Stream error:", err);
-        controller.error(err);
-      });
-    },
-    cancel() {
-      ffmpeg.kill("SIGTERM");
-    },
-  });
+  // Formats that require seeking back to finalize headers (cannot pipe to stdout safely)
+  const requiresTempFile = outputFormat === "flac" || outputFormat === "wav";
+  if (!requiresTempFile) {
+    // Stream output directly
+    args.push("-");
 
-  // Log FFmpeg errors (but don't fail the stream)
-  let stderrOutput = "";
-  ffmpeg.stderr.on("data", (chunk: Buffer) => {
-    stderrOutput += chunk.toString();
-  });
+    const proc = Bun.spawn(["ffmpeg", ...args], {
+      stderr: "ignore",
+    });
 
-  ffmpeg.on("close", (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[stream-audio] FFmpeg exited with code ${code}`);
-      console.error(`[stream-audio] stderr: ${stderrOutput}`);
+    if (options.signal) {
+      options.signal.addEventListener("abort", () => proc.kill());
     }
-  });
 
-  ffmpeg.on("error", (err) => {
-    console.error("[stream-audio] FFmpeg spawn error:", err);
-  });
+    return {
+      stream: proc.stdout,
+      contentType,
+    };
+  }
 
-  return new Response(webStream, {
-    headers: {
-      "Content-Type": "audio/mp4",
-      "Cache-Control": "private, max-age=3600",
-      "Accept-Ranges": "none",
-    },
-  });
-}
-
-/**
- * Extract a slice as FLAC and return as a complete buffer (for workers).
- * Uses a temp file so FFmpeg can finalize the FLAC header with correct metadata
- * (duration, total samples, etc.). Piping to stdout leaves these as placeholders.
- */
-export async function extractFlacSlice(options: {
-  localPath: string;
-  start: number;
-  end: number;
-}): Promise<Response> {
-  const { localPath, start, end } = options;
-  const duration = end - start;
-
-  const startSec = start.toFixed(6);
-  const durationSec = duration.toFixed(6);
-
-  // Use a temp file so FFmpeg can seek back and finalize the FLAC header
   const tempPath = join(
     TEMP_DIR,
-    `flac-slice-${Date.now()}-${Math.random().toString(36).slice(2)}.flac`,
+    `slice-${Date.now()}-${Math.random().toString(36).slice(2)}.${outputFormat}`,
   );
+  args.push("-y", tempPath);
 
-  const args = [
-    "-ss",
-    startSec,
-    "-i",
-    localPath,
-    "-t",
-    durationSec,
-    "-c:a",
-    "flac",
-    "-y", // Overwrite temp file if exists
-    tempPath,
-  ];
-
-  return new Promise((resolve) => {
-    const ffmpeg = spawn("ffmpeg", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stderrOutput = "";
-
-    ffmpeg.stderr.on("data", (chunk: Buffer) => {
-      stderrOutput += chunk.toString();
-    });
-
-    ffmpeg.on("close", (code) => {
-      if (code !== 0) {
-        console.error("[extractFlacSlice] FFmpeg failed:", stderrOutput);
-        // Clean up temp file on error
-        try {
-          rmSync(tempPath, { force: true });
-        } catch {}
-        resolve(
-          new Response(JSON.stringify({ error: "FFmpeg extraction failed" }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
-        return;
-      }
-
-      try {
-        // Read the complete FLAC file with proper headers
-        const buffer = readFileSync(tempPath);
-        // Clean up temp file
-        rmSync(tempPath, { force: true });
-
-        resolve(
-          new Response(buffer, {
-            headers: {
-              "Content-Type": "audio/flac",
-              "Content-Length": buffer.length.toString(),
-              "Cache-Control": "private, max-age=3600",
-            },
-          }),
-        );
-      } catch (err) {
-        console.error("[extractFlacSlice] Failed to read temp file:", err);
-        resolve(
-          new Response(
-            JSON.stringify({ error: "Failed to read extracted audio" }),
-            {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-    });
-
-    ffmpeg.on("error", (err) => {
-      console.error("[extractFlacSlice] FFmpeg spawn error:", err);
-      // Clean up temp file on error
-      try {
-        rmSync(tempPath, { force: true });
-      } catch {}
-      resolve(
-        new Response(JSON.stringify({ error: "FFmpeg spawn failed" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    });
+  const proc = Bun.spawn(["ffmpeg", ...args], {
+    stderr: "pipe",
   });
-}
 
-/**
- * Stream the raw file without transcoding (for workers)
- * Returns the file as-is, preserving original format (usually FLAC)
- */
-export function streamRawFile(options: { localPath: string }): Response {
-  const { localPath } = options;
-
-  // Infer content type from file extension
-  const ext = localPath.split(".").pop()?.toLowerCase();
-  let contentType = "application/octet-stream";
-  if (ext === "flac") {
-    contentType = "audio/flac";
-  } else if (ext === "wav") {
-    contentType = "audio/wav";
-  } else if (ext === "mp3") {
-    contentType = "audio/mpeg";
+  const abortHandler = () => proc.kill();
+  if (options.signal) {
+    options.signal.addEventListener("abort", abortHandler);
   }
 
-  // Use Bun's native file serving if available, which automatically handles
-  // backpressure, range requests, Content-Length, and optimized streaming.
-  if (typeof Bun !== "undefined") {
-    const file = Bun.file(localPath);
-    return new Response(file, {
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "private, max-age=3600",
+  const code = await proc.exited;
+
+  if (options.signal) {
+    options.signal.removeEventListener("abort", abortHandler);
+  }
+
+  if (code !== 0) {
+    const errText = await new Response(proc.stderr).text();
+    console.error("[processAudio] FFmpeg failed:", errText);
+    try {
+      if (existsSync(tempPath)) rmSync(tempPath, { force: true });
+    } catch {}
+    throw new Error("FFmpeg processing failed");
+  }
+
+  try {
+    // We grab the native readable stream from Bun.file
+    const fileStream = Bun.file(tempPath).stream();
+
+    // We create a TransformStream to act as a pure passthrough pipe.
+    // This allows us to intercept the exact moment the stream natively finishes,
+    // closes, or errors without buffering any bytes in memory or breaking backpressure.
+    const cleanupTransform = new TransformStream({
+      flush() {
+        // Stream completed successfully
+        try {
+          if (existsSync(tempPath)) rmSync(tempPath, { force: true });
+        } catch {}
       },
     });
+
+    // Make sure to clean up if the client disconnects or an error is thrown during streaming
+    fileStream.pipeTo(cleanupTransform.writable).catch((err) => {
+      console.error("[processAudio] Stream aborted/errored:", err);
+      try {
+        if (existsSync(tempPath)) rmSync(tempPath, { force: true });
+      } catch {}
+    });
+
+    return {
+      stream: cleanupTransform.readable,
+      contentType,
+    };
+  } catch (err) {
+    console.error("[processAudio] Failed to read temp file:", err);
+    try {
+      if (existsSync(tempPath)) rmSync(tempPath, { force: true });
+    } catch {}
+    throw new Error("Failed to read processed audio");
   }
-
-  // Fallback to Node's fs for non-Bun environments
-  // Get file size for Content-Length header
-  const stats = statSync(localPath);
-  const fileSize = stats.size;
-
-  // Create a readable stream from the file
-  const nodeStream = createReadStream(localPath);
-
-  const webStream = new ReadableStream({
-    start(controller) {
-      nodeStream.on("data", (chunk) => {
-        controller.enqueue(new Uint8Array(chunk as Buffer));
-      });
-
-      nodeStream.on("end", () => {
-        controller.close();
-      });
-
-      nodeStream.on("error", (err) => {
-        console.error("[stream-audio] Raw stream error:", err);
-        controller.error(err);
-      });
-    },
-    cancel() {
-      nodeStream.destroy();
-    },
-  });
-
-  return new Response(webStream, {
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": fileSize.toString(),
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
 }

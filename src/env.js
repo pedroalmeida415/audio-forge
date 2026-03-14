@@ -29,7 +29,6 @@ export const env = createEnv({
     REDIS_URL: z.string().url().optional(),
     // Media Server (for workers)
     MEDIA_SERVER_URL: z.string().url().default("http://localhost:3002"),
-    MEDIA_SERVER_INTERNAL_TOKEN: z.string().optional(),
   },
 
   /**
@@ -66,7 +65,6 @@ export const env = createEnv({
     REDIS_URL: process.env.REDIS_URL,
     // Media Server
     MEDIA_SERVER_URL: process.env.MEDIA_SERVER_URL,
-    MEDIA_SERVER_INTERNAL_TOKEN: process.env.MEDIA_SERVER_INTERNAL_TOKEN,
     NEXT_PUBLIC_MEDIA_SERVER_URL: process.env.NEXT_PUBLIC_MEDIA_SERVER_URL,
   },
   /**

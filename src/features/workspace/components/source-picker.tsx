@@ -234,10 +234,8 @@ function SourceItem({
     name: string | null;
     storageKey: string | null;
     duration: number | null;
-    ingestStatus: string | null;
-    ingestError: string | null;
-    waveformStatus: string | null;
-    waveformError: string | null;
+    status: string | null;
+    error: string | null;
     diarizationStatus: string | null;
     createdAt: Date;
   };

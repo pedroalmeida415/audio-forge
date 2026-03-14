@@ -126,14 +126,7 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 // ENUMS
 // ============================================================================
 
-export const waveformStatus = pgEnum("waveform_status", [
-  "pending",
-  "processing",
-  "completed",
-  "failed",
-]);
-
-export const ingestStatus = pgEnum("ingest_status", [
+export const sourceStatus = pgEnum("source_status", [
   "pending",
   "processing",
   "completed",
@@ -203,19 +196,12 @@ export const sources = pgTable(
     name: varchar("name", { length: 255 }),
     originalFileName: varchar("original_file_name", { length: 255 }),
 
-    // Source ingest workflow
-    ingestStatus: ingestStatus("ingest_status").default("pending"),
-    ingestError: text("ingest_error"),
-    ingestLocalPath: varchar("ingest_local_path", { length: 1024 }),
-    ingestContentType: varchar("ingest_content_type", { length: 255 }),
-    ingestOriginalFilename: varchar("ingest_original_filename", {
-      length: 255,
-    }),
-
-    // Waveform generation
-    waveformStatus: waveformStatus("waveform_status").default("pending"),
+    // Processing state (ingest + waveform)
+    status: sourceStatus("status").default("pending"),
+    error: text("error"),
+    
+    // Waveform data
     waveformData: bytea("waveform_data"),
-    waveformError: text("waveform_error"),
 
     // Diarization (formerly in clippingSessions JSONB)
     diarizationJobId: varchar("diarization_job_id", { length: 255 }),

@@ -49,15 +49,9 @@ export function useWaveformData({
     { id: sourceId },
     {
       refetchInterval: (query) => {
-        const ingestStatus = query.state.data?.ingestStatus;
-        const waveformStatus = query.state.data?.waveformStatus;
+        const status = query.state.data?.status;
 
-        if (
-          ingestStatus === "pending" ||
-          ingestStatus === "processing" ||
-          waveformStatus === "pending" ||
-          waveformStatus === "processing"
-        ) {
+        if (status === "pending" || status === "processing") {
           return 2000;
         }
 
@@ -71,14 +65,14 @@ export function useWaveformData({
   useEffect(() => {
     if (!data) return;
 
-    const status = data.waveformStatus ?? "pending";
+    const status = data.status ?? "pending";
 
     if (status === "pending" || status === "processing") {
       setState((prev) => ({
         ...prev,
         status,
         isLoading: true,
-        error: data.waveformError ?? data.ingestError ?? null,
+        error: data.error ?? null,
       }));
       return;
     }
@@ -88,8 +82,7 @@ export function useWaveformData({
         waveform: null,
         isLoading: false,
         status: "failed",
-        error:
-          data.waveformError ?? data.ingestError ?? "Waveform ingest failed",
+        error: data.error ?? "Waveform ingest failed",
       });
       return;
     }

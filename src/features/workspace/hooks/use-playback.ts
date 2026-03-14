@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { calculatePixelsPerSecond } from "~/features/workspace/utils/zoom-utils";
 import { MSEAudioProvider } from "~/lib/media-proxy/mse-audio-provider";
+import { api } from "~/trpc/react";
 
 interface SourceData {
   storageKey: string;
@@ -30,6 +31,13 @@ export function usePlayback(
   activeSegmentId: string | null = null,
 ) {
   const { store } = useWorkspaceStore();
+  const utils = api.useUtils();
+
+  // Stable ref for the presigned URL fetcher so useEffect doesn't re-run
+  const fetchPresignedUrlRef = useRef(async (storageKey: string) => {
+    const { url } = await utils.file.getPresignedUrl.fetch({ storageKey });
+    return url;
+  });
 
   // ============================================================================
   // Create MSE provider and wire up to store
@@ -45,6 +53,7 @@ export function usePlayback(
       storageKey,
       duration,
       sliceSize: 15,
+      getPresignedUrl: (key) => fetchPresignedUrlRef.current(key),
     });
 
     const audioElement = provider.audioElement;

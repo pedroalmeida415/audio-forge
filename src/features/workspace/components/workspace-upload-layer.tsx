@@ -54,6 +54,7 @@ interface UploadBatchItem {
   name: string;
   size: number;
   status: UploadItemStatus;
+  progress?: number;
   error: string | null;
 }
 
@@ -120,7 +121,9 @@ function formatUploadStatus(item: UploadBatchItem): string {
     case "queued":
       return "Queued";
     case "uploading":
-      return "Uploading";
+      return item.progress !== undefined
+        ? `Uploading ${item.progress}%`
+        : "Uploading";
     case "completed":
       return "Uploaded";
     case "failed":
@@ -165,13 +168,13 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     status: IngestStatus;
   } | null>(null);
 
-  const ingestStatusQuery = api.source.getIngestStatus.useQuery(
+  const ingestStatusQuery = api.source.getStatus.useQuery(
     { sourceId: sourceId ?? "" },
     {
       enabled: !!sourceId,
       refetchOnWindowFocus: false,
       refetchInterval: (query) => {
-        const status = query.state.data?.ingestStatus;
+        const status = query.state.data?.status;
         if (status === "pending" || status === "processing") {
           return 2000;
         }
@@ -182,7 +185,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    const status = ingestStatusQuery.data?.ingestStatus ?? null;
+    const status = ingestStatusQuery.data?.status ?? null;
 
     if (!sourceId || !status) {
       prevIngestRef.current = null;
@@ -209,7 +212,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
         utils.segment.getBySpeaker.invalidate(),
       ]);
     }
-  }, [ingestStatusQuery.data?.ingestStatus, projectId, sourceId, utils]);
+  }, [ingestStatusQuery.data?.status, projectId, sourceId, utils]);
 
   function updateUploadItem(
     itemId: string,
@@ -228,27 +231,62 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     updateUploadItem(params.itemId, (item) => ({
       ...item,
       status: "uploading",
+      progress: 0,
       error: null,
     }));
 
     try {
-      const response = await utils.client.source.upload.mutate(params.file, {
-        context: {
-          uploadHeaders: {
-            "x-content-type": params.contentType,
-            "x-filename": params.file.name || "upload",
-            "x-project-id": projectId,
-            "x-queue-diarization": queueDiarizationOnUpload ? "true" : "false",
-          },
-        },
+      // 1. Request upload URL and get sourceId
+      const { sourceId, uploadUrl } =
+        await utils.client.source.requestUpload.mutate({
+          projectId,
+          filename: params.file.name || "upload",
+          contentType: params.contentType,
+          queueDiarization: queueDiarizationOnUpload,
+        });
+
+      // 2. Upload file directly to R2 using the presigned URL with XHR to track progress
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            updateUploadItem(params.itemId, (item) => ({
+              ...item,
+              progress,
+            }));
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                `Upload failed with status: ${xhr.status} ${xhr.statusText}`,
+              ),
+            );
+          }
+        };
+
+        xhr.onerror = () => {
+          reject(new Error("Network error occurred during upload"));
+        };
+
+        xhr.open("PUT", uploadUrl, true);
+        xhr.setRequestHeader("Content-Type", params.contentType);
+        xhr.send(params.file);
       });
 
       updateUploadItem(params.itemId, (item) => ({
         ...item,
         status: "completed",
+        progress: 100,
       }));
 
-      return response.sourceId;
+      return sourceId;
     } catch (error) {
       const message = readErrorMessage(error, "Failed to upload source");
       updateUploadItem(params.itemId, (item) => ({
@@ -303,6 +341,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
         name: entry.file.name || "upload",
         size: entry.file.size,
         status: "queued" as const,
+        progress: 0,
         error: null,
       })),
     ]);
@@ -330,7 +369,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     setUploadItems((prev) =>
       prev.map((item) =>
         uploadIds.has(item.id)
-          ? { ...item, status: "queued", error: null }
+          ? { ...item, status: "queued", progress: 0, error: null }
           : item,
       ),
     );
@@ -458,11 +497,8 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     openFilePicker: () => setIsUploadDialogOpen(true),
     isUploading,
     uploadError,
-    ingestStatus: ingestStatusQuery.data?.ingestStatus ?? null,
-    ingestError:
-      ingestStatusQuery.data?.ingestError ??
-      ingestStatusQuery.data?.waveformError ??
-      null,
+    ingestStatus: ingestStatusQuery.data?.status ?? null,
+    ingestError: ingestStatusQuery.data?.error ?? null,
   };
 
   return (
