@@ -1380,6 +1380,8 @@ async function shutdown() {
 // Pull System for pending uploads
 // ============================================================================
 
+const pendingUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
 const startPollingPendingSources = () => {
   return setInterval(() => {
     AppRuntime.runPromise(
@@ -1389,15 +1391,58 @@ const startPollingPendingSources = () => {
           where: eq(sources.status, "pending"),
         });
 
+        if (pendingSources.length > 0) {
+          console.log(
+            `\n[PullSystem] Checking ${pendingSources.length} pending source(s)...`,
+          );
+        }
+
+        const now = Date.now();
+        // Presigned upload URLs typically expire in 1-12 hours.
+        // We consider an upload failed if it hasn't completed in 10 minutes.
+        const MAX_PENDING_MS = 10 * 60 * 1000;
+
         for (const source of pendingSources) {
-          if (!source.storageKey) continue;
+          // If the source has been pending for way too long (e.g. user aborted upload)
+          // we mark it as failed to prevent polling it forever.
+          const isStale = now - source.createdAt.getTime() > MAX_PENDING_MS;
+
+          if (isStale) {
+            console.warn(
+              `[PullSystem] Source ${source.id} has been pending for over 10 minutes. Marking as failed.`,
+            );
+            yield* db
+              .update(sources)
+              .set({
+                status: "failed",
+                error: "Upload timed out or was aborted.",
+              })
+              .where(eq(sources.id, source.id));
+            pendingUrlCache.delete(source.storageKey);
+            continue;
+          }
+
+          console.log(`[PullSystem] Verifying ${source.storageKey}`);
 
           try {
-            const { url } = yield* StorageService.generatePresignedUrl({
-              key: source.storageKey,
-              operation: "download",
-              expiresIn: 3600,
-            });
+            let url: string;
+            const cached = pendingUrlCache.get(source.storageKey);
+
+            // Use cached URL if it doesn't expire in the next 5 minutes
+            if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
+              url = cached.url;
+            } else {
+              const result = yield* StorageService.generatePresignedUrl({
+                key: source.storageKey,
+                operation: "download",
+                expiresIn: 3600,
+              });
+              url = result.url;
+              pendingUrlCache.set(source.storageKey, {
+                url,
+                expiresAt: now + 3600 * 1000,
+              });
+            }
 
             const responseOk = yield* Effect.tryPromise({
               try: async () => {
@@ -1408,6 +1453,9 @@ const startPollingPendingSources = () => {
             });
 
             if (responseOk) {
+              console.log(
+                `[PullSystem] HEAD successful! ${source.storageKey} is fully uploaded.`,
+              );
               // File is completely uploaded!
               yield* db
                 .update(sources)
@@ -1422,9 +1470,14 @@ const startPollingPendingSources = () => {
                   }),
                 catch: (error) => new Error(`Failed to enqueue: ${error}`),
               });
+              pendingUrlCache.delete(source.storageKey);
 
               console.log(
                 `[PullSystem] Enqueued ingest for source ${source.id}`,
+              );
+            } else {
+              console.log(
+                `[PullSystem] Still pending/uploading: ${source.storageKey}`,
               );
             }
           } catch (error) {
