@@ -1380,8 +1380,6 @@ async function shutdown() {
 // Pull System for pending uploads
 // ============================================================================
 
-const pendingUrlCache = new Map<string, { url: string; expiresAt: number }>();
-
 const startPollingPendingSources = () => {
   return setInterval(() => {
     AppRuntime.runPromise(
@@ -1418,41 +1416,17 @@ const startPollingPendingSources = () => {
                 error: "Upload timed out or was aborted.",
               })
               .where(eq(sources.id, source.id));
-            pendingUrlCache.delete(source.storageKey);
             continue;
           }
 
           console.log(`[PullSystem] Verifying ${source.storageKey}`);
 
           try {
-            let url: string;
-            const cached = pendingUrlCache.get(source.storageKey);
-
-            // Use cached URL if it doesn't expire in the next 5 minutes
-            if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
-              url = cached.url;
-            } else {
-              const result = yield* StorageService.generatePresignedUrl({
-                key: source.storageKey,
-                operation: "download",
-                expiresIn: 3600,
-              });
-              url = result.url;
-              pendingUrlCache.set(source.storageKey, {
-                url,
-                expiresAt: now + 3600 * 1000,
-              });
-            }
-
-            const responseOk = yield* Effect.tryPromise({
-              try: async () => {
-                const response = await fetch(url, { method: "HEAD" });
-                return response.ok;
-              },
-              catch: () => false,
+            const fileExists = yield* StorageService.exists({
+              key: source.storageKey,
             });
 
-            if (responseOk) {
+            if (fileExists) {
               console.log(
                 `[PullSystem] HEAD successful! ${source.storageKey} is fully uploaded.`,
               );
@@ -1470,7 +1444,6 @@ const startPollingPendingSources = () => {
                   }),
                 catch: (error) => new Error(`Failed to enqueue: ${error}`),
               });
-              pendingUrlCache.delete(source.storageKey);
 
               console.log(
                 `[PullSystem] Enqueued ingest for source ${source.id}`,

@@ -2,6 +2,7 @@ import type { Readable } from "node:stream";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
@@ -143,6 +144,25 @@ export class StorageService extends Effect.Service<StorageService>()(
               new StorageError({
                 operation: "upload",
                 message: "Failed to upload file",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        exists: (params: { key: string }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const command = new HeadObjectCommand({
+                Bucket: bucket,
+                Key: params.key,
+              });
+              await client.send(command);
+              return true;
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "download",
+                message: "Failed to check if file exists",
                 key: params.key,
                 cause: error,
               }),
