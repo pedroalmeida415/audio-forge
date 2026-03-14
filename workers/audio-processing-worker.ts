@@ -1,27 +1,10 @@
-import {
-  createReadStream,
-  createWriteStream,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import archiver from "archiver";
 import { type Job, Queue, Worker } from "bullmq";
 import { desc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import IORedis from "ioredis";
-
-if (typeof Bun === "undefined") {
-  console.error(
-    "❌ Error: This worker relies on Bun-specific APIs and MUST be run with the Bun runtime.",
-  );
-  process.exit(1);
-}
-
 import { env } from "../src/env";
 import { clips, segments, sources, speakers } from "../src/server/db/schema";
 import { AppRuntime } from "../src/services";
@@ -36,6 +19,13 @@ import {
   Queues,
 } from "../src/services/queue/queue-service";
 import { StorageService } from "../src/services/storage/storage-service";
+
+if (typeof Bun === "undefined") {
+  console.error(
+    "❌ Error: This worker relies on Bun-specific APIs and MUST be run with the Bun runtime.",
+  );
+  process.exit(1);
+}
 
 // ============================================================================
 // Server Configuration
@@ -477,12 +467,12 @@ const handleIngestSource: JobHandler = async (job) => {
 
         const audioStorageKey = `sources/${source.userId}/${Date.now()}-${sourceId}.flac`;
         console.log(`[IngestSource] Uploading FLAC to R2 for ${sourceId}`);
-        const flacStats = statSync(flacPath);
+        const flacFile = Bun.file(flacPath);
         yield* StorageService.upload({
           key: audioStorageKey,
-          body: createReadStream(flacPath),
+          body: flacFile,
           contentType: "audio/flac",
-          contentLength: flacStats.size,
+          contentLength: flacFile.size,
         });
 
         console.log(`[IngestSource] Generating waveform for ${sourceId}`);
@@ -492,8 +482,8 @@ const handleIngestSource: JobHandler = async (job) => {
           samplesPerPixel: 256,
         });
 
-        const waveformBuffer = yield* Effect.try({
-          try: () => readFileSync(waveformPath),
+        const waveformBuffer = yield* Effect.tryPromise({
+          try: async () => Buffer.from(await Bun.file(waveformPath).bytes()),
           catch: (error) =>
             new Error(
               `Failed to read generated waveform for source ${sourceId}: ${
@@ -1029,7 +1019,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
       Effect.sync(() => {
         const tempDir = mkdtempSync(join(tmpdir(), `ljspeech-${speakerId}-`));
         const wavsDir = join(tempDir, "wavs");
-        require("node:fs").mkdirSync(wavsDir);
+        mkdirSync(wavsDir);
         console.log(`[LJSpeechExport] Created temp directory: ${tempDir}`);
         return { tempDir, wavsDir };
       }),
@@ -1174,6 +1164,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
 
                 return {
                   metadataLine: `wavs/${filename}.wav|${transcription}`,
+                  filename,
                   duration,
                 };
               }),
@@ -1186,49 +1177,35 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
             0,
           );
 
-          // Write metadata.csv (no header, pipe-delimited)
-          const metadataPath = join(tempDir, "metadata.csv");
-          writeFileSync(metadataPath, metadataLines.join("\n"));
+          // Build tar.gz archive using Bun.Archive
+          const archiveEntries: Record<string, string | Blob> = {
+            "metadata.csv": metadataLines.join("\n"),
+          };
 
-          // Create ZIP archive using archiver
-          const zipPath = join(tempDir, "dataset.zip");
-          yield* Effect.async<void, Error>((resume) => {
-            const output = createWriteStream(zipPath);
-            const archive = archiver("zip", { zlib: { level: 9 } });
+          for (const result of processResults) {
+            archiveEntries[`wavs/${result.filename}.wav`] = Bun.file(
+              join(wavsDir, `${result.filename}.wav`),
+            );
+          }
 
-            output.on("close", () => {
-              resume(Effect.succeed(undefined));
-            });
-
-            archive.on("error", (err) => {
-              resume(
-                Effect.fail(new Error(`Failed to create ZIP: ${err.message}`)),
-              );
-            });
-
-            archive.pipe(output);
-
-            // Add wavs directory
-            archive.directory(wavsDir, "wavs");
-
-            // Add metadata.csv
-            archive.file(metadataPath, { name: "metadata.csv" });
-
-            archive.finalize();
+          const archive = new Bun.Archive(archiveEntries, {
+            compress: "gzip",
           });
 
-          console.log(`[LJSpeechExport] Created ZIP archive: ${zipPath}`);
+          console.log(
+            `[LJSpeechExport] Created tar.gz archive (${processResults.length} files)`,
+          );
 
           // Upload to R2
           const timestamp = Date.now();
-          const exportKey = `exports/${userId}/${timestamp}-${speakerId.slice(0, 8)}.zip`;
+          const exportKey = `exports/${userId}/${timestamp}-${speakerId.slice(0, 8)}.tar.gz`;
 
-          const zipStats = statSync(zipPath);
+          const archiveBlob = yield* Effect.promise(() => archive.blob());
           yield* StorageService.upload({
             key: exportKey,
-            body: createReadStream(zipPath),
-            contentType: "application/zip",
-            contentLength: zipStats.size,
+            body: archiveBlob,
+            contentType: "application/gzip",
+            contentLength: archiveBlob.size,
           });
 
           console.log(`[LJSpeechExport] Uploaded to R2: ${exportKey}`);
@@ -1239,7 +1216,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
               key: exportKey,
               operation: "download",
               expiresIn: 24 * 60 * 60, // 24 hours
-              responseContentDisposition: `attachment; filename="${speakerPrefix}_dataset.zip"`,
+              responseContentDisposition: `attachment; filename="${speakerPrefix}_dataset.tar.gz"`,
             });
 
           console.log(
@@ -1398,7 +1375,7 @@ const startPollingPendingSources = () => {
         const now = Date.now();
         // Presigned upload URLs typically expire in 1-12 hours.
         // We consider an upload failed if it hasn't completed in 10 minutes.
-        const MAX_PENDING_MS = 10 * 60 * 1000;
+        const MAX_PENDING_MS = 60 * 60 * 1000;
 
         for (const source of pendingSources) {
           // If the source has been pending for way too long (e.g. user aborted upload)

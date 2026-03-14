@@ -1,4 +1,3 @@
-import type { Readable } from "node:stream";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -7,6 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { StreamingBlobPayloadInputTypes } from "@smithy/types";
 import { Data, Effect } from "effect";
 import { env } from "~/env";
 import { S3ClientService } from "~/services/infra/s3-client";
@@ -106,7 +106,7 @@ export class StorageService extends Effect.Service<StorageService>()(
 
         upload: (params: {
           key: string;
-          body: Buffer | Readable | string | Uint8Array;
+          body: StreamingBlobPayloadInputTypes;
           contentType?: string;
           contentLength?: number;
         }) =>
