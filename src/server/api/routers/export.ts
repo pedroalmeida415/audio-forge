@@ -22,8 +22,8 @@ export const exportRouter = createTRPCRouter({
       z.object({
         speakerId: z.string().uuid(),
         sampleRate: z.number().int().min(8000).max(48000).default(24000),
-        minDuration: z.number().positive().optional(),
-        maxDuration: z.number().positive().optional(),
+        minDuration: z.number().nonnegative().optional(),
+        maxDuration: z.number().nonnegative().optional(),
         minScore: z.number().min(1).max(5).optional(),
         maxScore: z.number().min(1).max(5).optional(),
       }),

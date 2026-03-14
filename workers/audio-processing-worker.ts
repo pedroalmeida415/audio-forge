@@ -1178,14 +1178,17 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
           );
 
           // Build tar.gz archive using Bun.Archive
-          const archiveEntries: Record<string, string | Blob> = {
+          // NOTE: Must use Uint8Array (eager read) instead of Bun.file() (Blob)
+          // because Bun.Archive has a bug where Blob entries produce 0-byte files.
+          const archiveEntries: Record<string, string | Uint8Array> = {
             "metadata.csv": metadataLines.join("\n"),
           };
 
           for (const result of processResults) {
-            archiveEntries[`wavs/${result.filename}.wav`] = Bun.file(
-              join(wavsDir, `${result.filename}.wav`),
+            const wavBytes = yield* Effect.promise(() =>
+              Bun.file(join(wavsDir, `${result.filename}.wav`)).bytes(),
             );
+            archiveEntries[`wavs/${result.filename}.wav`] = wavBytes;
           }
 
           const archive = new Bun.Archive(archiveEntries, {
