@@ -442,15 +442,6 @@ const handleIngestSource: JobHandler = async (job) => {
             new Error(`Failed to download raw upload: ${error}`),
         });
 
-        // We already marked it as processing in the pull system loop, but just to be sure
-        yield* db
-          .update(sources)
-          .set({
-            status: "processing",
-            error: null,
-          })
-          .where(eq(sources.id, sourceId));
-
         // We no longer have ingestContentType, let's use originalFileName to guess format
         const ingestFilename =
           source.originalFileName ?? source.name ?? "source";
