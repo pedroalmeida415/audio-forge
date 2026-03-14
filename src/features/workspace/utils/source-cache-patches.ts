@@ -139,7 +139,7 @@ export function applyOptimisticCreateSegment({
   const fallbackSource = segmentList.segments[0]?.source ?? {
     id: sourceId,
     name: null,
-    storageKey: null,
+    storageKey: "",
   };
 
   const optimisticSegment: WorkspaceSegmentListItem = {

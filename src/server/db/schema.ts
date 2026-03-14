@@ -191,7 +191,7 @@ export const sources = pgTable(
       onDelete: "cascade",
     }),
 
-    storageKey: varchar("storage_key", { length: 1024 }),
+    storageKey: varchar("storage_key", { length: 1024 }).notNull(),
     duration: doublePrecision("duration"),
     name: varchar("name", { length: 255 }),
     originalFileName: varchar("original_file_name", { length: 255 }),
@@ -199,7 +199,7 @@ export const sources = pgTable(
     // Processing state (ingest + waveform)
     status: sourceStatus("status").default("pending"),
     error: text("error"),
-    
+
     // Waveform data
     waveformData: bytea("waveform_data"),
 
