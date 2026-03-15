@@ -26,7 +26,7 @@ export interface PresignedUrlResult {
 // ============================================================================
 
 export class StorageError extends Data.TaggedError("StorageError")<{
-  operation: "upload" | "download" | "delete";
+  operation: "upload" | "download" | "delete" | "exists";
   message: string;
   key?: string;
   cause?: unknown;
@@ -164,7 +164,7 @@ export class StorageService extends Effect.Service<StorageService>()(
             },
             catch: (error) =>
               new StorageError({
-                operation: "download",
+                operation: "exists",
                 message: "Failed to check if file exists",
                 key: params.key,
                 cause: error,
