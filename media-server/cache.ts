@@ -260,11 +260,12 @@ export class MediaCache {
       throw new Error("No body in download response");
     }
 
-    // Stream response body to disk
-    const nodeStream = Readable.fromWeb(
-      response.body as ReadableStream<Uint8Array>,
-    );
-    await pipeline(nodeStream, createWriteStream(localPath));
+    // Stream response body to disk using Bun.file().writer() to avoid hangs
+    const writer = Bun.file(localPath).writer();
+    for await (const chunk of response.body) {
+      writer.write(chunk);
+    }
+    await writer.end();
 
     // Get file size
     const stats = statSync(localPath);

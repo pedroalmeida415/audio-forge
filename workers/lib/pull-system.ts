@@ -88,6 +88,11 @@ export const startPollingSystem = Effect.repeat(
             );
           }
         }).pipe(
+          Effect.catchTag("StorageError", (error) =>
+            error.cause instanceof Error && error.cause.name === "NotFound"
+              ? Effect.succeed(false)
+              : Effect.fail(error),
+          ),
           Effect.catchAll((error) =>
             Effect.sync(() =>
               console.error(

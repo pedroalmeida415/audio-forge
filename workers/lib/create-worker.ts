@@ -91,9 +91,12 @@ export const startWorker = Effect.acquireUseRelease(
     );
 
     worker.on("failed", (job, err) => {
+      const attempt = job
+        ? `attempt ${job.attemptsMade}/${job.opts.attempts ?? 1}`
+        : "";
       console.error(
-        `[AudioWorker] Job ${job?.id} (${job?.name}) failed:`,
-        err.message,
+        `[AudioWorker] Job ${job?.id} (${job?.name}) failed (${attempt}):`,
+        err,
       );
     });
 

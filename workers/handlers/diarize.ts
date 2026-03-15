@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { env } from "../../src/env";
 import { type DiarizationInfo, sources } from "../../src/server/db/schema";
 import { PyannoteService } from "../../src/services/diarization/pyannote-service";
 import { Database } from "../../src/services/infra/database";
 import { StorageService } from "../../src/services/storage/storage-service";
+import { formatErrorMessage } from "../lib/errors";
 import { buildMediaServerUrl } from "../lib/media";
 import { callDenoiseServer } from "../lib/speech-server";
 import type { JobHandler } from "../lib/types";
@@ -112,20 +113,23 @@ export const handleDiarize: JobHandler = (job) =>
       Effect.gen(function* () {
         const sourceId = job.data.entryId;
         const db = yield* Database;
-        const message =
-          error instanceof Error ? error.message : "Diarization failed";
+        const message = formatErrorMessage(error);
 
-        console.error(`[Diarize] Failed for source ${sourceId}:`, message);
+        // Log the full error for stack trace / debug details
+        console.error(`[Diarize] Failed for source ${sourceId}:`, error);
 
-        const failedDiarization: DiarizationInfo = {
+        // Merge failure fields into existing JSONB so config like `denoise` is preserved.
+        const patch = JSON.stringify({
           status: "failed",
           error: message,
           completedAt: new Date().toISOString(),
-        };
+        });
 
         yield* db
           .update(sources)
-          .set({ diarization: failedDiarization })
+          .set({
+            diarization: sql`COALESCE(${sources.diarization}, '{}') || ${patch}::jsonb`,
+          })
           .where(eq(sources.id, sourceId))
           .pipe(Effect.catchAll(() => Effect.void));
 

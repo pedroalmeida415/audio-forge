@@ -12,6 +12,7 @@ import {
   Queues,
 } from "../../src/services/queue/queue-service";
 import { StorageService } from "../../src/services/storage/storage-service";
+import { formatErrorMessage } from "../lib/errors";
 import type { JobHandler } from "../lib/types";
 
 function toFlacName(filename: string | null, sourceId: string): string {
@@ -157,8 +158,7 @@ export const handleIngestSource: JobHandler = (job) =>
           });
 
           const waveformBuffer = yield* Effect.tryPromise({
-            try: async () =>
-              Buffer.from(await Bun.file(waveformPath).bytes()),
+            try: async () => Buffer.from(await Bun.file(waveformPath).bytes()),
             catch: (error) =>
               new Error(
                 `Failed to read generated waveform for source ${sourceId}: ${
@@ -179,13 +179,16 @@ export const handleIngestSource: JobHandler = (job) =>
             waveformData: waveformBuffer,
           };
 
+          yield* db.update(sources).set(update).where(eq(sources.id, sourceId));
+          console.log(`[IngestSource] Source ${sourceId} completed`);
+
+          // Enqueue diarize AFTER the DB update so the diarize handler reads
+          // the updated storageKey (converted FLAC), not the raw upload key.
           if (shouldQueueDiarization) {
             console.log(
               `[IngestSource] Auto-queueing diarization for ${sourceId}`,
             );
 
-            // Instead of submitting to Pyannote here,
-            // enqueue a separate Diarize job that handles denoise + submission.
             yield* QueueService.enqueueJob(
               Queues.AudioProcessing,
               AudioJobs.Diarize,
@@ -193,26 +196,15 @@ export const handleIngestSource: JobHandler = (job) =>
             );
           }
 
-          yield* db
-            .update(sources)
-            .set(update)
-            .where(eq(sources.id, sourceId));
-          console.log(`[IngestSource] Source ${sourceId} completed`);
-
           return undefined;
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function* () {
               const db = yield* Database;
-              const errorMessage =
-                error instanceof Error
-                  ? error.message
-                  : "Unknown ingest error";
+              const errorMessage = formatErrorMessage(error);
 
-              console.error(
-                `[IngestSource] Source ${sourceId} failed:`,
-                errorMessage,
-              );
+              // Log the full error for stack trace / debug details
+              console.error(`[IngestSource] Source ${sourceId} failed:`, error);
 
               yield* db
                 .update(sources)
