@@ -60,7 +60,7 @@ export class StorageService extends Effect.Service<StorageService>()(
   {
     effect: Effect.gen(function* () {
       const client = yield* S3ClientService;
-      const bucket = env.CLOUDFLARE_R2_BUCKET;
+      const defaultBucket = env.CLOUDFLARE_R2_BUCKET;
 
       return {
         generatePresignedUrl: (params: {
@@ -69,18 +69,20 @@ export class StorageService extends Effect.Service<StorageService>()(
           contentType?: string;
           expiresIn?: number;
           responseContentDisposition?: string;
+          bucket?: string;
         }) =>
           Effect.tryPromise({
             try: async () => {
+              const targetBucket = params.bucket ?? defaultBucket;
               const command =
                 params.operation === "upload"
                   ? new PutObjectCommand({
-                      Bucket: bucket,
+                      Bucket: targetBucket,
                       Key: params.key,
                       ContentType: params.contentType,
                     })
                   : new GetObjectCommand({
-                      Bucket: bucket,
+                      Bucket: targetBucket,
                       Key: params.key,
                       ResponseContentDisposition:
                         params.responseContentDisposition,
@@ -109,13 +111,14 @@ export class StorageService extends Effect.Service<StorageService>()(
           body: StreamingBlobPayloadInputTypes;
           contentType?: string;
           contentLength?: number;
+          bucket?: string;
         }) =>
           Effect.tryPromise({
             try: async () => {
               const upload = new Upload({
                 client,
                 params: {
-                  Bucket: bucket,
+                  Bucket: params.bucket ?? defaultBucket,
                   Key: params.key,
                   Body: params.body,
                   ContentType: params.contentType,
@@ -153,7 +156,7 @@ export class StorageService extends Effect.Service<StorageService>()(
           Effect.tryPromise({
             try: async () => {
               const command = new HeadObjectCommand({
-                Bucket: bucket,
+                Bucket: defaultBucket,
                 Key: params.key,
               });
               await client.send(command);
@@ -172,7 +175,7 @@ export class StorageService extends Effect.Service<StorageService>()(
           Effect.tryPromise({
             try: async () => {
               const command = new GetObjectCommand({
-                Bucket: bucket,
+                Bucket: defaultBucket,
                 Key: params.key,
               });
               const response = await client.send(command);
@@ -191,7 +194,7 @@ export class StorageService extends Effect.Service<StorageService>()(
           Effect.tryPromise({
             try: async () => {
               const command = new DeleteObjectCommand({
-                Bucket: bucket,
+                Bucket: defaultBucket,
                 Key: params.key,
               });
               await client.send(command);

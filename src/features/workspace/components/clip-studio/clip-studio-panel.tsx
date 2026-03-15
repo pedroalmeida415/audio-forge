@@ -114,7 +114,7 @@ function ClipStudioTimelineInner({
     { refetchOnWindowFocus: false },
   );
 
-  const diarizationStatus = source?.diarizationStatus;
+  const diarizationStatus = source?.diarization?.status ?? null;
   const isSourceDiarizationRunning =
     diarizationStatus === "pending" || diarizationStatus === "running";
   const isDiarizationCompleted = diarizationStatus === "completed";
@@ -131,6 +131,9 @@ function ClipStudioTimelineInner({
       );
     },
   });
+
+  const [denoiseBeforeDiarization, setDenoiseBeforeDiarization] =
+    useState(false);
 
   const allSpeakers = projectSpeakers.concat(sourceSpeakers);
 
@@ -171,7 +174,10 @@ function ClipStudioTimelineInner({
       return;
     }
 
-    startDiarizationMutation.mutate({ sourceId });
+    startDiarizationMutation.mutate({
+      sourceId,
+      denoise: denoiseBeforeDiarization,
+    });
   };
 
   return (
@@ -189,6 +195,8 @@ function ClipStudioTimelineInner({
       isDiarizationRunning={isDiarizationRunning}
       isDiarizationCompleted={isDiarizationCompleted}
       isDiarizationButtonDisabled={isDiarizationButtonDisabled}
+      denoiseBeforeDiarization={denoiseBeforeDiarization}
+      onDenoiseBeforeDiarizationChange={setDenoiseBeforeDiarization}
     />
   );
 }

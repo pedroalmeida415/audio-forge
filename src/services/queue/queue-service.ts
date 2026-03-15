@@ -18,6 +18,7 @@ export type QueueName = (typeof Queues)[keyof typeof Queues];
 
 export const AudioJobs = {
   IngestSource: "ingest_source",
+  Diarize: "diarize",
   Denoise: "denoise",
   Transcribe: "transcribe",
   CalculateScore: "calculate_score",

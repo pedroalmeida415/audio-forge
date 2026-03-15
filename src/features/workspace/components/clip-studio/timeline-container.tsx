@@ -32,6 +32,8 @@ interface TimelineContainerProps {
   isDiarizationRunning: boolean;
   isDiarizationCompleted: boolean;
   isDiarizationButtonDisabled: boolean;
+  denoiseBeforeDiarization: boolean;
+  onDenoiseBeforeDiarizationChange: (value: boolean) => void;
 }
 
 /**
@@ -53,6 +55,8 @@ export function TimelineContainer({
   isDiarizationRunning,
   isDiarizationCompleted,
   isDiarizationButtonDisabled,
+  denoiseBeforeDiarization,
+  onDenoiseBeforeDiarizationChange,
 }: TimelineContainerProps) {
   const { store } = useWorkspaceStore();
   const [activeSegmentId, setActiveSegmentId] = useQueryState(
@@ -96,6 +100,8 @@ export function TimelineContainer({
         isDiarizationRunning={isDiarizationRunning}
         isDiarizationCompleted={isDiarizationCompleted}
         isDiarizationButtonDisabled={isDiarizationButtonDisabled}
+        denoiseBeforeDiarization={denoiseBeforeDiarization}
+        onDenoiseBeforeDiarizationChange={onDenoiseBeforeDiarizationChange}
       />
 
       {/* Timeline content - no native scroll, manual handling via transforms */}

@@ -236,7 +236,7 @@ function SourceItem({
     duration: number | null;
     status: string | null;
     error: string | null;
-    diarizationStatus: string | null;
+    diarization: { status: string } | null;
     createdAt: Date;
   };
   onRename: (name: string) => void;

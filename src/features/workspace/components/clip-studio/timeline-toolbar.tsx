@@ -5,6 +5,8 @@ import { useEffect, useRef } from "react";
 import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
+import { Label } from "~/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -87,6 +89,8 @@ interface TimelineToolbarProps {
   isDiarizationRunning: boolean;
   isDiarizationCompleted: boolean;
   isDiarizationButtonDisabled: boolean;
+  denoiseBeforeDiarization: boolean;
+  onDenoiseBeforeDiarizationChange: (value: boolean) => void;
 }
 
 export function TimelineToolbar({
@@ -101,6 +105,8 @@ export function TimelineToolbar({
   isDiarizationRunning,
   isDiarizationCompleted,
   isDiarizationButtonDisabled,
+  denoiseBeforeDiarization,
+  onDenoiseBeforeDiarizationChange,
 }: TimelineToolbarProps) {
   const { store } = useWorkspaceStore();
 
@@ -219,21 +225,41 @@ export function TimelineToolbar({
           </TooltipContent>
         </Tooltip>
 
-        <Button
-          disabled={isDiarizationButtonDisabled}
-          onClick={onStartDiarization}
-          size="sm"
-          variant="outline"
-        >
-          {isDiarizationRunning ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : null}
-          {isDiarizationRunning
-            ? "Diarizing..."
-            : isDiarizationCompleted
-              ? "Diarized"
-              : "Diarize"}
-        </Button>
+        <div className="flex items-center gap-1">
+          {!isDiarizationCompleted && !isDiarizationRunning && (
+            <div className="flex items-center gap-1.5 pr-1">
+              <Checkbox
+                id="denoise-before-diarization"
+                checked={denoiseBeforeDiarization}
+                onCheckedChange={(checked) =>
+                  onDenoiseBeforeDiarizationChange(checked === true)
+                }
+                disabled={isDiarizationButtonDisabled}
+              />
+              <Label
+                htmlFor="denoise-before-diarization"
+                className="cursor-pointer text-muted-foreground text-xs"
+              >
+                Denoise
+              </Label>
+            </div>
+          )}
+          <Button
+            disabled={isDiarizationButtonDisabled}
+            onClick={onStartDiarization}
+            size="sm"
+            variant="outline"
+          >
+            {isDiarizationRunning ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : null}
+            {isDiarizationRunning
+              ? "Diarizing..."
+              : isDiarizationCompleted
+                ? "Diarized"
+                : "Diarize"}
+          </Button>
+        </div>
       </div>
     </div>
   );

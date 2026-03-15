@@ -1,9 +1,14 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Cause, Data, Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEFAULT_LOCAL_SPEAKER_COLOR } from "~/lib/speaker-colors";
-import { segments, sources, speakers } from "~/server/db/schema";
+import {
+  type DiarizationInfo,
+  segments,
+  sources,
+  speakers,
+} from "~/server/db/schema";
 import { AppRuntime } from "~/services";
 import { Database } from "~/services/infra/database";
 
@@ -71,9 +76,9 @@ const handleWebhook = (request: NextRequest) =>
     }
     const payload = parseResult.data;
 
-    // Find the source by diarization job ID
+    // Find the source by diarization job ID stored in JSONB
     const source = yield* db.query.sources.findFirst({
-      where: eq(sources.diarizationJobId, payload.jobId),
+      where: sql`${sources.diarization}->>'jobId' = ${payload.jobId}`,
     });
 
     if (!source) {
@@ -122,13 +127,15 @@ const handleWebhook = (request: NextRequest) =>
       );
 
       // Update source diarization status
+      const completedDiarization: DiarizationInfo = {
+        ...source.diarization,
+        status: "completed",
+        completedAt: now.toISOString(),
+        error: undefined,
+      };
       yield* db
         .update(sources)
-        .set({
-          diarizationStatus: "completed",
-          diarizationCompletedAt: now,
-          diarizationError: null,
-        })
+        .set({ diarization: completedDiarization })
         .where(eq(sources.id, source.id));
 
       console.log(
@@ -136,22 +143,28 @@ const handleWebhook = (request: NextRequest) =>
       );
     } else if (payload.status === "failed" || payload.status === "canceled") {
       // Update source with failed status
+      const failedDiarization: DiarizationInfo = {
+        ...source.diarization,
+        status: "failed",
+        completedAt: now.toISOString(),
+        error:
+          payload.status === "canceled"
+            ? "Diarization was canceled"
+            : "Diarization failed",
+      };
       yield* db
         .update(sources)
-        .set({
-          diarizationStatus: "failed",
-          diarizationCompletedAt: now,
-          diarizationError:
-            payload.status === "canceled"
-              ? "Diarization was canceled"
-              : "Diarization failed",
-        })
+        .set({ diarization: failedDiarization })
         .where(eq(sources.id, source.id));
     } else if (payload.status === "running") {
       // Update status to running
+      const runningDiarization: DiarizationInfo = {
+        ...source.diarization,
+        status: "running",
+      };
       yield* db
         .update(sources)
-        .set({ diarizationStatus: "running" })
+        .set({ diarization: runningDiarization })
         .where(eq(sources.id, source.id));
     }
 
@@ -185,10 +198,7 @@ export async function POST(request: NextRequest) {
             `[Diarization Webhook] Source not found for job: ${error.jobId}`,
           );
           return Effect.succeed(
-            NextResponse.json(
-              { error: "Source not found" },
-              { status: 404 },
-            ),
+            NextResponse.json({ error: "Source not found" }, { status: 404 }),
           );
         },
       }),

@@ -4,9 +4,21 @@ import { and, eq, inArray, not } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { projects, segments, sources, speakers } from "~/server/db/schema";
+import {
+  type DiarizationInfo,
+  projects,
+  segments,
+  sources,
+  speakers,
+} from "~/server/db/schema";
 import { PyannoteService } from "~/services/diarization/pyannote-service";
 import { Database } from "~/services/infra/database";
+import {
+  AudioJobs,
+  type AudioJobPayload,
+  QueueService,
+  Queues,
+} from "~/services/queue/queue-service";
 import { StorageService } from "~/services/storage/storage-service";
 
 const SUPPORTED_UPLOAD_CONTENT_TYPE = /^(audio|video)\//;
@@ -39,6 +51,7 @@ export const sourceRouter = createTRPCRouter({
         filename: z.string().min(1).max(MAX_FILENAME_LENGTH),
         contentType: z.string().min(1),
         queueDiarization: z.boolean().default(false),
+        denoise: z.boolean().default(false),
       }),
     )
     .mutation(
@@ -77,6 +90,16 @@ export const sourceRouter = createTRPCRouter({
             const objectId = crypto.randomUUID();
             const rawStorageKey = `uploads/${ctx.session.user.id}/${Date.now()}-${objectId}-${safeFilename}`;
 
+            // Build diarization JSONB if user wants auto-diarization
+            const diarization: DiarizationInfo | null =
+              input.queueDiarization
+                ? {
+                    status: "pending",
+                    denoise: input.denoise || undefined,
+                    startedAt: new Date().toISOString(),
+                  }
+                : null;
+
             const [source] = yield* db
               .insert(sources)
               .values({
@@ -86,7 +109,7 @@ export const sourceRouter = createTRPCRouter({
                 originalFileName: safeFilename,
                 storageKey: rawStorageKey,
                 status: "pending",
-                diarizationStatus: input.queueDiarization ? "pending" : null,
+                diarization,
               })
               .returning({ id: sources.id });
 
@@ -204,7 +227,7 @@ export const sourceRouter = createTRPCRouter({
                 duration: true,
                 status: true,
                 error: true,
-                diarizationStatus: true,
+                diarization: true,
                 createdAt: true,
               },
             });
@@ -305,6 +328,7 @@ export const sourceRouter = createTRPCRouter({
       z.object({
         sourceId: z.string().uuid(),
         numSpeakers: z.number().int().min(1).max(20).optional(),
+        denoise: z.boolean().default(false),
       }),
     )
     .mutation(
@@ -338,7 +362,7 @@ export const sourceRouter = createTRPCRouter({
               );
             }
 
-            if (source.diarizationStatus === "completed") {
+            if (source.diarization?.status === "completed") {
               return yield* Effect.fail(
                 new TRPCError({
                   code: "BAD_REQUEST",
@@ -347,44 +371,28 @@ export const sourceRouter = createTRPCRouter({
               );
             }
 
-            // Generate presigned download URL for Pyannote
-            const { url: audioUrl } =
-              yield* StorageService.generatePresignedUrl({
-                key: source.storageKey,
-                operation: "download",
-                expiresIn: 7200,
-              });
+            // Set diarization to pending and enqueue a Diarize worker job
+            const diarization: DiarizationInfo = {
+              status: "pending",
+              startedAt: new Date().toISOString(),
+              denoise: input.denoise || undefined,
+            };
 
-            // Submit diarization job
-            const jobResult = yield* PyannoteService.submitJob({
-              audioUrl,
-            }).pipe(
-              Effect.catchTag("PyannoteError", (error) =>
-                Effect.fail(
-                  new TRPCError({
-                    code: "INTERNAL_SERVER_ERROR",
-                    message: error.message,
-                  }),
-                ),
-              ),
-            );
-
-            // Update source with diarization info
             yield* db
               .update(sources)
-              .set({
-                diarizationJobId: jobResult.jobId,
-                diarizationStatus: "pending",
-                diarizationStartedAt: new Date(),
-                diarizationError: null,
-              })
+              .set({ diarization })
               .where(eq(sources.id, input.sourceId));
+
+            const enqueueResult = yield* QueueService.enqueueJob(
+              Queues.AudioProcessing,
+              AudioJobs.Diarize,
+              { entryId: input.sourceId } satisfies AudioJobPayload,
+            );
 
             return {
               sourceId: source.id,
-              jobId: jobResult.jobId,
-              status: jobResult.status,
-              warning: jobResult.warning,
+              jobId: enqueueResult.jobId,
+              status: "pending" as const,
             };
           }),
         ),
@@ -414,47 +422,45 @@ export const sourceRouter = createTRPCRouter({
               );
             }
 
-            if (!source.diarizationStatus) {
+            const d = source.diarization;
+            if (!d) {
               return { status: null };
             }
 
             // If not completed, fetch latest status from Pyannote
-            if (
-              source.diarizationStatus === "pending" ||
-              source.diarizationStatus === "running"
-            ) {
-              if (!source.diarizationJobId) {
+            if (d.status === "pending" || d.status === "running") {
+              if (!d.jobId) {
                 return {
-                  status: source.diarizationStatus,
-                  liveStatus: source.diarizationStatus,
-                  startedAt: source.diarizationStartedAt?.toISOString() ?? null,
+                  status: d.status,
+                  liveStatus: d.status,
+                  startedAt: d.startedAt ?? null,
                   completedAt: null,
-                  error: source.diarizationError,
+                  error: d.error ?? null,
                 };
               }
 
               const statusResult = yield* PyannoteService.getJobStatus(
-                source.diarizationJobId,
+                d.jobId,
               ).pipe(
                 Effect.catchTag("PyannoteError", () =>
-                  Effect.succeed({ status: source.diarizationStatus }),
+                  Effect.succeed({ status: d.status }),
                 ),
               );
 
               return {
-                status: source.diarizationStatus,
+                status: d.status,
                 liveStatus: statusResult.status,
-                startedAt: source.diarizationStartedAt?.toISOString() ?? null,
+                startedAt: d.startedAt ?? null,
                 completedAt: null,
                 error: null,
               };
             }
 
             return {
-              status: source.diarizationStatus,
-              startedAt: source.diarizationStartedAt?.toISOString() ?? null,
-              completedAt: source.diarizationCompletedAt?.toISOString() ?? null,
-              error: source.diarizationError,
+              status: d.status,
+              startedAt: d.startedAt ?? null,
+              completedAt: d.completedAt ?? null,
+              error: d.error ?? null,
             };
           }),
         ),

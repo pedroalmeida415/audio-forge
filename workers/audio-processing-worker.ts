@@ -6,7 +6,13 @@ import { desc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import IORedis from "ioredis";
 import { env } from "../src/env";
-import { clips, segments, sources, speakers } from "../src/server/db/schema";
+import {
+  clips,
+  type DiarizationInfo,
+  segments,
+  sources,
+  speakers,
+} from "../src/server/db/schema";
 import { AppRuntime } from "../src/services";
 import { AudioProcessingService } from "../src/services/audio/audio-processing-service";
 import { PyannoteService } from "../src/services/diarization/pyannote-service";
@@ -509,56 +515,21 @@ const handleIngestSource: JobHandler = async (job) => {
             `[IngestSource] Auto-queueing diarization for ${sourceId}`,
           );
 
-          const diarizationUpdate = yield* Effect.gen(function* () {
-            const { url: audioUrl } =
-              yield* StorageService.generatePresignedUrl({
-                key: audioStorageKey,
-                operation: "download",
-                expiresIn: 7200,
-              });
-
-            const diarizationJob = yield* PyannoteService.submitJob({
-              audioUrl,
-            }).pipe(
-              Effect.catchTag("PyannoteError", (error) =>
-                Effect.fail(new Error(error.message)),
-              ),
-            );
-
-            console.log(
-              `[IngestSource] Auto-diarization queued for ${sourceId}: ${diarizationJob.jobId}`,
-            );
-
-            return {
-              diarizationJobId: diarizationJob.jobId,
-              diarizationStatus: "pending" as const,
-              diarizationStartedAt: new Date(),
-              diarizationCompletedAt: null,
-              diarizationError: null,
-            };
-          }).pipe(
-            Effect.catchAll((error) => {
-              const message =
-                error instanceof Error
-                  ? error.message
-                  : "Failed to queue diarization";
-
+          // Instead of submitting to Pyannote here,
+          // enqueue a separate Diarize job that handles denoise + submission.
+          yield* Effect.tryPromise({
+            try: () =>
+              audioQueue.add(AudioJobs.Diarize, {
+                entryId: sourceId,
+              }),
+            catch: (error) => {
               console.error(
-                `[IngestSource] Auto-diarization failed for ${sourceId}:`,
-                message,
+                `[IngestSource] Failed to enqueue diarize job for ${sourceId}:`,
+                error,
               );
-
-              return Effect.succeed({
-                diarizationJobId: null,
-                diarizationStatus: "failed" as const,
-                diarizationStartedAt: null,
-                diarizationCompletedAt: new Date(),
-                diarizationError: message,
-              });
-            }),
-          );
-
-          Object.assign(update, diarizationUpdate);
+              return new Error(`Failed to enqueue diarize: ${error}`);
+            },
+          });
         }
 
         yield* db.update(sources).set(update).where(eq(sources.id, sourceId));
@@ -600,6 +571,140 @@ const handleIngestSource: JobHandler = async (job) => {
   }
 
   return undefined;
+};
+
+/**
+ * Diarize a source — optionally denoise first, then submit to Pyannote.
+ * entryId = sourceId
+ *
+ * Reads `source.diarization.denoise` to decide whether to denoise.
+ * Updates `source.diarization` JSONB throughout the process.
+ */
+const handleDiarize: JobHandler = async (job) => {
+  const sourceId = job.data.entryId;
+  console.log(`[Diarize] Starting for source ${sourceId}`);
+
+  return await AppRuntime.runPromise(
+    Effect.gen(function* () {
+      const db = yield* Database;
+
+      // Fetch source record
+      const source = yield* db.query.sources.findFirst({
+        where: eq(sources.id, sourceId),
+      });
+
+      if (!source) {
+        throw new Error(`Source ${sourceId} not found`);
+      }
+
+      if (!source.storageKey) {
+        throw new Error(`Source ${sourceId} has no storage key`);
+      }
+
+      const shouldDenoise = source.diarization?.denoise === true;
+      let audioUrl: string;
+
+      if (shouldDenoise) {
+        console.log(
+          `[Diarize] Denoising source ${sourceId} before diarization`,
+        );
+
+        // Get source audio URL via media server
+        const presignedUrl = yield* generatePresignedDownloadUrl(
+          source.storageKey,
+        );
+        const mediaUrl = buildMediaServerUrl({
+          presignedUrl,
+          format: "flac",
+        });
+
+        // Call denoise server
+        const denoiseBuffer = yield* callDenoiseServer(mediaUrl);
+
+        // Upload denoised audio to temp bucket
+        const tempKey = `denoised/${source.userId}/${Date.now()}-${sourceId}.flac`;
+        yield* StorageService.upload({
+          key: tempKey,
+          body: denoiseBuffer,
+          contentType: "audio/flac",
+          bucket: env.CLOUDFLARE_R2_TEMP_BUCKET,
+        });
+
+        console.log(`[Diarize] Denoised audio uploaded to temp: ${tempKey}`);
+
+        // Generate presigned URL from temp bucket for Pyannote
+        const { url: denoisedUrl } = yield* StorageService.generatePresignedUrl(
+          {
+            key: tempKey,
+            operation: "download",
+            expiresIn: 7200,
+            bucket: env.CLOUDFLARE_R2_TEMP_BUCKET,
+          },
+        );
+
+        audioUrl = denoisedUrl;
+      } else {
+        const { url } = yield* StorageService.generatePresignedUrl({
+          key: source.storageKey,
+          operation: "download",
+          expiresIn: 7200,
+        });
+        audioUrl = url;
+      }
+
+      // Submit to Pyannote
+      const diarizationJob = yield* PyannoteService.submitJob({
+        audioUrl,
+      }).pipe(
+        Effect.catchTag("PyannoteError", (error) =>
+          Effect.fail(new Error(error.message)),
+        ),
+      );
+
+      console.log(
+        `[Diarize] Submitted to Pyannote for ${sourceId}: job ${diarizationJob.jobId}`,
+      );
+
+      // Update diarization JSONB with job info
+      const updatedDiarization: DiarizationInfo = {
+        ...source.diarization,
+        status: "pending",
+        jobId: diarizationJob.jobId,
+        startedAt: source.diarization?.startedAt ?? new Date().toISOString(),
+      };
+
+      yield* db
+        .update(sources)
+        .set({ diarization: updatedDiarization })
+        .where(eq(sources.id, sourceId));
+
+      return undefined;
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          const db = yield* Database;
+          const message =
+            error instanceof Error ? error.message : "Diarization failed";
+
+          console.error(`[Diarize] Failed for source ${sourceId}:`, message);
+
+          const failedDiarization: DiarizationInfo = {
+            status: "failed",
+            error: message,
+            completedAt: new Date().toISOString(),
+          };
+
+          yield* db
+            .update(sources)
+            .set({ diarization: failedDiarization })
+            .where(eq(sources.id, sourceId))
+            .pipe(Effect.catchAll(() => Effect.void));
+
+          return yield* Effect.fail(error);
+        }),
+      ),
+    ),
+  );
 };
 
 /**
@@ -1250,6 +1355,7 @@ const handleLJSpeechExport: ExportJobHandler = async (job) => {
 
 const handlers: HandlerRegistry = {
   [AudioJobs.IngestSource]: handleIngestSource,
+  [AudioJobs.Diarize]: handleDiarize,
   [AudioJobs.Denoise]: handleDenoise,
   [AudioJobs.Transcribe]: handleTranscribe,
   [AudioJobs.CalculateScore]: handleCalculateScore,
@@ -1421,7 +1527,7 @@ const startPollingPendingSources = () => {
                 try: () =>
                   audioQueue.add(AudioJobs.IngestSource, {
                     entryId: source.id,
-                    queueDiarization: source.diarizationStatus === "pending",
+                    queueDiarization: source.diarization?.status === "pending",
                   }),
                 catch: (error) => new Error(`Failed to enqueue: ${error}`),
               });

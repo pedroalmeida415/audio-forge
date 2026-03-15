@@ -154,6 +154,8 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
   const [isUploading, setIsUploading] = useState(false);
   const [queueDiarizationOnUpload, setQueueDiarizationOnUpload] =
     useState(false);
+  const [denoiseBeforeDiarization, setDenoiseBeforeDiarization] =
+    useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadBatchItem[]>([]);
   const [selectedUploads, setSelectedUploads] = useState<SelectedUploadFile[]>(
@@ -243,6 +245,7 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
           filename: params.file.name || "upload",
           contentType: params.contentType,
           queueDiarization: queueDiarizationOnUpload,
+          denoise: queueDiarizationOnUpload && denoiseBeforeDiarization,
         });
 
       // 2. Upload file directly to R2 using the presigned URL with XHR to track progress
@@ -578,6 +581,25 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
                 onCheckedChange={setQueueDiarizationOnUpload}
               />
             </div>
+
+            {queueDiarizationOnUpload && (
+              <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                <div className="space-y-1">
+                  <p className="font-medium text-sm">
+                    Denoise before diarization
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Clean up background noise before sending to diarization for
+                    better speaker detection accuracy.
+                  </p>
+                </div>
+                <Switch
+                  checked={denoiseBeforeDiarization}
+                  disabled={isUploading}
+                  onCheckedChange={setDenoiseBeforeDiarization}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-2">
               <Button

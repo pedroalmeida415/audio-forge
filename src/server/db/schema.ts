@@ -116,6 +116,28 @@ export interface AudioScores {
   };
 }
 
+/**
+ * Diarization state stored as JSONB on sources.
+ *
+ * `null` diarization column = never diarized.
+ * Consolidates: jobId, status, timestamps, error, and options.
+ */
+export type DiarizationStatus = "pending" | "running" | "completed" | "failed";
+
+export interface DiarizationInfo {
+  status: DiarizationStatus;
+  /** Pyannote job ID (set once submitted to Pyannote) */
+  jobId?: string;
+  /** ISO timestamp — when diarization was requested */
+  startedAt?: string;
+  /** ISO timestamp — when diarization completed or failed */
+  completedAt?: string;
+  /** Error message if failed */
+  error?: string;
+  /** If true, denoise audio before sending to Pyannote */
+  denoise?: boolean;
+}
+
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
     return "bytea";
@@ -133,12 +155,6 @@ export const sourceStatus = pgEnum("source_status", [
   "failed",
 ]);
 
-export const diarizationStatus = pgEnum("diarization_status", [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-]);
 
 export const speakerOrigin = pgEnum("speaker_origin", ["diarization", "user"]);
 
@@ -203,16 +219,8 @@ export const sources = pgTable(
     // Waveform data
     waveformData: bytea("waveform_data"),
 
-    // Diarization (formerly in clippingSessions JSONB)
-    diarizationJobId: varchar("diarization_job_id", { length: 255 }),
-    diarizationStatus: diarizationStatus("diarization_status"),
-    diarizationStartedAt: timestamp("diarization_started_at", {
-      withTimezone: true,
-    }),
-    diarizationCompletedAt: timestamp("diarization_completed_at", {
-      withTimezone: true,
-    }),
-    diarizationError: text("diarization_error"),
+    // Diarization state (consolidated JSONB)
+    diarization: jsonb("diarization").$type<DiarizationInfo>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -225,7 +233,6 @@ export const sources = pgTable(
   (table) => [
     index("source_project_id_idx").on(table.projectId),
     index("source_user_id_idx").on(table.userId),
-    index("source_diarization_job_id_idx").on(table.diarizationJobId),
   ],
 );
 
