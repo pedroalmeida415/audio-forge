@@ -236,7 +236,7 @@ const runExtraction = (inputPath: string, outputPath: string) =>
       "-acodec",
       "flac",
       "-ac",
-      "2",
+      "1",
       "-ar",
       "48000",
       outputPath,
@@ -322,7 +322,7 @@ const runFlacConversion = (inputPath: string, outputPath: string) =>
       "-acodec",
       "flac",
       "-ac",
-      "2",
+      "1",
       "-ar",
       "48000",
       outputPath,
@@ -392,7 +392,7 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
 
       /**
        * Extract audio from a video file to FLAC format.
-       * Output is stereo at 48kHz sample rate.
+       * Output is mono at 48kHz sample rate.
        */
       extractFromVideo: (params: { inputPath: string; outputPath: string }) =>
         Effect.gen(function* () {
@@ -511,8 +511,8 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
         }),
 
       /**
-       * Convert an audio file to FLAC format at 48kHz stereo.
-       * Used by source ingestion to normalize non-FLAC audio inputs.
+       * Convert an audio file to FLAC format at 48kHz mono.
+       * Used by source ingestion to normalize all audio inputs to a consistent format.
        */
       convertToFlac: (params: { inputPath: string; outputPath: string }) =>
         Effect.gen(function* () {
