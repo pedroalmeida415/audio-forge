@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
+import { env } from "~/env";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import {
   type DiarizationInfo,
@@ -14,8 +15,8 @@ import {
 import { PyannoteService } from "~/services/diarization/pyannote-service";
 import { Database } from "~/services/infra/database";
 import {
-  AudioJobs,
   type AudioJobPayload,
+  AudioJobs,
   QueueService,
   Queues,
 } from "~/services/queue/queue-service";
@@ -91,14 +92,13 @@ export const sourceRouter = createTRPCRouter({
             const rawStorageKey = `uploads/${ctx.session.user.id}/${Date.now()}-${objectId}-${safeFilename}`;
 
             // Build diarization JSONB if user wants auto-diarization
-            const diarization: DiarizationInfo | null =
-              input.queueDiarization
-                ? {
-                    status: "pending",
-                    denoise: input.denoise || undefined,
-                    startedAt: new Date().toISOString(),
-                  }
-                : null;
+            const diarization: DiarizationInfo | null = input.queueDiarization
+              ? {
+                  status: "pending",
+                  denoise: input.denoise || undefined,
+                  startedAt: new Date().toISOString(),
+                }
+              : null;
 
             const [source] = yield* db
               .insert(sources)
@@ -122,13 +122,14 @@ export const sourceRouter = createTRPCRouter({
               );
             }
 
-            // Generate presigned PUT URL for client-direct upload
+            // Generate presigned PUT URL for client-direct upload (temp bucket)
             const { url: uploadUrl } =
               yield* StorageService.generatePresignedUrl({
                 key: rawStorageKey,
                 operation: "upload",
                 contentType: input.contentType,
                 expiresIn: 3600, // 1 hour to upload
+                bucket: env.CLOUDFLARE_R2_TEMP_BUCKET,
               });
 
             return { sourceId: source.id, uploadUrl };

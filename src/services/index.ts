@@ -40,9 +40,3 @@ export const ServicesLive = Layer.mergeAll(
  * ```
  */
 export const AppRuntime = ManagedRuntime.make(ServicesLive);
-
-/**
- * Dispose of the app runtime and cleanup resources.
- * Call this during graceful shutdown.
- */
-export const disposeRuntime = () => AppRuntime.dispose();

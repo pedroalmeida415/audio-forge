@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
+import { env } from "../../src/env";
 import { sources } from "../../src/server/db/schema";
 import { AudioProcessingService } from "../../src/services/audio/audio-processing-service";
 import { Database } from "../../src/services/infra/database";
@@ -82,6 +83,7 @@ export const handleIngestSource: JobHandler = (job) =>
               key: rawStorageKey,
               operation: "download",
               expiresIn: 3600,
+              bucket: env.CLOUDFLARE_R2_TEMP_BUCKET,
             });
 
           yield* Effect.tryPromise({
@@ -122,7 +124,7 @@ export const handleIngestSource: JobHandler = (job) =>
             return yield* Effect.fail(
               new Error(`Staged file has no audio for source ${sourceId}`),
             );
-          } // Wait, we can convert all formats to FLAC securely without an explicit switch
+          }
 
           console.log(
             `[IngestSource] Converting audio to FLAC for ${sourceId}`,
