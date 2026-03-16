@@ -6,7 +6,7 @@ import { select } from "d3-selection";
 import { useEffect, useRef } from "react";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
-import { formatTimestamp } from "~/lib/time-utils";
+import { formatTimestamp, formatTimestampWithMs } from "~/lib/time-utils";
 
 const TIMESTAMPS_HEIGHT = 24;
 
@@ -101,7 +101,11 @@ export function TimelineTimestamps() {
         .tickValues(majorTicks)
         .tickSize(6)
         .tickPadding(4)
-        .tickFormat((d) => formatTimestamp(d as number));
+        .tickFormat((d) =>
+          majorInterval < 1
+            ? formatTimestampWithMs(d as number)
+            : formatTimestamp(d as number),
+        );
 
       axisGroup.call(majorAxis);
 
@@ -159,11 +163,23 @@ function getTickIntervals(visibleTimespan: number): {
   majorInterval: number;
   minorInterval: number;
 } {
-  // Very zoomed in: show every second with subsecond dots
+  // Extremely zoomed in: show every 0.1s with 0.05s dots
+  if (visibleTimespan <= 1) {
+    return { majorInterval: 0.1, minorInterval: 0.05 };
+  }
+  // Very very zoomed in: show every 0.2s with 0.1s dots
+  if (visibleTimespan <= 2) {
+    return { majorInterval: 0.2, minorInterval: 0.1 };
+  }
+  // Very zoomed in: show every 0.5s with 0.1s dots
+  if (visibleTimespan <= 5) {
+    return { majorInterval: 0.5, minorInterval: 0.1 };
+  }
+  // Zoomed in: show every second with 0.5s dots
   if (visibleTimespan <= 10) {
     return { majorInterval: 1, minorInterval: 0.5 };
   }
-  // Zoomed in: show every 2 seconds with 1-second dots
+  // Moderate zoom: show every 2 seconds with 1-second dots
   if (visibleTimespan <= 30) {
     return { majorInterval: 2, minorInterval: 1 };
   }
