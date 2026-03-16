@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Effect, Schedule } from "effect";
+import { env } from "~/env";
 import { sources } from "../../src/server/db/schema";
 import { Database } from "../../src/services/infra/database";
 import {
@@ -61,6 +62,7 @@ export const startPollingSystem = Effect.repeat(
 
           const fileExists = yield* StorageService.exists({
             key: source.storageKey,
+            bucket: env.CLOUDFLARE_R2_TEMP_BUCKET,
           });
 
           if (fileExists) {

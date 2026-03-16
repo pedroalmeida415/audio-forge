@@ -152,11 +152,11 @@ export class StorageService extends Effect.Service<StorageService>()(
               }),
           }),
 
-        exists: (params: { key: string }) =>
+        exists: (params: { key: string; bucket?: string }) =>
           Effect.tryPromise({
             try: async () => {
               const command = new HeadObjectCommand({
-                Bucket: defaultBucket,
+                Bucket: params.bucket ?? defaultBucket,
                 Key: params.key,
               });
               await client.send(command);
