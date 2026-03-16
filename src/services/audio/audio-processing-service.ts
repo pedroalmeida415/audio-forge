@@ -411,11 +411,7 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
        * Generate waveform .dat file from audio using audiowaveform via Docker.
        * Input and output files must be in the same directory for Docker volume mount.
        */
-      generateWaveform: (params: {
-        inputPath: string;
-        outputPath: string;
-        samplesPerPixel?: number;
-      }) =>
+      generateWaveform: (params: { inputPath: string; outputPath: string }) =>
         Effect.gen(function* () {
           const inputExists = yield* Effect.async<boolean>((resume) => {
             access(params.inputPath)
@@ -464,7 +460,7 @@ export class AudioProcessingService extends Effect.Service<AudioProcessingServic
               "--bits",
               "8",
               "-z",
-              (params.samplesPerPixel ?? 256).toString(),
+              "32",
             ],
             timeoutMs: 300000,
           }).pipe(

@@ -156,7 +156,6 @@ export const handleIngestSource: JobHandler = (job) =>
           yield* AudioProcessingService.generateWaveform({
             inputPath: flacPath,
             outputPath: waveformPath,
-            samplesPerPixel: 256,
           });
 
           const waveformBuffer = yield* Effect.tryPromise({
