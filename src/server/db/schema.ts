@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  customType,
   doublePrecision,
   index,
   jsonb,
@@ -115,28 +116,47 @@ export interface AudioScores {
   };
 }
 
+/**
+ * Diarization state stored as JSONB on sources.
+ *
+ * `null` diarization column = never diarized.
+ * Consolidates: jobId, status, timestamps, error, and options.
+ */
+export type DiarizationStatus = "pending" | "running" | "completed" | "failed";
+
+export interface DiarizationInfo {
+  status: DiarizationStatus;
+  /** Pyannote job ID (set once submitted to Pyannote) */
+  jobId?: string;
+  /** ISO timestamp — when diarization was requested */
+  startedAt?: string;
+  /** ISO timestamp — when diarization completed or failed */
+  completedAt?: string;
+  /** Error message if failed */
+  error?: string;
+  /** If true, denoise audio before sending to Pyannote */
+  denoise?: boolean;
+}
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
 // ============================================================================
 // ENUMS
 // ============================================================================
 
-export const waveformStatus = pgEnum("waveform_status", [
+export const sourceStatus = pgEnum("source_status", [
   "pending",
   "processing",
   "completed",
   "failed",
 ]);
 
-export const diarizationStatus = pgEnum("diarization_status", [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-]);
 
-export const speakerOrigin = pgEnum("speaker_origin", [
-  "diarization",
-  "user",
-]);
+export const speakerOrigin = pgEnum("speaker_origin", ["diarization", "user"]);
 
 export const clipProcessingStatus = pgEnum("clip_processing_status", [
   "pending",
@@ -187,26 +207,20 @@ export const sources = pgTable(
       onDelete: "cascade",
     }),
 
-    storageKey: varchar("storage_key", { length: 1024 }),
+    storageKey: varchar("storage_key", { length: 1024 }).notNull(),
     duration: doublePrecision("duration"),
     name: varchar("name", { length: 255 }),
     originalFileName: varchar("original_file_name", { length: 255 }),
 
-    // Waveform generation
-    waveformStatus: waveformStatus("waveform_status").default("pending"),
-    waveformStorageKey: varchar("waveform_storage_key", { length: 1024 }),
-    waveformError: text("waveform_error"),
+    // Processing state (ingest + waveform)
+    status: sourceStatus("status").default("pending"),
+    error: text("error"),
 
-    // Diarization (formerly in clippingSessions JSONB)
-    diarizationJobId: varchar("diarization_job_id", { length: 255 }),
-    diarizationStatus: diarizationStatus("diarization_status"),
-    diarizationStartedAt: timestamp("diarization_started_at", {
-      withTimezone: true,
-    }),
-    diarizationCompletedAt: timestamp("diarization_completed_at", {
-      withTimezone: true,
-    }),
-    diarizationError: text("diarization_error"),
+    // Waveform data
+    waveformData: bytea("waveform_data"),
+
+    // Diarization state (consolidated JSONB)
+    diarization: jsonb("diarization").$type<DiarizationInfo>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -219,7 +233,6 @@ export const sources = pgTable(
   (table) => [
     index("source_project_id_idx").on(table.projectId),
     index("source_user_id_idx").on(table.userId),
-    index("source_diarization_job_id_idx").on(table.diarizationJobId),
   ],
 );
 
@@ -247,7 +260,7 @@ export const speakers = pgTable(
 
     // Source link (set for diarization speakers)
     sourceId: uuid("source_id").references(() => sources.id, {
-      onDelete: "set null",
+      onDelete: "cascade",
     }),
     origin: speakerOrigin("origin").notNull().default("user"),
 
@@ -288,7 +301,6 @@ export const segments = pgTable(
 
     transcription: text("transcription"),
     tags: text("tags").array(),
-    scores: jsonb("scores").$type<AudioScores>(),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -310,7 +322,7 @@ export const segments = pgTable(
  *
  * Self-contained: stores its own storageKey and duration directly
  * (no longer references a separate file record).
- * 1:1 relationship with segments.
+ * 1:N relationship with segments.
  */
 export const clips = pgTable(
   "clip",
@@ -318,8 +330,7 @@ export const clips = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     segmentId: uuid("segment_id")
       .notNull()
-      .references(() => segments.id, { onDelete: "cascade" })
-      .unique(),
+      .references(() => segments.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -387,7 +398,7 @@ export const speakerRelations = relations(speakers, ({ one, many }) => ({
   segments: many(segments),
 }));
 
-export const segmentRelations = relations(segments, ({ one }) => ({
+export const segmentRelations = relations(segments, ({ one, many }) => ({
   source: one(sources, {
     fields: [segments.sourceId],
     references: [sources.id],
@@ -396,7 +407,7 @@ export const segmentRelations = relations(segments, ({ one }) => ({
     fields: [segments.speakerId],
     references: [speakers.id],
   }),
-  clip: one(clips),
+  clips: many(clips),
 }));
 
 export const clipRelations = relations(clips, ({ one }) => ({

@@ -1,10 +1,13 @@
 "use client";
 
+import { useQueryState } from "nuqs";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { usePlayback } from "~/features/workspace/hooks/use-playback";
 import { useSelectionDrag } from "~/features/workspace/hooks/use-selection-drag";
+import { useSpacebarPlayback } from "~/features/workspace/hooks/use-spacebar-playback";
 import { useTimelineResize } from "~/features/workspace/hooks/use-timeline-resize";
 import { useWheelZoom } from "~/features/workspace/hooks/use-wheel-zoom";
+import { workspaceParams } from "~/features/workspace/search-params";
 import type { Segment, Speaker } from "~/server/db/schema";
 import { HoverPlayhead } from "./hover-playhead";
 import { SegmentResizeHandles } from "./segment-resize-handles";
@@ -25,6 +28,12 @@ interface TimelineContainerProps {
   projectId: string;
   speakerId: string | null;
   sourceData: { storageKey: string; duration: number };
+  onStartDiarization: () => void;
+  isDiarizationRunning: boolean;
+  isDiarizationCompleted: boolean;
+  isDiarizationButtonDisabled: boolean;
+  denoiseBeforeDiarization: boolean;
+  onDenoiseBeforeDiarizationChange: (value: boolean) => void;
 }
 
 /**
@@ -42,13 +51,26 @@ export function TimelineContainer({
   projectId,
   speakerId,
   sourceData,
+  onStartDiarization,
+  isDiarizationRunning,
+  isDiarizationCompleted,
+  isDiarizationButtonDisabled,
+  denoiseBeforeDiarization,
+  onDenoiseBeforeDiarizationChange,
 }: TimelineContainerProps) {
   const { store } = useWorkspaceStore();
+  const [activeSegmentId, setActiveSegmentId] = useQueryState(
+    "activeSegmentId",
+    workspaceParams.activeSegmentId,
+  );
 
   const containerRef = useTimelineResize();
 
   // Connect MSE audio provider to store
-  usePlayback(sourceData, segments);
+  usePlayback(sourceData, segments, activeSegmentId);
+
+  // Enable spacebar playback toggling
+  useSpacebarPlayback(!!sourceData);
 
   // Enable Ctrl+wheel zooming and Shift+wheel scrolling
   useWheelZoom(store);
@@ -72,6 +94,14 @@ export function TimelineContainer({
         sourceId={sourceId}
         projectId={projectId}
         speakerId={speakerId}
+        activeSegmentId={activeSegmentId}
+        onActiveSegmentChange={(id) => void setActiveSegmentId(id)}
+        onStartDiarization={onStartDiarization}
+        isDiarizationRunning={isDiarizationRunning}
+        isDiarizationCompleted={isDiarizationCompleted}
+        isDiarizationButtonDisabled={isDiarizationButtonDisabled}
+        denoiseBeforeDiarization={denoiseBeforeDiarization}
+        onDenoiseBeforeDiarizationChange={onDenoiseBeforeDiarizationChange}
       />
 
       {/* Timeline content - no native scroll, manual handling via transforms */}
@@ -104,6 +134,7 @@ export function TimelineContainer({
             segments={segments}
             speakers={speakers}
             speakerId={speakerId}
+            activeSegmentId={activeSegmentId}
           />
 
           {/* Waveform */}
@@ -115,7 +146,11 @@ export function TimelineContainer({
       </div>
 
       {/* Segment resize handles */}
-      <SegmentResizeHandles segments={segments} sourceId={sourceId} />
+      <SegmentResizeHandles
+        segments={segments}
+        sourceId={sourceId}
+        activeSegmentId={activeSegmentId}
+      />
 
       {/* Selection resize handles */}
       <SelectionResizeHandles />

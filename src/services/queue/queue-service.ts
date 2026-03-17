@@ -17,9 +17,9 @@ export type QueueName = (typeof Queues)[keyof typeof Queues];
 // ============================================================================
 
 export const AudioJobs = {
-  GenerateWaveform: "generate_waveform",
+  IngestSource: "ingest_source",
+  Diarize: "diarize",
   Denoise: "denoise",
-  RemoveOverlap: "remove_overlap",
   Transcribe: "transcribe",
   CalculateScore: "calculate_score",
   LJSpeechExport: "ljspeech_export",
@@ -29,12 +29,16 @@ export type AudioJobName = (typeof AudioJobs)[keyof typeof AudioJobs];
 
 // Job payload - single generic type for all audio jobs
 // The job name determines how entryId is interpreted:
-// - generate_waveform: entryId is fileId (uploaded source file)
-// - denoise, remove_overlap, transcribe: entryId is segmentId (worker ensures clip exists)
+// - ingest_source: entryId is sourceId
+// - denoise, transcribe: entryId is segmentId (worker ensures clip exists)
 
 /** Payload for all audio processing jobs */
 export interface AudioJobPayload {
   entryId: string;
+  // Only used by ingest_source jobs.
+  queueDiarization?: boolean;
+  // Used by denoise/remove_overlap to apply processing on top of existing clip instead of source.
+  useExistingClip?: boolean;
 }
 
 /** Payload for LJSpeech export jobs */
@@ -42,6 +46,10 @@ export interface LJSpeechExportPayload {
   speakerId: string;
   userId: string;
   sampleRate: number;
+  minDuration?: number;
+  maxDuration?: number;
+  minScore?: number;
+  maxScore?: number;
 }
 
 // ============================================================================
@@ -102,11 +110,11 @@ const DEFAULT_JOB_OPTIONS: JobsOptions = {
  *
  * @example
  * ```ts
- * // Enqueue a waveform generation job
+ * // Enqueue a source ingest job
  * yield* QueueService.enqueueJob(
  *   Queues.AudioProcessing,
- *   AudioJobs.GenerateWaveform,
- *   { fileId: "file-123", audioStorageKey: "path/to/audio.mp3" }
+ *   AudioJobs.IngestSource,
+ *   { entryId: "source-123" }
  * );
  *
  * // Enqueue a batch of transcription jobs

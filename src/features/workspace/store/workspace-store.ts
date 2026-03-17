@@ -27,9 +27,6 @@ export class WorkspaceStore {
     scrollContainer: null as HTMLDivElement | null,
   });
 
-  // ─── Active segment ───
-  activeSegmentId: string | null = null;
-
   // ─── Playback ───
   isPlaying = false;
   duration = 0;
@@ -68,6 +65,30 @@ export class WorkspaceStore {
     }
   }
 
+  selectMultiple(ids: string[]) {
+    if (this.isAllSelected) {
+      for (const id of ids) {
+        this.excludedSegmentIds.delete(id);
+      }
+    } else {
+      for (const id of ids) {
+        this.selectedSegmentIds.add(id);
+      }
+    }
+  }
+
+  deselectMultiple(ids: string[]) {
+    if (this.isAllSelected) {
+      for (const id of ids) {
+        this.excludedSegmentIds.add(id);
+      }
+    } else {
+      for (const id of ids) {
+        this.selectedSegmentIds.delete(id);
+      }
+    }
+  }
+
   selectAll() {
     this.isAllSelected = true;
     this.selectedSegmentIds.clear();
@@ -78,11 +99,6 @@ export class WorkspaceStore {
     this.isAllSelected = false;
     this.selectedSegmentIds.clear();
     this.excludedSegmentIds.clear();
-  }
-
-  // ─── Active segment ───
-  setActiveSegment(segmentId: string | null) {
-    this.activeSegmentId = segmentId;
   }
 
   // ─── Playback actions ───
@@ -382,7 +398,6 @@ export class WorkspaceStore {
   // ─── Reset (when source changes) ───
   resetTimeline() {
     batch(() => {
-      this.activeSegmentId = null;
       this.isPlaying = false;
       this.currentTime = 0;
       this.duration = 0;

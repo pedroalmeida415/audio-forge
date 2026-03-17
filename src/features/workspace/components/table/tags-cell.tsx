@@ -33,17 +33,17 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
 
   const utils = api.useUtils();
 
-  const updateTagsMutation = api.segment.updateTags.useMutation({
-    onMutate: async ({ tags: newTags }) => {
+  const updateTagsMutation = api.segment.updateMany.useMutation({
+    onMutate: async ({ patch }) => {
+      const nextTags = patch.tags ?? null;
+
       const updateSegmentTags = <
         T extends { id: string; tags: string[] | null },
       >(
         segments: T[],
       ): T[] =>
         segments.map((item) =>
-          item.id === segmentId
-            ? { ...item, tags: newTags.length > 0 ? newTags : null }
-            : item,
+          item.id === segmentId ? { ...item, tags: nextTags } : item,
         );
 
       if (sourceId) {
@@ -74,6 +74,23 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
         utils.segment.getBySpeaker.setData({ speakerId }, context.previous);
       }
     },
+    onSettled: async () => {
+      const invalidations: Promise<unknown>[] = [];
+
+      if (sourceId) {
+        invalidations.push(utils.segment.getBySource.invalidate({ sourceId }));
+      }
+
+      if (speakerId) {
+        invalidations.push(
+          utils.segment.getBySpeaker.invalidate({ speakerId }),
+        );
+      } else {
+        invalidations.push(utils.segment.getBySpeaker.invalidate());
+      }
+
+      await Promise.all(invalidations);
+    },
   });
 
   const handleAddTag = () => {
@@ -87,7 +104,10 @@ export function TagsCell({ tags, segmentId }: TagsCellProps) {
     }
 
     const newTags = [...currentTags, trimmed];
-    updateTagsMutation.mutate({ segmentId, tags: newTags });
+    updateTagsMutation.mutate({
+      segmentIds: [segmentId],
+      patch: { tags: newTags.length > 0 ? newTags : null },
+    });
     setInputValue("");
     setIsOpen(false);
   };

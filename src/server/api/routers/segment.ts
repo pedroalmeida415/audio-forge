@@ -1,12 +1,9 @@
-import { on } from "node:events";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray, not, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { segments, sources, speakers } from "~/server/db/schema";
-import { type ClipEvent, clipEvents } from "~/server/events/clip-events";
-import { initClipEventsBridge } from "~/server/events/clip-events-bridge";
+import { clips, segments, sources, speakers } from "~/server/db/schema";
 import { Database } from "~/services/infra/database";
 import {
   type AudioJobPayload,
@@ -14,6 +11,20 @@ import {
   QueueService,
   Queues,
 } from "~/services/queue/queue-service";
+
+const segmentPatchSchema = z
+  .object({
+    startTime: z.number().min(0).optional(),
+    endTime: z.number().min(0).optional(),
+    speakerId: z.string().uuid().optional(),
+    transcription: z.string().nullable().optional(),
+    tags: z.array(z.string()).nullable().optional(),
+  })
+  .strict();
+
+function hasPatchFields(patch: z.infer<typeof segmentPatchSchema>): boolean {
+  return Object.values(patch).some((value) => value !== undefined);
+}
 
 export const segmentRouter = createTRPCRouter({
   getBySpeaker: protectedProcedure
@@ -44,14 +55,22 @@ export const segmentRouter = createTRPCRouter({
               where: eq(segments.speakerId, input.speakerId),
               orderBy: [asc(segments.startTime)],
               with: {
-                clip: true,
+                clips: {
+                  orderBy: [desc(clips.createdAt)],
+                  limit: 1,
+                },
                 source: {
                   columns: { id: true, name: true, storageKey: true },
                 },
               },
             });
 
-            return { segments: items };
+            return {
+              segments: items.map((item) => {
+                const { clips, ...rest } = item;
+                return { ...rest, clip: clips[0] ?? null };
+              }),
+            };
           }),
         ),
     ),
@@ -67,194 +86,22 @@ export const segmentRouter = createTRPCRouter({
               where: eq(segments.sourceId, input.sourceId),
               orderBy: [asc(segments.startTime)],
               with: {
-                clip: true,
+                clips: {
+                  orderBy: [desc(clips.createdAt)],
+                  limit: 1,
+                },
                 source: {
                   columns: { id: true, name: true, storageKey: true },
                 },
               },
             });
 
-            return { segments: results };
-          }),
-        ),
-    ),
-
-  // Get all segment IDs for a speaker (lightweight ID index for windowed fetching)
-  getIdsBySpeaker: protectedProcedure
-    .input(
-      z.object({
-        speakerId: z.string().uuid(),
-      }),
-    )
-    .query(
-      async ({ ctx, input }) =>
-        await ctx.runtime.runPromise(
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            // Verify speaker exists and belongs to user
-            const speaker = yield* db.query.speakers.findFirst({
-              where: and(
-                eq(speakers.id, input.speakerId),
-                eq(speakers.userId, ctx.session.user.id),
-              ),
-            });
-
-            if (!speaker) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Speaker not found",
-                }),
-              );
-            }
-
-            const aggResult = yield* db
-              .select({
-                ids: sql<string[]>`
-                  array_agg(${segments.id} order by ${segments.startTime} asc)
-                `,
-              })
-              .from(segments)
-              .where(eq(segments.speakerId, input.speakerId));
-
-            if (!aggResult[0])
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Speaker not found",
-                }),
-              );
-
-            return aggResult[0].ids;
-          }),
-        ),
-    ),
-
-  getByIds: protectedProcedure
-    .input(
-      z.object({
-        segmentIds: z.array(z.string().uuid()).max(100),
-      }),
-    )
-    .query(
-      async ({ ctx, input }) =>
-        await ctx.runtime.runPromise(
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            if (input.segmentIds.length === 0) {
-              return [];
-            }
-
-            // Fetch segments with relations
-            return yield* db.query.segments.findMany({
-              where: inArray(segments.id, input.segmentIds),
-              with: {
-                clip: true,
-                source: {
-                  columns: { id: true, name: true, storageKey: true },
-                },
-              },
-            });
-          }),
-        ),
-    ),
-
-  // Update segment transcription
-  updateTranscription: protectedProcedure
-    .input(
-      z.object({
-        segmentId: z.string().uuid(),
-        transcription: z.string().nullable(),
-      }),
-    )
-    .mutation(
-      async ({ ctx, input }) =>
-        await ctx.runtime.runPromise(
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            const segment = yield* db.query.segments.findFirst({
-              where: eq(segments.id, input.segmentId),
-              with: {
-                speaker: true,
-              },
-            });
-
-            if (!segment) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Segment not found",
-                }),
-              );
-            }
-
-            if (segment.speaker.userId !== ctx.session.user.id) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "FORBIDDEN",
-                  message: "You do not have access to this segment",
-                }),
-              );
-            }
-
-            yield* db
-              .update(segments)
-              .set({ transcription: input.transcription })
-              .where(eq(segments.id, input.segmentId));
-
-            return { success: true };
-          }),
-        ),
-    ),
-
-  // Update segment tags
-  updateTags: protectedProcedure
-    .input(
-      z.object({
-        segmentId: z.string().uuid(),
-        tags: z.array(z.string()),
-      }),
-    )
-    .mutation(
-      async ({ ctx, input }) =>
-        await ctx.runtime.runPromise(
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            const segment = yield* db.query.segments.findFirst({
-              where: eq(segments.id, input.segmentId),
-              with: {
-                speaker: true,
-              },
-            });
-
-            if (!segment) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Segment not found",
-                }),
-              );
-            }
-
-            if (segment.speaker.userId !== ctx.session.user.id) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "FORBIDDEN",
-                  message: "You do not have access to this segment",
-                }),
-              );
-            }
-
-            yield* db
-              .update(segments)
-              .set({ tags: input.tags.length > 0 ? input.tags : null })
-              .where(eq(segments.id, input.segmentId));
-
-            return { success: true };
+            return {
+              segments: results.map((item) => {
+                const { clips, ...rest } = item;
+                return { ...rest, clip: clips[0] ?? null };
+              }),
+            };
           }),
         ),
     ),
@@ -264,7 +111,8 @@ export const segmentRouter = createTRPCRouter({
     .input(
       z.object({
         segmentIds: z.array(z.string().uuid()).min(1),
-        operation: z.enum(["denoise", "remove_overlap", "transcribe"]),
+        operation: z.enum(["denoise", "transcribe"]),
+        useExistingClip: z.boolean().optional(),
       }),
     )
     .mutation(
@@ -277,7 +125,10 @@ export const segmentRouter = createTRPCRouter({
               where: inArray(segments.id, input.segmentIds),
               with: {
                 speaker: true,
-                clip: true,
+                clips: {
+                  orderBy: [desc(clips.createdAt)],
+                  limit: 1,
+                },
                 source: true,
               },
             });
@@ -307,12 +158,12 @@ export const segmentRouter = createTRPCRouter({
 
             const jobName = {
               denoise: AudioJobs.Denoise,
-              remove_overlap: AudioJobs.RemoveOverlap,
               transcribe: AudioJobs.Transcribe,
             }[input.operation];
 
             const payloads: AudioJobPayload[] = segmentResults.map((seg) => ({
               entryId: seg.id,
+              useExistingClip: input.useExistingClip,
             }));
 
             const results = yield* QueueService.enqueueJobBatch(
@@ -332,7 +183,7 @@ export const segmentRouter = createTRPCRouter({
     ),
 
   // Create a new segment
-  createSegment: protectedProcedure
+  create: protectedProcedure
     .input(
       z.object({
         sourceId: z.string().uuid(),
@@ -404,88 +255,89 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Update one or many segments
-  updateSegments: protectedProcedure
+  // Update segments by explicit IDs
+  updateMany: protectedProcedure
     .input(
       z.object({
-        sourceId: z.string().uuid(),
-        segmentIds: z.union([z.string().uuid(), z.array(z.string().uuid())]),
-        updates: z.object({
-          startTime: z.number().min(0).optional(),
-          endTime: z.number().min(0).optional(),
-          speakerId: z.string().uuid().optional(),
+        segmentIds: z.array(z.string().uuid()).min(1),
+        patch: segmentPatchSchema.refine(hasPatchFields, {
+          message: "Patch cannot be empty",
         }),
       }),
     )
     .mutation(
-      async ({ ctx, input }) =>
+      async ({ ctx, input: { segmentIds, patch } }) =>
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify source ownership
-            const source = yield* db.query.sources.findFirst({
-              where: and(
-                eq(sources.id, input.sourceId),
-                eq(sources.userId, ctx.session.user.id),
-              ),
-            });
+            const timeChanged =
+              patch.startTime !== undefined || patch.endTime !== undefined;
 
-            if (!source) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Source not found",
-                }),
-              );
-            }
+            const tagsUpdate =
+              patch.tags !== undefined
+                ? patch.tags
+                : timeChanged
+                  ? sql`
+                      (
+                        WITH updated_tags AS (
+                          SELECT 
+                            CASE 
+                              WHEN EXISTS (SELECT 1 FROM ${clips} WHERE ${clips.segmentId} = ${segments.id}) 
+                              THEN 
+                                CASE 
+                                  WHEN ${segments.tags} IS NULL THEN ARRAY['Outdated Clip']::text[]
+                                  WHEN NOT ('Outdated Clip' = ANY(${segments.tags})) THEN array_append(${segments.tags}, 'Outdated Clip')
+                                  ELSE ${segments.tags}
+                                END
+                              ELSE ${segments.tags}
+                            END AS pass1
+                        )
+                        SELECT 
+                          CASE
+                            WHEN ${segments.transcription} IS NOT NULL AND ${segments.transcription} != ''
+                            THEN
+                              CASE
+                                WHEN pass1 IS NULL THEN ARRAY['Outdated Transcription']::text[]
+                                WHEN NOT ('Outdated Transcription' = ANY(pass1)) THEN array_append(pass1, 'Outdated Transcription')
+                                ELSE pass1
+                              END
+                            ELSE pass1
+                          END
+                        FROM updated_tags
+                      )
+                    `
+                  : undefined;
 
-            const segmentIds = Array.isArray(input.segmentIds)
-              ? input.segmentIds
-              : [input.segmentIds];
-
-            // Validate time constraints if times are being updated
-            if (
-              input.updates.startTime !== undefined &&
-              input.updates.endTime !== undefined
-            ) {
-              if (input.updates.endTime <= input.updates.startTime) {
-                return yield* Effect.fail(
-                  new TRPCError({
-                    code: "BAD_REQUEST",
-                    message: "End time must be greater than start time",
-                  }),
-                );
-              }
-            }
-
-            yield* db
+            const updatedSegments = yield* db
               .update(segments)
               .set({
-                ...(input.updates.startTime !== undefined && {
-                  startTime: input.updates.startTime,
+                ...(patch.startTime !== undefined && {
+                  startTime: patch.startTime,
                 }),
-                ...(input.updates.endTime !== undefined && {
-                  endTime: input.updates.endTime,
+                ...(patch.endTime !== undefined && {
+                  endTime: patch.endTime,
                 }),
-                ...(input.updates.speakerId !== undefined && {
-                  speakerId: input.updates.speakerId,
+                ...(patch.speakerId !== undefined && {
+                  speakerId: patch.speakerId,
+                }),
+                ...(patch.transcription !== undefined && {
+                  transcription: patch.transcription,
+                }),
+                ...(tagsUpdate !== undefined && {
+                  tags: tagsUpdate,
                 }),
               })
-              .where(
-                and(
-                  inArray(segments.id, segmentIds),
-                  eq(segments.sourceId, input.sourceId),
-                ),
-              );
+              .where(inArray(segments.id, segmentIds))
+              .returning({ id: segments.id });
 
-            return { success: true, updatedCount: segmentIds.length };
+            return { success: true, updatedCount: updatedSegments.length };
           }),
         ),
     ),
 
   // Split a segment at a specific time
-  splitSegment: protectedProcedure
+  split: protectedProcedure
     .input(
       z.object({
         sourceId: z.string().uuid(),
@@ -546,7 +398,38 @@ export const segmentRouter = createTRPCRouter({
 
             yield* db
               .update(segments)
-              .set({ endTime: input.splitTime })
+              .set({
+                endTime: input.splitTime,
+                tags: sql`
+                  (
+                    WITH updated_tags AS (
+                      SELECT 
+                        CASE 
+                          WHEN EXISTS (SELECT 1 FROM ${clips} WHERE ${clips.segmentId} = ${segments.id}) 
+                          THEN 
+                            CASE 
+                              WHEN ${segments.tags} IS NULL THEN ARRAY['Outdated Clip']::text[]
+                              WHEN NOT ('Outdated Clip' = ANY(${segments.tags})) THEN array_append(${segments.tags}, 'Outdated Clip')
+                              ELSE ${segments.tags}
+                            END
+                          ELSE ${segments.tags}
+                        END AS pass1
+                    )
+                    SELECT 
+                      CASE
+                        WHEN ${segments.transcription} IS NOT NULL AND ${segments.transcription} != ''
+                        THEN
+                          CASE
+                            WHEN pass1 IS NULL THEN ARRAY['Outdated Transcription']::text[]
+                            WHEN NOT ('Outdated Transcription' = ANY(pass1)) THEN array_append(pass1, 'Outdated Transcription')
+                            ELSE pass1
+                          END
+                        ELSE pass1
+                      END
+                    FROM updated_tags
+                  )
+                `,
+              })
               .where(eq(segments.id, input.segmentId));
 
             const [secondSegment] = yield* db
@@ -577,185 +460,26 @@ export const segmentRouter = createTRPCRouter({
         ),
     ),
 
-  // Delete segments
-  deleteSegments: protectedProcedure
+  // Delete segments by explicit IDs
+  deleteMany: protectedProcedure
     .input(
       z.object({
-        sourceId: z.string().uuid(),
         segmentIds: z.array(z.string().uuid()).min(1),
       }),
     )
     .mutation(
-      async ({ ctx, input }) =>
+      async ({ ctx, input: { segmentIds } }) =>
         await ctx.runtime.runPromise(
           Effect.gen(function* () {
             const db = yield* Database;
 
-            // Verify source ownership
-            const source = yield* db.query.sources.findFirst({
-              where: and(
-                eq(sources.id, input.sourceId),
-                eq(sources.userId, ctx.session.user.id),
-              ),
-            });
-
-            if (!source) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Source not found",
-                }),
-              );
-            }
-
-            yield* db
+            const deletedSegments = yield* db
               .delete(segments)
-              .where(
-                and(
-                  inArray(segments.id, input.segmentIds),
-                  eq(segments.sourceId, input.sourceId),
-                ),
-              );
-
-            return { success: true, deletedCount: input.segmentIds.length };
-          }),
-        ),
-    ),
-
-  // Delete segments by speaker. Omit segmentIds to delete all.
-  deleteSegmentsBySpeaker: protectedProcedure
-    .input(
-      z.object({
-        speakerId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).min(1).optional(),
-        excludeSegmentIds: z.array(z.string().uuid()).min(1).optional(),
-      }),
-    )
-    .mutation(
-      async ({ ctx, input }) =>
-        await ctx.runtime.runPromise(
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            const speaker = yield* db.query.speakers.findFirst({
-              where: and(
-                eq(speakers.id, input.speakerId),
-                eq(speakers.userId, ctx.session.user.id),
-              ),
-            });
-
-            if (!speaker) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Speaker not found",
-                }),
-              );
-            }
-
-            const conditions = [eq(segments.speakerId, input.speakerId)];
-            if (input.segmentIds) {
-              conditions.push(inArray(segments.id, input.segmentIds));
-            }
-            if (input.excludeSegmentIds) {
-              conditions.push(
-                not(inArray(segments.id, input.excludeSegmentIds)),
-              );
-            }
-
-            const result = yield* db
-              .delete(segments)
-              .where(and(...conditions))
+              .where(inArray(segments.id, segmentIds))
               .returning({ id: segments.id });
 
-            return { success: true, deletedCount: result.length };
+            return { success: true, deletedCount: deletedSegments.length };
           }),
         ),
     ),
-
-  // Change speaker for segments. Omit segmentIds to move all.
-  changeSpeaker: protectedProcedure
-    .input(
-      z.object({
-        speakerId: z.string().uuid(),
-        segmentIds: z.array(z.string().uuid()).min(1).optional(),
-        excludeSegmentIds: z.array(z.string().uuid()).min(1).optional(),
-        targetSpeakerId: z.string().uuid(),
-      }),
-    )
-    .mutation(
-      async ({ ctx, input }) =>
-        await ctx.runtime.runPromise(
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            const currentSpeaker = yield* db.query.speakers.findFirst({
-              where: and(
-                eq(speakers.id, input.speakerId),
-                eq(speakers.userId, ctx.session.user.id),
-              ),
-            });
-
-            if (!currentSpeaker) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Current speaker not found",
-                }),
-              );
-            }
-
-            const targetSpeaker = yield* db.query.speakers.findFirst({
-              where: and(
-                eq(speakers.id, input.targetSpeakerId),
-                eq(speakers.userId, ctx.session.user.id),
-              ),
-            });
-
-            if (!targetSpeaker) {
-              return yield* Effect.fail(
-                new TRPCError({
-                  code: "NOT_FOUND",
-                  message: "Target speaker not found",
-                }),
-              );
-            }
-
-            const conditions = [eq(segments.speakerId, input.speakerId)];
-            if (input.segmentIds) {
-              conditions.push(inArray(segments.id, input.segmentIds));
-            }
-            if (input.excludeSegmentIds) {
-              conditions.push(
-                not(inArray(segments.id, input.excludeSegmentIds)),
-              );
-            }
-
-            const result = yield* db
-              .update(segments)
-              .set({ speakerId: input.targetSpeakerId })
-              .where(and(...conditions))
-              .returning({ id: segments.id });
-
-            return { success: true, updatedCount: result.length };
-          }),
-        ),
-    ),
-
-  // SSE subscription for clip completion events
-  onClipCreated: protectedProcedure
-    .input(z.object({ speakerId: z.string().uuid() }))
-    .subscription(async function* (opts) {
-      const { speakerId } = opts.input;
-
-      initClipEventsBridge();
-
-      const eventName = `clip:speaker:${speakerId}`;
-
-      for await (const [event] of on(clipEvents, eventName, {
-        signal: opts.signal,
-      })) {
-        yield event as ClipEvent;
-      }
-    }),
 });

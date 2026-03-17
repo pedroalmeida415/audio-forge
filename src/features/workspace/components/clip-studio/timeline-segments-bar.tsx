@@ -1,8 +1,10 @@
 "use client";
 
+import { useQueryStates } from "nuqs";
 import { useEffect, useRef } from "react";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import { workspaceParams } from "~/features/workspace/search-params";
 import {
   getSpeakerColor,
   getSpeakerName,
@@ -21,6 +23,7 @@ interface TimelineSegmentsBarProps {
   }[];
   speakers: Speaker[];
   speakerId: string | null;
+  activeSegmentId: string | null;
 }
 
 /**
@@ -34,8 +37,13 @@ export function TimelineSegmentsBar({
   segments,
   speakers,
   speakerId,
+  activeSegmentId,
 }: TimelineSegmentsBarProps) {
   const { store, computed } = useWorkspaceStore();
+  const [, setQueryState] = useQueryStates({
+    speakerId: workspaceParams.speakerId,
+    activeSegmentId: workspaceParams.activeSegmentId,
+  });
   const containerRef = useRef<HTMLDivElement>(null);
   const segmentElementsMap = useRef<Map<string, HTMLButtonElement>>(new Map());
 
@@ -49,7 +57,6 @@ export function TimelineSegmentsBar({
       const scrollOffset = store.scrollOffset;
       const pps = computed.pixelsPerSecond;
       const containerWidth = store.containerWidth;
-      const activeSegmentId = store.activeSegmentId;
 
       // Calculate visible time range
       const visibleStartTime = scrollOffset / pps - OVERSCAN_TIME;
@@ -95,7 +102,10 @@ export function TimelineSegmentsBar({
         let el = segmentElementsMap.current.get(id);
         if (!el) {
           el = createSegmentElement(id, name, () => {
-            store.setActiveSegment(id);
+            void setQueryState({
+              speakerId: segSpeakerId,
+              activeSegmentId: id,
+            });
           });
           container.appendChild(el);
           segmentElementsMap.current.set(id, el);
@@ -124,7 +134,15 @@ export function TimelineSegmentsBar({
       }
       segmentElementsMap.current.clear();
     };
-  }, [store, computed, segments, speakers, speakerId]);
+  }, [
+    store,
+    computed,
+    segments,
+    speakers,
+    speakerId,
+    activeSegmentId,
+    setQueryState,
+  ]);
 
   return (
     <div

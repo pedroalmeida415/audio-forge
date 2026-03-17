@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
-import { api } from "~/trpc/react";
+import { useWorkspaceUpdateSegmentsMutation } from "~/features/workspace/hooks/use-workspace-mutations";
 
 interface HandlePosition {
   left: number;
@@ -22,6 +21,7 @@ interface SegmentResizeHandlesProps {
     endTime: number;
   }[];
   sourceId: string;
+  activeSegmentId: string | null;
 }
 
 /**
@@ -34,12 +34,18 @@ interface SegmentResizeHandlesProps {
 export function SegmentResizeHandles({
   segments,
   sourceId,
+  activeSegmentId,
 }: SegmentResizeHandlesProps) {
   const { store, computed } = useWorkspaceStore();
-  const snap = useSnapshot(store);
-  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation({
+    sourceId,
+  });
 
   const [position, setPosition] = useState<HandlePosition | null>(null);
+  const [dragState, setDragState] = useState<{
+    edge: "start" | "end";
+    time: number;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
 
   // Ensure we only render portal after mount (SSR safety)
@@ -51,24 +57,24 @@ export function SegmentResizeHandles({
   // This avoids race conditions with DOM queries
   useEffect(() => {
     const dispose = effect(() => {
-      const activeId = store.activeSegmentId;
       const scrollOffset = store.scrollOffset;
       const pps = computed.pixelsPerSecond;
 
-      if (!activeId) {
+      if (!activeSegmentId) {
         setPosition(null);
         return;
       }
 
       // Find segment from props
-      const segment = segments.find((s) => s.id === activeId);
+      const segment = segments.find((s) => s.id === activeSegmentId);
       if (!segment) {
         setPosition(null);
         return;
       }
 
-      const start = segment.startTime;
-      const end = segment.endTime;
+      const start =
+        dragState?.edge === "start" ? dragState.time : segment.startTime;
+      const end = dragState?.edge === "end" ? dragState.time : segment.endTime;
 
       // Find the segments bar container for viewport offset
       const container = document.querySelector(
@@ -94,16 +100,15 @@ export function SegmentResizeHandles({
     });
 
     return dispose;
-  }, [store, computed, segments]);
+  }, [store, computed, segments, activeSegmentId, dragState]);
 
   const handleMouseDown = (edge: "start" | "end") => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const activeId = store.activeSegmentId;
-    if (!activeId) return;
+    if (!activeSegmentId) return;
 
-    const segment = segments.find((s) => s.id === activeId);
+    const segment = segments.find((s) => s.id === activeSegmentId);
     if (!segment) return;
 
     const startX = e.clientX;
@@ -121,8 +126,8 @@ export function SegmentResizeHandles({
 
       // Note: Since segments are props (from React Query), we can't mutate them directly.
       // We apply the pending time via the tRPC mutation on mouse up.
-      // During drag, we update the position visually through the effect.
-      pendingTime = null;
+      // During drag, we update the position visually through the React state.
+      setDragState({ edge, time: pendingTime });
     };
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -142,6 +147,7 @@ export function SegmentResizeHandles({
       document.removeEventListener("mouseup", handleMouseUp);
 
       if (rafId !== null) cancelAnimationFrame(rafId);
+      setDragState(null);
 
       // Persist via mutation using the last pending time
       if (pendingTime !== null) {
@@ -152,9 +158,8 @@ export function SegmentResizeHandles({
           );
           if (newStart !== originalStart) {
             updateSegmentsMutation.mutate({
-              sourceId,
-              segmentIds: activeId,
-              updates: { startTime: newStart },
+              segmentIds: [activeSegmentId],
+              patch: { startTime: newStart },
             });
           }
         } else {
@@ -164,9 +169,8 @@ export function SegmentResizeHandles({
           );
           if (newEnd !== originalEnd) {
             updateSegmentsMutation.mutate({
-              sourceId,
-              segmentIds: activeId,
-              updates: { endTime: newEnd },
+              segmentIds: [activeSegmentId],
+              patch: { endTime: newEnd },
             });
           }
         }
@@ -177,7 +181,7 @@ export function SegmentResizeHandles({
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  if (!mounted || !position || !snap.activeSegmentId) return null;
+  if (!mounted || !position || !activeSegmentId) return null;
 
   return createPortal(
     <>

@@ -1,16 +1,36 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Edit2, Loader2, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useQueryState } from "nuqs";
+import { useQueryStates } from "nuqs";
+import { useState } from "react";
 import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "~/components/ui/navigation-menu";
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Separator } from "~/components/ui/separator";
 import { workspaceParams } from "~/features/workspace/search-params";
 import type { Speaker } from "~/server/db/schema";
@@ -19,11 +39,11 @@ import { api } from "~/trpc/react";
 export function SpeakerPicker() {
   const { projectId } = useParams<{ projectId: string }>();
 
-  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
-  const [speakerId, setSpeakerId] = useQueryState(
-    "speakerId",
-    workspaceParams.speakerId,
-  );
+  const [{ sourceId, speakerId }, setQueryState] = useQueryStates({
+    sourceId: workspaceParams.sourceId,
+    speakerId: workspaceParams.speakerId,
+    activeSegmentId: workspaceParams.activeSegmentId,
+  });
 
   const [projectSpeakers] = api.speaker.getByProject.useSuspenseQuery(
     { projectId },
@@ -36,98 +56,245 @@ export function SpeakerPicker() {
       { enabled: !!sourceId, refetchOnWindowFocus: false },
     );
 
-  const selectedSpeaker =
-    projectSpeakers.find((s) => s.id === speakerId) ??
-    sourceSpeakers?.find((s) => s.id === speakerId);
+  const utils = api.useUtils();
+  const [showRename, setShowRename] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [speakerToManage, setSpeakerToManage] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const renameMutation = api.speaker.update.useMutation({
+    onSuccess: () => {
+      setShowRename(false);
+      void utils.speaker.getByProject.invalidate();
+      void utils.speaker.getBySource.invalidate();
+    },
+  });
+  const deleteMutation = api.speaker.delete.useMutation({
+    onSuccess: () => {
+      setShowDelete(false);
+      handleSelectSpeaker(null);
+      void utils.speaker.getByProject.invalidate();
+      void utils.speaker.getBySource.invalidate();
+    },
+  });
+
+  const handleSelectSpeaker = (id: string | null) => {
+    void setQueryState({ speakerId: id, activeSegmentId: null });
+  };
 
   return (
-    <NavigationMenu viewport={false}>
-      <NavigationMenuList>
-        <NavigationMenuItem>
-          <NavigationMenuTrigger>
-            Speaker:{" "}
-            <span className="ml-1 max-w-[160px] truncate text-muted-foreground">
-              {selectedSpeaker?.name ?? "None"}
-            </span>
-          </NavigationMenuTrigger>
-          <NavigationMenuContent>
-            <ul className="w-[240px] p-1">
-              {speakerId && (
-                <li>
-                  <NavigationMenuLink asChild>
-                    <button
-                      type="button"
-                      className="w-full text-muted-foreground"
-                      onClick={() => setSpeakerId(null)}
-                    >
-                      Clear selection
-                    </button>
-                  </NavigationMenuLink>
-                </li>
-              )}
-              {projectSpeakers.map((speaker) => (
-                <SpeakerItem
-                  key={speaker.id}
-                  speaker={speaker}
-                  active={speaker.id === speakerId}
-                  onSelect={() => setSpeakerId(speaker.id)}
-                />
-              ))}
-              <SourceSpeakersSection
-                speakers={sourceSpeakers}
-                isLoading={isLoadingSourceSpeakers}
-                speakerId={speakerId}
-                onSelect={setSpeakerId}
-                enabled={!!sourceId}
+    <div className="flex items-center gap-2">
+      <span className="font-medium text-sm">Speaker:</span>
+      <Select
+        value={speakerId ?? ""}
+        onValueChange={(val) => {
+          if (val === "clear") {
+            handleSelectSpeaker(null);
+          } else {
+            handleSelectSpeaker(val);
+          }
+        }}
+      >
+        <SelectTrigger className="h-8 w-[240px] text-xs">
+          <SelectValue placeholder="Select a speaker..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {speakerId && (
+              <SelectItem value="clear" className="text-muted-foreground">
+                Clear selection
+              </SelectItem>
+            )}
+            {projectSpeakers.map((speaker) => (
+              <SpeakerItem
+                key={speaker.id}
+                speaker={speaker}
+                onRename={(name) => {
+                  setSpeakerToManage({ id: speaker.id, name });
+                  setNewName(name);
+                  setShowRename(true);
+                }}
+                onDelete={() => {
+                  setSpeakerToManage({ id: speaker.id, name: speaker.name });
+                  setShowDelete(true);
+                }}
               />
-            </ul>
-          </NavigationMenuContent>
-        </NavigationMenuItem>
-      </NavigationMenuList>
-    </NavigationMenu>
+            ))}
+            <SourceSpeakersSection
+              speakers={sourceSpeakers}
+              isLoading={isLoadingSourceSpeakers}
+              enabled={!!sourceId}
+              onRename={(id, name) => {
+                setSpeakerToManage({ id, name });
+                setNewName(name);
+                setShowRename(true);
+              }}
+              onDelete={(id) => {
+                setSpeakerToManage({ id, name: "" });
+                setShowDelete(true);
+              }}
+            />
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      {speakerToManage && (
+        <>
+          <Dialog open={showRename} onOpenChange={setShowRename}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename Speaker</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="speaker-name">Name</Label>
+                  <Input
+                    id="speaker-name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newName.trim()) {
+                        renameMutation.mutate({
+                          speakerId: speakerToManage.id,
+                          name: newName.trim(),
+                        });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRename(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() =>
+                    renameMutation.mutate({
+                      speakerId: speakerToManage.id,
+                      name: newName.trim(),
+                    })
+                  }
+                  disabled={!newName.trim() || renameMutation.isPending}
+                >
+                  {renameMutation.isPending && (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  )}
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Speaker?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete this speaker and all its
+                  associated segments. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  onClick={() =>
+                    deleteMutation.mutate({ speakerId: speakerToManage.id })
+                  }
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending && (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  )}
+                  Delete Speaker
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
+    </div>
   );
 }
 
 function SpeakerItem({
   speaker,
-  active,
-  onSelect,
+  onRename,
+  onDelete,
 }: {
   speaker: Speaker;
-  active: boolean;
-  onSelect: () => void;
+  onRename: (name: string) => void;
+  onDelete: () => void;
 }) {
   return (
-    <li>
-      <NavigationMenuLink asChild active={active}>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2"
-          onClick={onSelect}
+    <SelectItem value={speaker.id} className="group pr-20">
+      <div className="flex flex-1 items-center gap-2 truncate">
+        <span
+          className="size-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: speaker.color }}
+        />
+        <span className="truncate">{speaker.name}</span>
+      </div>
+      <div className="absolute right-8 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRename(speaker.name);
+          }}
         >
-          <span
-            className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: speaker.color }}
-          />
-          <span className="truncate">{speaker.name}</span>
-        </button>
-      </NavigationMenuLink>
-    </li>
+          <Edit2 className="size-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onPointerUp={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Trash2 className="size-3" />
+        </Button>
+      </div>
+    </SelectItem>
   );
 }
 
 function SourceSpeakersSection({
   speakers,
   isLoading,
-  speakerId,
-  onSelect,
   enabled,
+  onRename,
+  onDelete,
 }: {
   speakers: Speaker[] | undefined;
   isLoading: boolean;
-  speakerId: string | null;
-  onSelect: (id: string) => void;
   enabled: boolean;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
 }) {
   if (!enabled) return null;
 
@@ -135,10 +302,10 @@ function SourceSpeakersSection({
     return (
       <>
         <Separator className="my-1" />
-        <li className="flex items-center gap-2 px-2 py-1.5 text-muted-foreground text-xs">
+        <div className="flex items-center gap-2 px-2 py-1.5 text-muted-foreground text-xs">
           <Loader2 className="size-3 animate-spin" />
           Loading source speakers...
-        </li>
+        </div>
       </>
     );
   }
@@ -148,15 +315,15 @@ function SourceSpeakersSection({
   return (
     <>
       <Separator className="my-1" />
-      <li className="px-2 py-1.5 text-muted-foreground text-xs">
+      <div className="px-2 py-1.5 text-muted-foreground text-xs">
         Source speakers
-      </li>
+      </div>
       {speakers.map((speaker) => (
         <SpeakerItem
           key={speaker.id}
           speaker={speaker}
-          active={speaker.id === speakerId}
-          onSelect={() => onSelect(speaker.id)}
+          onRename={(name) => onRename(speaker.id, name)}
+          onDelete={() => onDelete(speaker.id)}
         />
       ))}
     </>

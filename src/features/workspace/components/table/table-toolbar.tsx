@@ -1,9 +1,19 @@
 "use client";
 
-import { Loader2, Trash2, UserRoundCog } from "lucide-react";
+import type { Table } from "@tanstack/react-table";
+import {
+  ChevronDown,
+  Loader2,
+  Sparkles,
+  Subtitles,
+  Trash2,
+  UserRoundCog,
+  Wand2,
+} from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useSnapshot } from "valtio";
 import {
   AlertDialog,
@@ -16,40 +26,31 @@ import {
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { ChangeSpeakerDialog } from "~/features/workspace/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import {
+  useWorkspaceBulkDeleteSegmentsMutation,
+  useWorkspaceDeleteSegmentsMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import { workspaceParams } from "~/features/workspace/search-params";
+import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { api } from "~/trpc/react";
+import { TableFilterPopover } from "./segments-table-filter";
 
-function filterOutSegments(
-  ids: Set<string>,
-  utils: ReturnType<typeof api.useUtils>,
-  sourceId: string | null,
-  speakerId: string,
-) {
-  if (sourceId) {
-    utils.segment.getBySource.setData({ sourceId }, (old) => {
-      if (!old) return old;
-      return {
-        ...old,
-        segments: old.segments.filter((item) => !ids.has(item.id)),
-      };
-    });
-  } else {
-    utils.segment.getBySpeaker.setData({ speakerId }, (old) => {
-      if (!old) return old;
-      return {
-        ...old,
-        segments: old.segments.filter((item) => !ids.has(item.id)),
-      };
-    });
-  }
-}
-
-export function TableToolbar() {
+export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
   const { projectId } = useParams<{ projectId: string }>();
   const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
-  const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
+  const [speakerId, setSpeakerId] = useQueryState(
+    "speakerId",
+    workspaceParams.speakerId,
+  );
 
   const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
@@ -76,7 +77,10 @@ export function TableToolbar() {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showChangeSpeakerDialog, setShowChangeSpeakerDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [pendingProcess, setPendingProcess] = useState<{
+    operation: "denoise" | "transcribe";
+    segmentIds: string[];
+  } | null>(null);
 
   // Fetch current speaker for the dialog description
   const { data: speakers } = api.speaker.getByProject.useQuery(
@@ -85,72 +89,157 @@ export function TableToolbar() {
   );
   const currentSpeaker = speakers?.find((s) => s.id === speakerId);
 
-  const deleteMutation = api.segment.deleteSegmentsBySpeaker.useMutation({
-    onSuccess: () => {
-      if (speakerId) {
-        if (isAllSelected) {
-          if (sourceId) {
-            utils.segment.getBySource.invalidate({ sourceId });
-          } else {
-            utils.segment.getBySpeaker.invalidate({ speakerId });
-          }
-        } else {
-          filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
-        }
-      }
-      store.clearSelection();
-      setIsDeleting(false);
-      setShowDeleteDialog(false);
-    },
-    onError: () => {
-      setIsDeleting(false);
-    },
-  });
+  const cacheContext = { sourceId, speakerId };
+
+  const deleteSegmentsMutation =
+    useWorkspaceDeleteSegmentsMutation(cacheContext);
+
+  const bulkDeleteMutation =
+    useWorkspaceBulkDeleteSegmentsMutation(cacheContext);
+
+  const isDeleting =
+    deleteSegmentsMutation.isPending || bulkDeleteMutation.isPending;
 
   const handleDelete = () => {
     if (!hasSelection || !speakerId) return;
-    setIsDeleting(true);
 
     if (isAllSelected) {
-      const excludeIds =
+      const excludeSegmentIds =
         excludedSegmentIds.size > 0
           ? Array.from(excludedSegmentIds)
           : undefined;
-      deleteMutation.mutate({ speakerId, excludeSegmentIds: excludeIds });
+      bulkDeleteMutation.mutate({ excludeSegmentIds });
     } else {
-      deleteMutation.mutate({
-        speakerId,
-        segmentIds: Array.from(selectedSegmentIds),
-      });
+      const segmentIds = Array.from(selectedSegmentIds);
+      deleteSegmentsMutation.mutate({ segmentIds });
     }
+
+    store.clearSelection();
+    setShowDeleteDialog(false);
+  };
+
+  const queueProcessingMutation = api.segment.queueProcessing.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        `Enqueued ${data.operation} for ${data.segmentCount} segment(s)`,
+      );
+    },
+    onError: (error) => {
+      toast.error(`Failed to enqueue processing: ${error.message}`);
+    },
+    onSettled: () => {
+      setPendingProcess(null);
+    },
+  });
+
+  const getSelectedSegmentIds = () => {
+    if (isAllSelected) {
+      const contextSegments =
+        sourceId && speakerId
+          ? cachedSegments.filter((s) => s.speakerId === speakerId)
+          : cachedSegments;
+
+      return contextSegments
+        .filter((s) => !excludedSegmentIds.has(s.id))
+        .map((s) => s.id);
+    }
+    return Array.from(selectedSegmentIds);
+  };
+
+  const handleProcess = (operation: "denoise" | "transcribe") => {
+    if (!hasSelection) return;
+
+    const segmentIds = getSelectedSegmentIds();
+    if (segmentIds.length === 0) return;
+
+    // Check if any selected segment has a clip
+    const hasExistingClips = cachedSegments.some(
+      (s) => segmentIds.includes(s.id) && s.clip !== null,
+    );
+
+    // If it's a transcription job, we don't ask about overriding audio since it doesn't modify audio
+    if (hasExistingClips && operation !== "transcribe") {
+      setPendingProcess({ operation, segmentIds });
+    } else {
+      queueProcessingMutation.mutate({
+        segmentIds,
+        operation,
+        // Transcription should always use existing clips (not create new ones).
+        // For non-transcribe without existing clips, false is fine (will create the first clip).
+        useExistingClip: operation === "transcribe",
+      });
+      store.clearSelection();
+    }
+  };
+
+  const confirmProcess = (useExistingClip: boolean) => {
+    if (!pendingProcess) return;
+    queueProcessingMutation.mutate({
+      segmentIds: pendingProcess.segmentIds,
+      operation: pendingProcess.operation,
+      useExistingClip,
+    });
+    store.clearSelection();
   };
 
   return (
     <>
       <div className="flex shrink-0 items-center justify-between border-border border-b bg-muted/30 px-4 py-2">
-        <div className="text-muted-foreground text-sm">
-          {hasSelection ? (
-            <span>
-              {isAllSelected && excludedSegmentIds.size === 0 ? (
-                <>
-                  <span className="font-medium text-foreground">All</span>{" "}
-                  segments selected ({totalCount})
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">
-                    {selectedCount}
-                  </span>{" "}
-                  segment{selectedCount !== 1 ? "s" : ""} selected
-                </>
-              )}
-            </span>
-          ) : (
-            <span>No segments selected</span>
-          )}
+        <div className="flex items-center gap-4">
+          <TableFilterPopover table={table} />
+
+          <div className="text-muted-foreground text-sm">
+            {hasSelection ? (
+              <span>
+                {isAllSelected && excludedSegmentIds.size === 0 ? (
+                  <>
+                    <span className="font-medium text-foreground">All</span>{" "}
+                    segments selected ({totalCount})
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-foreground">
+                      {selectedCount}
+                    </span>{" "}
+                    segment{selectedCount !== 1 ? "s" : ""} selected
+                  </>
+                )}
+              </span>
+            ) : (
+              <span>No segments selected</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasSelection || queueProcessingMutation.isPending}
+              >
+                {queueProcessingMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="size-4" />
+                )}
+                Process
+                <ChevronDown className="size-3 text-muted-foreground opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleProcess("denoise")}>
+                <Wand2 className="mr-2 size-4" />
+                Denoise Audio
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleProcess("transcribe")}>
+                <Subtitles className="mr-2 size-4" />
+                Transcribe Speech
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="outline"
             size="sm"
@@ -173,6 +262,46 @@ export function TableToolbar() {
           </Button>
         </div>
       </div>
+
+      <AlertDialog
+        open={pendingProcess !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingProcess(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Process existing clips?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Some of the selected segments already have processed clips. How do
+              you want to apply this operation?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:space-x-0">
+            <Button
+              variant="outline"
+              onClick={() => confirmProcess(false)}
+              disabled={queueProcessingMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Process original audio (Replace existing clips)
+            </Button>
+            <Button
+              onClick={() => confirmProcess(true)}
+              disabled={queueProcessingMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Apply on top of existing clips (Keep current processing)
+            </Button>
+            <AlertDialogCancel
+              disabled={queueProcessingMutation.isPending}
+              className="mt-2 w-full sm:w-auto"
+            >
+              Cancel
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
@@ -219,19 +348,18 @@ export function TableToolbar() {
           }
           segmentCount={selectedCount}
           projectId={projectId}
+          sourceId={sourceId}
           speakerId={speakerId}
           speakerName={currentSpeaker?.name ?? "Unknown"}
-          onSuccess={() => {
-            if (isAllSelected) {
-              if (sourceId) {
-                utils.segment.getBySource.invalidate({ sourceId });
-              } else {
-                utils.segment.getBySpeaker.invalidate({ speakerId });
-              }
-            } else {
-              filterOutSegments(selectedSegmentIds, utils, sourceId, speakerId);
-            }
+          onSuccess={(targetSpeakerId) => {
             store.clearSelection();
+            if (
+              isAllSelected &&
+              excludedSegmentIds.size === 0 &&
+              targetSpeakerId
+            ) {
+              setSpeakerId(targetSpeakerId).catch(console.error);
+            }
           }}
         />
       )}

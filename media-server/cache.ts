@@ -8,20 +8,20 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 interface CacheEntry {
   path: string;
-  storageKey: string;
+  /** Cache key derived from the URL pathname (stable across presigned URL renewals) */
+  cacheKey: string;
   lastAccessed: number;
   size: number;
 }
 
 interface CacheIndex {
   entries: Array<{
-    storageKey: string;
+    cacheKey: string;
     filename: string;
     lastAccessed: number;
     size: number;
@@ -32,17 +32,27 @@ interface MediaCacheConfig {
   cacheDir: string;
   maxSizeBytes: number;
   maxAgeMs: number;
-  // R2 configuration
-  r2Endpoint: string;
-  r2AccessKeyId: string;
-  r2SecretAccessKey: string;
-  r2Bucket: string;
+}
+
+/**
+ * Derive a stable cache key from a presigned URL.
+ *
+ * Presigned URLs change on every request (new signature, expiry, etc.),
+ * but the pathname (the object key) is always the same for the same file.
+ * We use the pathname as the cache key so that different presigned URLs
+ * for the same object hit the same cache entry.
+ *
+ * Example:
+ *   https://r2.example.com/bucket/sources/user123/file.flac?X-Amz-Signature=...
+ *   → "/bucket/sources/user123/file.flac"
+ */
+export function deriveCacheKey(presignedUrl: string): string {
+  return new URL(presignedUrl).pathname;
 }
 
 export class MediaCache {
   private entries: Map<string, CacheEntry> = new Map();
   private config: MediaCacheConfig;
-  private s3Client: S3Client;
   private totalSize = 0;
   private downloadLocks: Map<string, Promise<string>> = new Map();
   private indexPath: string;
@@ -51,16 +61,6 @@ export class MediaCache {
   constructor(config: MediaCacheConfig) {
     this.config = config;
     this.indexPath = join(config.cacheDir, "cache-index.json");
-
-    this.s3Client = new S3Client({
-      region: "auto",
-      endpoint: config.r2Endpoint,
-      forcePathStyle: true, // Use path-style URLs to avoid bucket subdomain resolving to blocked IP
-      credentials: {
-        accessKeyId: config.r2AccessKeyId,
-        secretAccessKey: config.r2SecretAccessKey,
-      },
-    });
 
     // Ensure cache directory exists
     if (!existsSync(this.config.cacheDir)) {
@@ -116,9 +116,9 @@ export class MediaCache {
         }
 
         // Entry is valid, add to cache
-        this.entries.set(entry.storageKey, {
+        this.entries.set(entry.cacheKey, {
           path: filePath,
-          storageKey: entry.storageKey,
+          cacheKey: entry.cacheKey,
           lastAccessed: entry.lastAccessed,
           size: entry.size,
         });
@@ -161,7 +161,7 @@ export class MediaCache {
   private saveIndexNow(): void {
     const index: CacheIndex = {
       entries: Array.from(this.entries.values()).map((entry) => ({
-        storageKey: entry.storageKey,
+        cacheKey: entry.cacheKey,
         filename: basename(entry.path),
         lastAccessed: entry.lastAccessed,
         size: entry.size,
@@ -178,13 +178,13 @@ export class MediaCache {
   /**
    * Get cached file path, or null if not cached
    */
-  get(storageKey: string): string | null {
-    const entry = this.entries.get(storageKey);
+  get(cacheKey: string): string | null {
+    const entry = this.entries.get(cacheKey);
     if (!entry) return null;
 
     // Check if file still exists
     if (!existsSync(entry.path)) {
-      this.entries.delete(storageKey);
+      this.entries.delete(cacheKey);
       this.totalSize -= entry.size;
       this.saveIndex();
       return null;
@@ -192,7 +192,7 @@ export class MediaCache {
 
     // Check if expired
     if (Date.now() - entry.lastAccessed > this.config.maxAgeMs) {
-      this.remove(storageKey);
+      this.remove(cacheKey);
       return null;
     }
 
@@ -204,60 +204,77 @@ export class MediaCache {
   }
 
   /**
-   * Get or download file from R2
-   * Uses a lock to prevent duplicate downloads of the same file
+   * Get or download file from the provided URL.
+   *
+   * The cacheKey is derived from the URL pathname (stable across presigned URL renewals).
+   * On cache miss, the file is downloaded using the provided presigned URL.
+   * Uses a lock to prevent duplicate downloads of the same file.
    */
-  async getOrDownload(storageKey: string): Promise<string> {
+  async getOrDownload(presignedUrl: string): Promise<string> {
+    const cacheKey = deriveCacheKey(presignedUrl);
+
     // Check cache first
-    const cached = this.get(storageKey);
+    const cached = this.get(cacheKey);
     if (cached) return cached;
 
     // Check if already downloading
-    const existingDownload = this.downloadLocks.get(storageKey);
+    const existingDownload = this.downloadLocks.get(cacheKey);
     if (existingDownload) {
       return existingDownload;
     }
 
     // Start download
-    const downloadPromise = this.download(storageKey);
-    this.downloadLocks.set(storageKey, downloadPromise);
+    const downloadPromise = this.download(presignedUrl, cacheKey);
+    this.downloadLocks.set(cacheKey, downloadPromise);
 
     try {
       const path = await downloadPromise;
       return path;
     } finally {
-      this.downloadLocks.delete(storageKey);
+      this.downloadLocks.delete(cacheKey);
     }
   }
 
-  private async download(storageKey: string): Promise<string> {
+  /**
+   * Download a file from a presigned URL to the local cache.
+   */
+  private async download(
+    presignedUrl: string,
+    cacheKey: string,
+  ): Promise<string> {
     // Evict if necessary before downloading
     await this.evictIfNeeded();
 
-    const localPath = this.getLocalPath(storageKey);
+    const localPath = this.getLocalPath(cacheKey);
 
-    const command = new GetObjectCommand({
-      Bucket: this.config.r2Bucket,
-      Key: storageKey,
-    });
+    // Download via HTTP (presigned URL is self-authenticating)
+    const response = await fetch(presignedUrl);
 
-    const response = await this.s3Client.send(command);
-
-    if (!response.Body) {
-      throw new Error(`No body in R2 response for key: ${storageKey}`);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to download from presigned URL: ${response.status} ${response.statusText}`,
+      );
     }
 
-    // Stream to disk
-    await pipeline(response.Body as Readable, createWriteStream(localPath));
+    if (!response.body) {
+      throw new Error("No body in download response");
+    }
+
+    // Stream response body to disk using Bun.file().writer() to avoid hangs
+    const writer = Bun.file(localPath).writer();
+    for await (const chunk of response.body) {
+      writer.write(chunk);
+    }
+    await writer.end();
 
     // Get file size
     const stats = statSync(localPath);
     const size = stats.size;
 
     // Add to cache
-    this.entries.set(storageKey, {
+    this.entries.set(cacheKey, {
       path: localPath,
-      storageKey,
+      cacheKey,
       lastAccessed: Date.now(),
       size,
     });
@@ -267,7 +284,7 @@ export class MediaCache {
     this.saveIndex();
 
     console.log(
-      `[MediaCache] Downloaded ${storageKey} (${(size / 1024 / 1024).toFixed(2)} MB)`,
+      `[MediaCache] Downloaded ${cacheKey} (${(size / 1024 / 1024).toFixed(2)} MB)`,
     );
 
     return localPath;
@@ -276,8 +293,8 @@ export class MediaCache {
   /**
    * Remove entry from cache
    */
-  private remove(storageKey: string): void {
-    const entry = this.entries.get(storageKey);
+  private remove(cacheKey: string): void {
+    const entry = this.entries.get(cacheKey);
     if (!entry) return;
 
     try {
@@ -289,7 +306,7 @@ export class MediaCache {
     }
 
     this.totalSize -= entry.size;
-    this.entries.delete(storageKey);
+    this.entries.delete(cacheKey);
     this.saveIndex();
   }
 
@@ -315,14 +332,12 @@ export class MediaCache {
   }
 
   /**
-   * Extract file ID from storage key for use as cache filename.
-   * StorageKey format examples:
-   * - "diarization/{userId}/{fileId}.flac" -> "{fileId}.flac"
-   * - "clips/{userId}/{segmentId}.flac" -> "{segmentId}.flac"
+   * Extract a stable filename from the cache key (URL pathname).
+   * Cache key example: "/bucket/sources/user123/1710342000-abc.flac"
+   * → "1710342000-abc.flac"
    */
-  private getLocalPath(storageKey: string): string {
-    // Extract filename (last segment of the path)
-    const filename = basename(storageKey);
+  private getLocalPath(cacheKey: string): string {
+    const filename = basename(cacheKey);
     return join(this.config.cacheDir, filename);
   }
 

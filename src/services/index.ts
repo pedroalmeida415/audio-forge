@@ -2,6 +2,7 @@ import { Layer, ManagedRuntime } from "effect";
 import { AudioProcessingService } from "./audio/audio-processing-service";
 import { PyannoteService } from "./diarization/pyannote-service";
 import { Database } from "./infra/database";
+import { RedisService } from "./infra/redis";
 import { QueueService } from "./queue/queue-service";
 import { StorageService } from "./storage/storage-service";
 
@@ -13,6 +14,7 @@ import { StorageService } from "./storage/storage-service";
  */
 export const ServicesLive = Layer.mergeAll(
   Database.Default,
+  RedisService.Default,
   StorageService.Default,
   QueueService.Default,
   PyannoteService.Default,
@@ -31,16 +33,10 @@ export const ServicesLive = Layer.mergeAll(
  *
  * const result = await AppRuntime.runPromise(
  *   Effect.gen(function* () {
- *     yield* StorageService.generatePresignedUploadUrl({ ... });
+ *     yield* StorageService.generatePresignedUrl({ ... });
  *     yield* QueueService.enqueue(Queues.WaveformGeneration, { ... });
  *   })
  * );
  * ```
  */
 export const AppRuntime = ManagedRuntime.make(ServicesLive);
-
-/**
- * Dispose of the app runtime and cleanup resources.
- * Call this during graceful shutdown.
- */
-export const disposeRuntime = () => AppRuntime.dispose();

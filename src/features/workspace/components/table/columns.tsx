@@ -1,7 +1,8 @@
 "use client";
 
-import type { ColumnDef, RowData } from "@tanstack/react-table";
+import type { ColumnDef, RowData, Table } from "@tanstack/react-table";
 import { PencilIcon } from "lucide-react";
+import { useQueryStates } from "nuqs";
 import { useSnapshot } from "valtio";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -17,8 +18,10 @@ import {
 } from "~/features/workspace/components/table/compact-audio-cell";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { useSegmentAudio } from "~/features/workspace/hooks/use-segment-audio";
+import { workspaceParams } from "~/features/workspace/search-params";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
 import { cn } from "~/lib/utils";
+import { formatDuration } from "~/lib/time-utils";
 import { TagsCell } from "./tags-cell";
 
 // ============================================================================
@@ -37,30 +40,82 @@ declare module "@tanstack/react-table" {
 // Cell Components
 // ============================================================================
 
-function SelectAllCheckbox() {
+function SelectAllCheckbox({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
   const { store } = useWorkspaceStore();
   const { isAllSelected, excludedSegmentIds, selectedSegmentIds } =
     useSnapshot(store);
 
-  const checked: boolean | "indeterminate" =
-    isAllSelected && excludedSegmentIds.size === 0
-      ? true
-      : isAllSelected || selectedSegmentIds.size > 0
-        ? "indeterminate"
-        : false;
+  const activeFilters = table.getState().columnFilters.length > 0;
+
+  let checked: boolean | "indeterminate" = false;
+
+  if (!activeFilters) {
+    checked =
+      isAllSelected && excludedSegmentIds.size === 0
+        ? true
+        : isAllSelected || selectedSegmentIds.size > 0
+          ? "indeterminate"
+          : false;
+  } else {
+    const filteredRows = table.getFilteredRowModel().rows;
+    const filteredCount = filteredRows.length;
+
+    if (filteredCount === 0) {
+      checked = false;
+    } else if (isAllSelected && excludedSegmentIds.size === 0) {
+      checked = true;
+    } else if (!isAllSelected && selectedSegmentIds.size === 0) {
+      checked = false;
+    } else {
+      let selectedCount = 0;
+      for (let i = 0; i < filteredCount; i++) {
+        const row = filteredRows[i];
+        if (!row) continue;
+        const id = row.original.id;
+        if (
+          isAllSelected
+            ? !excludedSegmentIds.has(id)
+            : selectedSegmentIds.has(id)
+        ) {
+          selectedCount++;
+        }
+      }
+
+      checked =
+        selectedCount === filteredCount
+          ? true
+          : selectedCount > 0
+            ? "indeterminate"
+            : false;
+    }
+  }
+
+  const handleCheckedChange = (value: boolean | "indeterminate") => {
+    if (activeFilters) {
+      const filteredIds = table
+        .getFilteredRowModel()
+        .rows.map((r) => r.original.id);
+      if (value) {
+        store.selectMultiple(filteredIds);
+      } else {
+        store.deselectMultiple(filteredIds);
+      }
+    } else {
+      if (value) {
+        store.selectAll();
+      } else {
+        store.clearSelection();
+      }
+    }
+  };
 
   return (
     <div className="flex justify-center">
       <Checkbox
         checked={checked}
-        onCheckedChange={(value) => {
-          if (value) {
-            store.selectAll();
-          } else {
-            store.clearSelection();
-          }
-        }}
-        aria-label="Select all"
+        onCheckedChange={handleCheckedChange}
+        aria-label={activeFilters ? "Select all filtered" : "Select all"}
       />
     </div>
   );
@@ -175,7 +230,7 @@ function DurationCell({ duration }: { duration: number }) {
   return (
     <div className="flex justify-center">
       <Badge variant="secondary" className="font-mono text-xs">
-        {duration.toFixed(1)}s
+        {formatDuration(duration, { decimals: 1 })}
       </Badge>
     </div>
   );
@@ -189,9 +244,20 @@ function IndexCell({ index }: { index: number }) {
   );
 }
 
-function ActionsCell({ segmentId }: { segmentId: string }) {
+function ActionsCell({
+  segmentId,
+  sourceId,
+}: {
+  segmentId: string;
+  sourceId: string;
+}) {
+  const [, setQueryState] = useQueryStates({
+    sourceId: workspaceParams.sourceId,
+    activeSegmentId: workspaceParams.activeSegmentId,
+  });
+
   const handleEdit = () => {
-    console.log("Edit segment:", segmentId);
+    void setQueryState({ sourceId, activeSegmentId: segmentId });
   };
 
   return (
@@ -244,7 +310,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
   return [
     {
       id: "select",
-      header: () => <SelectAllCheckbox />,
+      header: ({ table }) => <SelectAllCheckbox table={table} />,
       cell: ({ row }) => <SelectCell segmentId={row.original.id} />,
       size: 40,
       enableSorting: false,
@@ -277,7 +343,9 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     },
     {
       id: "clip",
+      accessorFn: (row) => !!row.clip,
       header: "Clip",
+      filterFn: "equals",
       cell: ({ row }) => {
         const segment = row.original;
         const duration = segment.endTime - segment.startTime;
@@ -290,6 +358,7 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
         );
       },
       size: 48,
+      enableSorting: false,
 
       meta: {
         center: true,
@@ -297,8 +366,33 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     },
     {
       id: "score",
-      accessorFn: (row) => row.clip?.scores?.DNSMOS?.P808_MOS ?? -1,
+      accessorFn: (row) => row.clip?.scores?.DNSMOS?.P808_MOS ?? null,
       header: "Score",
+      filterFn: (
+        row,
+        columnId,
+        filterValue:
+          | { min?: number; max?: number; showMissingOnly?: boolean }
+          | undefined,
+      ) => {
+        if (!filterValue) return true;
+
+        const value = row.getValue<number | null>(columnId);
+
+        if (filterValue.showMissingOnly) {
+          return value === null;
+        }
+
+        if (value === null) return false;
+
+        const roundedValue = Number(value.toFixed(1));
+
+        if (filterValue.min !== undefined && roundedValue < filterValue.min)
+          return false;
+        if (filterValue.max !== undefined && roundedValue > filterValue.max)
+          return false;
+        return true;
+      },
       cell: ({ row }) => (
         <ScoreCell
           score={row.original.clip?.scores?.DNSMOS?.P808_MOS ?? null}
@@ -313,6 +407,18 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       id: "duration",
       accessorFn: (row) => row.endTime - row.startTime,
       header: "Duration",
+      filterFn: (
+        row,
+        columnId,
+        filterValue: [number | undefined, number | undefined],
+      ) => {
+        const rawValue = row.getValue<number>(columnId);
+        const roundedValue = Number(rawValue.toFixed(1));
+        const [min, max] = filterValue;
+        if (min !== undefined && roundedValue < min) return false;
+        if (max !== undefined && roundedValue > max) return false;
+        return true;
+      },
       cell: ({ row }) => {
         const duration = row.original.endTime - row.original.startTime;
         return <DurationCell duration={duration} />;
@@ -325,23 +431,44 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
     {
       id: "transcription",
       header: "Transcription",
+      accessorFn: (row) => row.transcription,
+      filterFn: (row, columnId, filterValue: boolean | undefined) => {
+        if (filterValue === undefined) return true;
+        const hasTrans = !!row.getValue(columnId);
+        return filterValue ? hasTrans : !hasTrans;
+      },
       cell: ({ row }) => (
         <TranscriptionCell transcription={row.original.transcription} />
       ),
       meta: { flex: true },
+      enableSorting: false,
     },
     {
       id: "tags",
       header: "Tags",
+      accessorFn: (row) => row.tags,
+      filterFn: (row, columnId, filterValue: string) => {
+        if (!filterValue) return true;
+        const tags = row.getValue<string[] | null>(columnId);
+        if (!tags || tags.length === 0) return false;
+        const lowerQuery = filterValue.toLowerCase();
+        return tags.some((t) => t.toLowerCase().includes(lowerQuery));
+      },
       cell: ({ row }) => (
         <TagsCell tags={row.original.tags} segmentId={row.original.id} />
       ),
+      enableSorting: false,
       size: 200,
     },
     {
       id: "actions",
       header: () => null,
-      cell: ({ row }) => <ActionsCell segmentId={row.original.id} />,
+      cell: ({ row }) => (
+        <ActionsCell
+          segmentId={row.original.id}
+          sourceId={row.original.sourceId}
+        />
+      ),
       size: 48,
       enableSorting: false,
       enableHiding: false,

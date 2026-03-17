@@ -21,18 +21,9 @@ const OVERSCAN = 1;
 // Target pixels per data point for LOD (lower = more points = more detail)
 const TARGET_PIXELS_PER_POINT = 1;
 
-// Minimum amplitude fraction for silent sections (ensures visible baseline)
-const MIN_AMPLITUDE_FRACTION = 0.02;
-
 interface ChunkRenderData {
   index: number;
   pathD: string;
-}
-
-interface WaveformPoint {
-  x: number;
-  min: number;
-  max: number;
 }
 
 interface TimelineWaveformProps {
@@ -40,9 +31,10 @@ interface TimelineWaveformProps {
 }
 
 /**
- * Waveform visualization using waveform-data.js + D3 for virtualization.
+ * Waveform visualization using waveform-data.js + D3.
  *
- * - Filled area envelope (D3 area + curveLinear for sharp peaks)
+ * - Outlined envelope (forward through max, backward through min → one continuous stroke)
+ * - Center line at 0 amplitude
  * - waveform-data.js resample() for peak-preserving LOD
  * - Global peak normalization for consistent amplitude display
  * - D3 data join pattern for chunk virtualization
@@ -73,6 +65,19 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
 
     const svg = select(svgRef.current);
 
+    // Create center line at 0 amplitude
+    let centerLine = svg.select<SVGLineElement>("line.center-line");
+    if (centerLine.empty()) {
+      centerLine = svg
+        .append("line")
+        .attr("class", "center-line")
+        .attr("y1", WAVEFORM_HEIGHT / 2)
+        .attr("y2", WAVEFORM_HEIGHT / 2)
+        .attr("stroke", "currentColor")
+        .attr("stroke-width", 1)
+        .attr("shape-rendering", "crispEdges");
+    }
+
     const dispose = effect(() => {
       const currentWaveform = waveformRef.current;
       if (!currentWaveform) return;
@@ -89,11 +94,11 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
       const svgEl = svgRef.current;
       if (svgEl) {
         svgEl.setAttribute("width", String(containerW));
-        svgEl.setAttribute(
-          "viewBox",
-          `0 0 ${containerW} ${WAVEFORM_HEIGHT}`,
-        );
+        svgEl.setAttribute("viewBox", `0 0 ${containerW} ${WAVEFORM_HEIGHT}`);
       }
+
+      // Update center line to span container width
+      centerLine.attr("x1", 0).attr("x2", containerW);
 
       // Get pps from computed, but fallback to simple calculation if store duration not set
       let pps = computed.pixelsPerSecond;
@@ -132,7 +137,7 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
         }
       }
 
-      // D3 data join for virtualized chunks - filled area envelope
+      // D3 data join — filled area envelope
       svg
         .selectAll<SVGPathElement, ChunkRenderData>("path.waveform-chunk")
         .data(chunksData, (d) => d.index)
@@ -140,7 +145,9 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
           (enter) =>
             enter
               .append("path")
-              .attr("class", "waveform-chunk fill-primary/70")
+              .attr("class", "waveform-chunk")
+              .attr("fill", "currentColor")
+              .attr("stroke", "none")
               .attr("d", (d) => d.pathD),
           (update) => update.attr("d", (d) => d.pathD),
           (exit) => exit.remove(),
@@ -150,6 +157,7 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
     return () => {
       dispose();
       svg.selectAll("path.waveform-chunk").remove();
+      svg.selectAll("line.center-line").remove();
     };
   }, [waveform, store, computed]);
 
@@ -179,7 +187,7 @@ export function TimelineWaveform({ sourceId }: TimelineWaveformProps) {
   }
 
   return (
-    <div className="relative flex h-full flex-1 flex-col justify-center overflow-hidden">
+    <div className="relative flex h-full flex-1 flex-col justify-center overflow-hidden text-primary">
       <svg
         ref={svgRef}
         aria-hidden="true"
@@ -272,42 +280,8 @@ function generateChunkPath(
   const minArray = channel.min_array();
   const maxArray = channel.max_array();
 
-  // Minimum threshold for silent sections
-  const minThreshold = peakAmplitude * MIN_AMPLITUDE_FRACTION;
-
-  // Build data points for D3 area
-  const points: WaveformPoint[] = [];
   const numPoints = minArray.length;
-
-  for (let i = 0; i < numPoints; i++) {
-    // Position points at exact intervals from chunk start to chunk end
-    const x = offsetX + (i / Math.max(1, numPoints - 1)) * chunkPixelWidth;
-
-    let min = minArray[i] ?? 0;
-    let max = maxArray[i] ?? 0;
-
-    // Ensure minimum visible amplitude for silent sections
-    if (Math.abs(max - min) < minThreshold * 2) {
-      min = -minThreshold;
-      max = minThreshold;
-    }
-
-    points.push({ x, min, max });
-  }
-
-  // Handle single-point edge case
-  if (points.length === 1 && points[0]) {
-    points[0].x = offsetX + chunkPixelWidth / 2;
-  }
-
-  // Filter to visible points for clipping
-  const visiblePoints = points.filter(
-    (p) =>
-      p.x >= -chunkPixelWidth * 0.1 &&
-      p.x <= containerWidth + chunkPixelWidth * 0.1,
-  );
-
-  if (visiblePoints.length === 0) return null;
+  if (numPoints === 0) return null;
 
   // Create y-scale normalized to actual peak amplitude (full height)
   const yScale = scaleLinear()
@@ -315,14 +289,31 @@ function generateChunkPath(
     .range([WAVEFORM_HEIGHT, 0])
     .clamp(true);
 
-  // Create D3 area generator for filled envelope (curveLinear for sharp peaks)
-  const areaGenerator = area<WaveformPoint>()
+  // Build data points for D3 area
+  const points: { x: number; min: number; max: number }[] = [];
+
+  // Filter margin for visibility
+  const marginPx = chunkPixelWidth * 0.1;
+
+  for (let i = 0; i < numPoints; i++) {
+    const x = offsetX + (i / Math.max(1, numPoints - 1)) * chunkPixelWidth;
+    if (x < -marginPx || x > containerWidth + marginPx) continue;
+
+    const min = minArray[i] ?? 0;
+    const max = maxArray[i] ?? 0;
+    points.push({ x, min, max });
+  }
+
+  if (points.length === 0) return null;
+
+  // Create D3 area generator for filled envelope
+  const areaGenerator = area<{ x: number; min: number; max: number }>()
     .x((d) => d.x)
     .y0((d) => yScale(d.min))
     .y1((d) => yScale(d.max))
     .curve(curveLinear);
 
-  const pathD = areaGenerator(visiblePoints);
+  const pathD = areaGenerator(points);
 
   if (!pathD) return null;
 

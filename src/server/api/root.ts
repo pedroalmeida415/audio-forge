@@ -16,8 +16,8 @@ export const appRouter = createTRPCRouter({
   source: sourceRouter,
   segment: segmentRouter,
   speaker: speakerRouter,
-  file: fileRouter,
   export: exportRouter,
+  file: fileRouter,
 });
 
 // export type definition of API

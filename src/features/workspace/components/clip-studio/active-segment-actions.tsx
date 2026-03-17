@@ -2,7 +2,6 @@
 
 import { Check, Plus, Scissors, Trash2, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useSnapshot } from "valtio";
 import { effect } from "valtio-reactive";
 import { Button } from "~/components/ui/button";
 import {
@@ -27,14 +26,21 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
+import {
+  useWorkspaceCreateSpeakerMutation,
+  useWorkspaceDeleteSegmentsMutation,
+  useWorkspaceSplitSegmentMutation,
+  useWorkspaceUpdateSegmentsMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import type { Segment, Speaker } from "~/server/db/schema";
-import { api } from "~/trpc/react";
 
 interface ActiveSegmentActionsProps {
   segments: Segment[];
   speakers: Speaker[];
   sourceId: string;
   projectId: string;
+  activeSegmentId: string | null;
+  onActiveSegmentChange: (segmentId: string | null) => void;
 }
 
 /**
@@ -51,15 +57,18 @@ export function ActiveSegmentActions({
   speakers,
   sourceId,
   projectId,
+  activeSegmentId,
+  onActiveSegmentChange,
 }: ActiveSegmentActionsProps) {
   const { store } = useWorkspaceStore();
 
-  const snap = useSnapshot(store);
-  const activeSegmentId = snap.activeSegmentId;
-
-  const splitSegmentMutation = api.segment.splitSegment.useMutation();
-  const updateSegmentsMutation = api.segment.updateSegments.useMutation();
-  const deleteSegmentsMutation = api.segment.deleteSegments.useMutation();
+  const splitSegmentMutation = useWorkspaceSplitSegmentMutation();
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation({
+    sourceId,
+  });
+  const deleteSegmentsMutation = useWorkspaceDeleteSegmentsMutation({
+    sourceId,
+  });
 
   // Track if split is possible (playhead inside active segment)
   const [canSplit, setCanSplit] = useState(false);
@@ -73,15 +82,14 @@ export function ActiveSegmentActions({
   // Track split availability via effect()
   useEffect(() => {
     const dispose = effect(() => {
-      const currentActiveId = store.activeSegmentId;
       const currentTime = store.currentTime;
 
-      if (!currentActiveId) {
+      if (!activeSegmentId) {
         setCanSplit(false);
         return;
       }
 
-      const segment = segments.find((s) => s.id === currentActiveId);
+      const segment = segments.find((s) => s.id === activeSegmentId);
       if (!segment) {
         setCanSplit(false);
         return;
@@ -93,7 +101,7 @@ export function ActiveSegmentActions({
     });
 
     return dispose;
-  }, [store, segments]);
+  }, [store, segments, activeSegmentId]);
 
   // Don't render if no active segment
   if (!activeSegmentId || !activeSegment) return null;
@@ -110,9 +118,8 @@ export function ActiveSegmentActions({
 
   const handleChangeSpeaker = (speakerId: string) => {
     updateSegmentsMutation.mutate({
-      sourceId,
       segmentIds: [activeSegmentId],
-      updates: { speakerId },
+      patch: { speakerId },
     });
   };
 
@@ -123,10 +130,9 @@ export function ActiveSegmentActions({
 
   const handleDelete = () => {
     deleteSegmentsMutation.mutate({
-      sourceId,
       segmentIds: [activeSegmentId],
     });
-    store.setActiveSegment(null);
+    onActiveSegmentChange(null);
   };
 
   const currentSpeaker = speakers.find((s) => s.id === activeSegment.speakerId);
@@ -245,6 +251,7 @@ export function ActiveSegmentActions({
         open={isCreateSpeakerOpen}
         onOpenChange={setIsCreateSpeakerOpen}
         onSpeakerCreated={handleSpeakerCreated}
+        sourceId={sourceId}
         projectId={projectId}
         speakerCount={speakers.length}
       />
@@ -260,19 +267,21 @@ function CreateSpeakerInlineDialog({
   open,
   onOpenChange,
   onSpeakerCreated,
+  sourceId,
   projectId,
   speakerCount,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSpeakerCreated?: (speakerId: string) => void;
+  sourceId: string;
   projectId: string;
   speakerCount: number;
 }) {
   const [name, setName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const createSpeakerMutation = api.speaker.createSpeaker.useMutation({
+  const createSpeakerMutation = useWorkspaceCreateSpeakerMutation(sourceId, {
     onSuccess: (result) => {
       if (result.speaker) {
         onSpeakerCreated?.(result.speaker.id);

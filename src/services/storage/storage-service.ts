@@ -1,12 +1,12 @@
-import { createReadStream, createWriteStream, statSync } from "node:fs";
-import type { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { StreamingBlobPayloadInputTypes } from "@smithy/types";
 import { Data, Effect } from "effect";
 import { env } from "~/env";
 import { S3ClientService } from "~/services/infra/s3-client";
@@ -26,7 +26,7 @@ export interface PresignedUrlResult {
 // ============================================================================
 
 export class StorageError extends Data.TaggedError("StorageError")<{
-  operation: "upload" | "download" | "delete";
+  operation: "upload" | "download" | "delete" | "exists";
   message: string;
   key?: string;
   cause?: unknown;
@@ -60,64 +60,141 @@ export class StorageService extends Effect.Service<StorageService>()(
   {
     effect: Effect.gen(function* () {
       const client = yield* S3ClientService;
-      const bucket = env.CLOUDFLARE_R2_BUCKET;
+      const defaultBucket = env.CLOUDFLARE_R2_BUCKET;
 
       return {
-        generatePresignedUploadUrl: (params: {
-          fileName: string;
-          contentType: string;
-          userId: string;
-        }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const key = `diarization/${params.userId}/${Date.now()}-${params.fileName}`;
-              const command = new PutObjectCommand({
-                Bucket: bucket,
-                Key: key,
-                ContentType: params.contentType,
-              });
-              const url = await getSignedUrl(client, command, {
-                expiresIn: 3600,
-              });
-              const expiresAt = new Date(Date.now() + 3600 * 1000);
-              return { url, key, expiresAt } satisfies PresignedUrlResult;
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "upload",
-                message: "Failed to generate presigned upload URL",
-                cause: error,
-              }),
-          }),
-
-        generatePresignedDownloadUrl: (params: {
+        generatePresignedUrl: (params: {
           key: string;
+          operation: "upload" | "download";
+          contentType?: string;
           expiresIn?: number;
+          responseContentDisposition?: string;
+          bucket?: string;
         }) =>
           Effect.tryPromise({
             try: async () => {
-              const command = new GetObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-              });
-              return getSignedUrl(client, command, {
-                expiresIn: params.expiresIn ?? 3600,
-              });
+              const targetBucket = params.bucket ?? defaultBucket;
+              const command =
+                params.operation === "upload"
+                  ? new PutObjectCommand({
+                      Bucket: targetBucket,
+                      Key: params.key,
+                      ContentType: params.contentType,
+                    })
+                  : new GetObjectCommand({
+                      Bucket: targetBucket,
+                      Key: params.key,
+                      ResponseContentDisposition:
+                        params.responseContentDisposition,
+                    });
+
+              const expiresIn = params.expiresIn ?? 3600;
+              const url = await getSignedUrl(client, command, { expiresIn });
+              const expiresAt = new Date(Date.now() + expiresIn * 1000);
+              return {
+                url,
+                key: params.key,
+                expiresAt,
+              } satisfies PresignedUrlResult;
             },
             catch: (error) =>
               new StorageError({
-                operation: "download",
-                message: "Failed to generate presigned download URL",
+                operation: params.operation,
+                message: `Failed to generate presigned ${params.operation} URL`,
                 key: params.key,
                 cause: error,
               }),
           }),
 
-        deleteObject: (params: { key: string }) =>
+        upload: (params: {
+          key: string;
+          body: StreamingBlobPayloadInputTypes;
+          contentType?: string;
+          contentLength?: number;
+          bucket?: string;
+        }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const upload = new Upload({
+                client,
+                params: {
+                  Bucket: params.bucket ?? defaultBucket,
+                  Key: params.key,
+                  Body: params.body,
+                  ContentType: params.contentType,
+                },
+              });
+
+              upload.on("httpUploadProgress", (progress) => {
+                const loaded = progress.loaded ?? 0;
+                if (progress.total) {
+                  const percentage = Math.round(
+                    (loaded / progress.total) * 100,
+                  );
+                  console.log(
+                    `[StorageService] Uploading ${params.key}: ${percentage}% (${loaded}/${progress.total} bytes)`,
+                  );
+                } else {
+                  console.log(
+                    `[StorageService] Uploading ${params.key}: ${loaded} bytes loaded`,
+                  );
+                }
+              });
+
+              await upload.done();
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "upload",
+                message: "Failed to upload file",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        exists: (params: { key: string; bucket?: string }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const command = new HeadObjectCommand({
+                Bucket: params.bucket ?? defaultBucket,
+                Key: params.key,
+              });
+              await client.send(command);
+              return true;
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "exists",
+                message: "Failed to check if file exists",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        download: (params: { key: string }) =>
+          Effect.tryPromise({
+            try: async () => {
+              const command = new GetObjectCommand({
+                Bucket: defaultBucket,
+                Key: params.key,
+              });
+              const response = await client.send(command);
+              return response.Body;
+            },
+            catch: (error) =>
+              new StorageError({
+                operation: "download",
+                message: "Failed to download file",
+                key: params.key,
+                cause: error,
+              }),
+          }),
+
+        delete: (params: { key: string }) =>
           Effect.tryPromise({
             try: async () => {
               const command = new DeleteObjectCommand({
-                Bucket: bucket,
+                Bucket: defaultBucket,
                 Key: params.key,
               });
               await client.send(command);
@@ -125,80 +202,7 @@ export class StorageService extends Effect.Service<StorageService>()(
             catch: (error) =>
               new StorageError({
                 operation: "delete",
-                message: "Failed to delete object",
-                key: params.key,
-                cause: error,
-              }),
-          }),
-
-        uploadFromPath: (params: {
-          localPath: string;
-          key: string;
-          contentType: string;
-        }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const stats = statSync(params.localPath);
-              const fileStream = createReadStream(params.localPath);
-              const command = new PutObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-                Body: fileStream,
-                ContentType: params.contentType,
-                ContentLength: stats.size,
-              });
-              await client.send(command);
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "upload",
-                message: "Failed to upload file from path",
-                key: params.key,
-                cause: error,
-              }),
-          }),
-
-        uploadBuffer: (params: {
-          key: string;
-          data: Buffer;
-          contentType: string;
-        }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const command = new PutObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-                Body: params.data,
-                ContentType: params.contentType,
-                ContentLength: params.data.length,
-              });
-              await client.send(command);
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "upload",
-                message: "Failed to upload buffer",
-                key: params.key,
-                cause: error,
-              }),
-          }),
-
-        downloadToPath: (params: { key: string; localPath: string }) =>
-          Effect.tryPromise({
-            try: async () => {
-              const command = new GetObjectCommand({
-                Bucket: bucket,
-                Key: params.key,
-              });
-              const response = await client.send(command);
-              const stream = response.Body as Readable;
-              const writeStream = createWriteStream(params.localPath);
-              await pipeline(stream, writeStream);
-            },
-            catch: (error) =>
-              new StorageError({
-                operation: "download",
-                message: "Failed to download file to path",
+                message: "Failed to delete file",
                 key: params.key,
                 cause: error,
               }),

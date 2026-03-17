@@ -24,6 +24,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import {
+  useWorkspaceBulkChangeSpeakerMutation,
+  useWorkspaceUpdateSegmentsMutation,
+} from "~/features/workspace/hooks/use-workspace-mutations";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 
@@ -34,9 +38,10 @@ interface ChangeSpeakerDialogProps {
   excludeSegmentIds?: string[];
   segmentCount: number;
   projectId: string;
+  sourceId?: string | null;
   speakerId: string;
   speakerName: string;
-  onSuccess: (data: { updatedCount: number }) => void;
+  onSuccess: (targetSpeakerId: string | null) => void;
 }
 
 export function ChangeSpeakerDialog({
@@ -46,6 +51,7 @@ export function ChangeSpeakerDialog({
   excludeSegmentIds,
   segmentCount,
   projectId,
+  sourceId,
   speakerId,
   speakerName,
   onSuccess,
@@ -55,18 +61,28 @@ export function ChangeSpeakerDialog({
   );
   const [comboboxOpen, setComboboxOpen] = useState(false);
 
+  const cacheContext = { sourceId, speakerId };
+
   // Fetch project speakers (excludes source-linked diarization speakers)
   const { data: speakers, isLoading: isLoadingSpeakers } =
     api.speaker.getByProject.useQuery({ projectId }, { enabled: open });
 
-  // Change speaker mutation
-  const changeSpeakerMutation = api.segment.changeSpeaker.useMutation({
-    onSuccess: (data) => {
-      onSuccess(data);
-      onOpenChange(false);
-      setSelectedSpeakerId(null);
-    },
-  });
+  const handleMutationSuccess = () => {
+    onSuccess(selectedSpeakerId);
+    onOpenChange(false);
+    setSelectedSpeakerId(null);
+  };
+
+  const updateSegmentsMutation = useWorkspaceUpdateSegmentsMutation(
+    cacheContext,
+    { onSuccess: handleMutationSuccess },
+  );
+
+  const bulkChangeSpeakerMutation =
+    useWorkspaceBulkChangeSpeakerMutation(cacheContext);
+
+  const isMoving =
+    updateSegmentsMutation.isPending || bulkChangeSpeakerMutation.isPending;
 
   // Filter out current speaker from the list
   const availableSpeakers = speakers?.filter((s) => s.id !== speakerId) ?? [];
@@ -78,17 +94,25 @@ export function ChangeSpeakerDialog({
   const handleSubmit = () => {
     if (!selectedSpeakerId) return;
 
-    changeSpeakerMutation.mutate({
-      speakerId,
-      segmentIds,
-      excludeSegmentIds,
-      targetSpeakerId: selectedSpeakerId,
-    });
+    if (segmentIds && segmentIds.length > 0) {
+      updateSegmentsMutation.mutate({
+        segmentIds,
+        patch: { speakerId: selectedSpeakerId },
+      });
+    } else {
+      bulkChangeSpeakerMutation.mutate({
+        targetSpeakerId: selectedSpeakerId,
+        excludeSegmentIds,
+      });
+      // Bulk mutation doesn't use the handlers pattern — close immediately
+      handleMutationSuccess();
+    }
   };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setSelectedSpeakerId(null);
+      setComboboxOpen(false);
     }
     onOpenChange(newOpen);
   };
@@ -113,7 +137,7 @@ export function ChangeSpeakerDialog({
                 role="combobox"
                 aria-expanded={comboboxOpen}
                 className="w-full justify-between"
-                disabled={isLoadingSpeakers}
+                disabled={isLoadingSpeakers || isMoving}
               >
                 {isLoadingSpeakers ? (
                   <span className="text-muted-foreground">
@@ -187,15 +211,15 @@ export function ChangeSpeakerDialog({
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
-            disabled={changeSpeakerMutation.isPending}
+            disabled={isMoving}
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!selectedSpeakerId || changeSpeakerMutation.isPending}
+            disabled={!selectedSpeakerId || isMoving}
           >
-            {changeSpeakerMutation.isPending ? (
+            {isMoving ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
                 Moving...

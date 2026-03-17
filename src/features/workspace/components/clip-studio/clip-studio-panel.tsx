@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   Collapsible,
   CollapsibleContent,
@@ -78,14 +79,72 @@ function ClipStudioTimelineInner({
   projectId: string;
   speakerId: string | null;
 }) {
+  const utils = api.useUtils();
+
   const {
     data: source,
-    isLoading,
-    error,
+    isLoading: isLoadingSource,
+    error: sourceError,
   } = api.source.getById.useQuery(
     { id: sourceId },
     { refetchOnWindowFocus: false },
   );
+  const {
+    data: segmentData,
+    isLoading: isLoadingSegments,
+    error: segmentError,
+  } = api.segment.getBySource.useQuery(
+    { sourceId },
+    { refetchOnWindowFocus: false },
+  );
+  const {
+    data: sourceSpeakers = [],
+    isLoading: isLoadingSourceSpeakers,
+    error: sourceSpeakersError,
+  } = api.speaker.getBySource.useQuery(
+    { sourceId },
+    { refetchOnWindowFocus: false },
+  );
+  const {
+    data: projectSpeakers = [],
+    isLoading: isLoadingProjectSpeakers,
+    error: projectSpeakersError,
+  } = api.speaker.getByProject.useQuery(
+    { projectId },
+    { refetchOnWindowFocus: false },
+  );
+
+  const diarizationStatus = source?.diarization?.status ?? null;
+  const isSourceDiarizationRunning =
+    diarizationStatus === "pending" || diarizationStatus === "running";
+  const isDiarizationCompleted = diarizationStatus === "completed";
+
+  const startDiarizationMutation = api.source.startDiarization.useMutation({
+    onSuccess: () => {
+      void utils.source.getById.invalidate({ id: sourceId });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? `Failed to start diarization: ${error.message}`
+          : "Failed to start diarization",
+      );
+    },
+  });
+
+  const [denoiseBeforeDiarization, setDenoiseBeforeDiarization] =
+    useState(false);
+
+  const allSpeakers = projectSpeakers.concat(sourceSpeakers);
+
+  const isLoading =
+    isLoadingSource ||
+    isLoadingSegments ||
+    isLoadingSourceSpeakers ||
+    isLoadingProjectSpeakers;
+
+  const error =
+    sourceError ?? segmentError ?? sourceSpeakersError ?? projectSpeakersError;
 
   if (isLoading) {
     return (
@@ -105,10 +164,26 @@ function ClipStudioTimelineInner({
     );
   }
 
+  const isDiarizationRunning =
+    isSourceDiarizationRunning || startDiarizationMutation.isPending;
+  const isDiarizationButtonDisabled =
+    !source.storageKey || isDiarizationRunning || isDiarizationCompleted;
+
+  const handleStartDiarization = () => {
+    if (isDiarizationButtonDisabled) {
+      return;
+    }
+
+    startDiarizationMutation.mutate({
+      sourceId,
+      denoise: denoiseBeforeDiarization,
+    });
+  };
+
   return (
     <TimelineContainer
-      segments={source.segments ?? []}
-      speakers={source.speakers ?? []}
+      segments={segmentData?.segments ?? []}
+      speakers={allSpeakers}
       sourceId={source.id}
       projectId={projectId}
       speakerId={speakerId}
@@ -116,6 +191,12 @@ function ClipStudioTimelineInner({
         storageKey: source.storageKey ?? "",
         duration: source.duration ?? 0,
       }}
+      onStartDiarization={handleStartDiarization}
+      isDiarizationRunning={isDiarizationRunning}
+      isDiarizationCompleted={isDiarizationCompleted}
+      isDiarizationButtonDisabled={isDiarizationButtonDisabled}
+      denoiseBeforeDiarization={denoiseBeforeDiarization}
+      onDenoiseBeforeDiarizationChange={setDenoiseBeforeDiarization}
     />
   );
 }

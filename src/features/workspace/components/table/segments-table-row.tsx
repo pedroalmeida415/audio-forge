@@ -6,16 +6,21 @@ interface SegmentsTableRowProps {
   row: Row<SegmentWithClip>;
   offsetY: number;
   height: number;
+  isActive?: boolean;
 }
 
 export function SegmentsTableRow({
   row,
   offsetY,
   height,
+  isActive,
 }: SegmentsTableRowProps) {
   return (
     <tr
-      className="group/row absolute left-0 flex w-full items-center border-border/50 border-b transition-colors hover:bg-muted/50 has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:hover:bg-primary/5"
+      className={cn(
+        "group/row absolute left-0 flex w-full items-center border-border/50 border-b transition-colors hover:bg-muted/50 has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:hover:bg-primary/5",
+        isActive && "bg-primary/5 ring-1 ring-primary ring-inset",
+      )}
       style={{
         transform: `translateY(${offsetY}px)`,
         height: `${height}px`,

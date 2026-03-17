@@ -40,25 +40,32 @@ export function formatTimestampWithMs(seconds: number): string {
 }
 
 /**
- * Formats seconds to a duration string (e.g., "5.2s", "2m 30s")
+ * Formats seconds to a duration string (e.g., "5.2s", "2m 30s", "1h 5m")
+ * Matching the style used in the workspace sidebar.
  * @param seconds - Duration in seconds
+ * @param options - Formatting options
  * @returns Formatted duration string
  */
-export function formatDuration(seconds: number): string {
+export function formatDuration(
+  seconds: number,
+  options: { decimals?: number } = { decimals: 0 },
+): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0s";
 
-  if (seconds < 60) {
-    return `${seconds.toFixed(1)}s`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
   }
 
-  const minutes = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-
-  if (secs === 0) {
-    return `${minutes}m`;
+  if (minutes > 0) {
+    const roundedSecs = Math.round(secs);
+    return roundedSecs === 0 ? `${minutes}m` : `${minutes}m ${roundedSecs}s`;
   }
 
-  return `${minutes}m ${secs}s`;
+  return `${secs.toFixed(options.decimals ?? 0)}s`;
 }
 
 /**

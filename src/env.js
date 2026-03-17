@@ -22,6 +22,7 @@ export const env = createEnv({
     CLOUDFLARE_R2_ACCESS_KEY_ID: z.string(),
     CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string(),
     CLOUDFLARE_R2_BUCKET: z.string(),
+    CLOUDFLARE_R2_TEMP_BUCKET: z.string().default("temp-audio-forge"),
     // Pyannote
     PYANNOTE_API_KEY: z.string(),
     PYANNOTE_WEBHOOK_URL: z.string().url(),
@@ -29,7 +30,11 @@ export const env = createEnv({
     REDIS_URL: z.string().url().optional(),
     // Media Server (for workers)
     MEDIA_SERVER_URL: z.string().url().default("http://localhost:3002"),
-    MEDIA_SERVER_INTERNAL_TOKEN: z.string().optional(),
+    // Speech Processing Server (for denoising/scoring)
+    SPEECH_PROCESSING_SERVER_URL: z
+      .string()
+      .url()
+      .default("http://localhost:8000"),
   },
 
   /**
@@ -59,6 +64,7 @@ export const env = createEnv({
     CLOUDFLARE_R2_SECRET_ACCESS_KEY:
       process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
     CLOUDFLARE_R2_BUCKET: process.env.CLOUDFLARE_R2_BUCKET,
+    CLOUDFLARE_R2_TEMP_BUCKET: process.env.CLOUDFLARE_R2_TEMP_BUCKET,
     // Pyannote
     PYANNOTE_API_KEY: process.env.PYANNOTE_API_KEY,
     PYANNOTE_WEBHOOK_URL: process.env.PYANNOTE_WEBHOOK_URL,
@@ -66,7 +72,7 @@ export const env = createEnv({
     REDIS_URL: process.env.REDIS_URL,
     // Media Server
     MEDIA_SERVER_URL: process.env.MEDIA_SERVER_URL,
-    MEDIA_SERVER_INTERNAL_TOKEN: process.env.MEDIA_SERVER_INTERNAL_TOKEN,
+    SPEECH_PROCESSING_SERVER_URL: process.env.SPEECH_PROCESSING_SERVER_URL,
     NEXT_PUBLIC_MEDIA_SERVER_URL: process.env.NEXT_PUBLIC_MEDIA_SERVER_URL,
   },
   /**
