@@ -2,6 +2,7 @@
 
 import type { Table } from "@tanstack/react-table";
 import { ListFilter, RotateCcw } from "lucide-react";
+import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -12,8 +13,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Separator } from "~/components/ui/separator";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
+import { api } from "~/trpc/react";
 
 interface TableFilterPopoverProps {
   table: Table<SegmentWithClip>;
@@ -62,6 +71,7 @@ export function TableFilterPopover({ table }: TableFilterPopoverProps) {
           )}
         </div>
         <div className="grid gap-4 p-4">
+          <SourceFilter table={table} />
           <TagsFilter table={table} />
           <DurationFilter table={table} />
           <ScoreFilter table={table} />
@@ -69,6 +79,45 @@ export function TableFilterPopover({ table }: TableFilterPopoverProps) {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SourceFilter({ table }: { table: Table<SegmentWithClip> }) {
+  "use no memo";
+  const { projectId } = useParams<{ projectId: string }>();
+
+  const { data: sources = [] } = api.source.listByProject.useQuery(
+    { projectId },
+    { refetchOnWindowFocus: false },
+  );
+
+  const column = table.getColumn("source");
+  if (!column) return null;
+
+  const filterValue = column.getFilterValue() as string | undefined;
+
+  return (
+    <div className="grid gap-2">
+      <Label className="text-xs">Source</Label>
+      <Select
+        value={filterValue ?? "all"}
+        onValueChange={(val) =>
+          column.setFilterValue(val === "all" ? undefined : val)
+        }
+      >
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder="All sources" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All sources</SelectItem>
+          {sources.map((source) => (
+            <SelectItem key={source.id} value={source.id}>
+              {source.name ?? source.storageKey?.split("/").pop() ?? "Untitled"}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

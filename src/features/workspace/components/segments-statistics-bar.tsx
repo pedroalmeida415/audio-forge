@@ -9,12 +9,11 @@ import { api } from "~/trpc/react";
 import { workspaceParams } from "../search-params";
 
 export function SegmentsStatisticsBar() {
-  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
   const { data, isLoading } = api.segment.getBySpeaker.useQuery(
     { speakerId: speakerId ?? "" },
-    { enabled: !!speakerId && !sourceId },
+    { enabled: !!speakerId },
   );
 
   const stats = useMemo(() => {
@@ -112,7 +111,7 @@ export function SegmentsStatisticsBar() {
     };
   }, [data?.segments]);
 
-  if (!speakerId || sourceId) {
+  if (!speakerId) {
     return null;
   }
 

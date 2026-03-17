@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef, RowData, Table } from "@tanstack/react-table";
-import { PencilIcon } from "lucide-react";
+import { FileAudio, PencilIcon } from "lucide-react";
 import { useQueryStates } from "nuqs";
 import { useSnapshot } from "valtio";
 import { Badge } from "~/components/ui/badge";
@@ -20,8 +20,8 @@ import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-
 import { useSegmentAudio } from "~/features/workspace/hooks/use-segment-audio";
 import { workspaceParams } from "~/features/workspace/search-params";
 import type { SegmentWithClip } from "~/features/workspace/store/types";
-import { cn } from "~/lib/utils";
 import { formatDuration } from "~/lib/time-utils";
+import { cn } from "~/lib/utils";
 import { TagsCell } from "./tags-cell";
 
 // ============================================================================
@@ -244,6 +244,22 @@ function IndexCell({ index }: { index: number }) {
   );
 }
 
+function SourceCell({ name }: { name: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-1.5 truncate">
+          <FileAudio className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate text-xs">{name}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <p>{name}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ActionsCell({
   segmentId,
   sourceId,
@@ -459,6 +475,17 @@ export function createColumns(): ColumnDef<SegmentWithClip>[] {
       ),
       enableSorting: false,
       size: 200,
+    },
+    {
+      id: "source",
+      accessorFn: (row) => row.source.id,
+      header: "Source",
+      filterFn: "equals",
+      cell: ({ row }) => (
+        <SourceCell name={row.original.source.name ?? "Untitled"} />
+      ),
+      size: 120,
+      enableSorting: false,
     },
     {
       id: "actions",

@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useQueryState } from "nuqs";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Collapsible,
@@ -11,6 +11,7 @@ import {
   CollapsibleTrigger,
 } from "~/components/ui/collapsible";
 import { Skeleton } from "~/components/ui/skeleton";
+import { SourcePicker } from "~/features/workspace/components/source-picker";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
@@ -41,7 +42,14 @@ export function ClipStudioPanel() {
       className="sticky bottom-0 z-20 border-border border-t bg-background"
     >
       <div className="flex h-10 items-center justify-between px-4">
-        <span className="font-medium text-sm">Clip Studio</span>
+        <div className="flex items-center gap-3">
+          <span className="font-medium text-sm">Clip Studio</span>
+          <Suspense
+            fallback={<Skeleton className="h-8 w-[300px] rounded-md" />}
+          >
+            <SourcePicker />
+          </Suspense>
+        </div>
 
         <CollapsibleTrigger className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground">
           {open ? (

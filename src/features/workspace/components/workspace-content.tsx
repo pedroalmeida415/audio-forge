@@ -12,31 +12,19 @@ import { SegmentsTable } from "./table/segments-table";
 export function WorkspaceContent() {
   const { store } = useWorkspaceStore();
 
-  const [sourceId] = useQueryState("sourceId", workspaceParams.sourceId);
   const [speakerId] = useQueryState("speakerId", workspaceParams.speakerId);
 
-  const bySpeaker = api.segment.getBySpeaker.useQuery(
+  const { data, isLoading } = api.segment.getBySpeaker.useQuery(
     { speakerId: speakerId ?? "" },
-    { enabled: !!speakerId && !sourceId },
+    { enabled: !!speakerId },
   );
 
-  const bySource = api.segment.getBySource.useQuery(
-    { sourceId: sourceId ?? "" },
-    { enabled: !!sourceId },
-  );
+  const segments = data?.segments ?? [];
 
-  const activeQuery = sourceId ? bySource : bySpeaker;
-
-  const allSegments = activeQuery.data?.segments ?? [];
-  const segments =
-    sourceId && speakerId
-      ? allSegments.filter((s) => s.speakerId === speakerId)
-      : allSegments;
-
-  // Clear selection when switching speakers or sources
+  // Clear selection when switching speakers
   useEffect(() => {
     store.clearSelection();
-  }, [speakerId, sourceId]);
+  }, [speakerId]);
 
   if (!speakerId) {
     return (
@@ -46,7 +34,7 @@ export function WorkspaceContent() {
     );
   }
 
-  if (activeQuery.isLoading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 size-4 animate-spin" />

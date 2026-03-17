@@ -3,6 +3,7 @@
 import type { Table } from "@tanstack/react-table";
 import {
   ChevronDown,
+  FileAudio,
   Loader2,
   Sparkles,
   Subtitles,
@@ -32,6 +33,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { ChangeSpeakerDialog } from "~/features/workspace/components/change-speaker-dialog";
 import { useWorkspaceStore } from "~/features/workspace/context/workspace-store-context";
 import {
@@ -58,17 +64,11 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
 
   const utils = api.useUtils();
 
-  const cachedSegments = sourceId
-    ? (utils.segment.getBySource.getData({ sourceId })?.segments ?? [])
-    : speakerId
-      ? (utils.segment.getBySpeaker.getData({ speakerId })?.segments ?? [])
-      : [];
+  const cachedSegments = speakerId
+    ? (utils.segment.getBySpeaker.getData({ speakerId })?.segments ?? [])
+    : [];
 
-  // When viewing a source, we only count segments for the active speaker
-  const totalCount =
-    sourceId && speakerId
-      ? cachedSegments.filter((s) => s.speakerId === speakerId).length
-      : cachedSegments.length;
+  const totalCount = cachedSegments.length;
 
   const selectedCount = isAllSelected
     ? totalCount - excludedSegmentIds.size
@@ -89,7 +89,7 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
   );
   const currentSpeaker = speakers?.find((s) => s.id === speakerId);
 
-  const cacheContext = { sourceId, speakerId };
+  const cacheContext = { sourceId: null, speakerId };
 
   const deleteSegmentsMutation =
     useWorkspaceDeleteSegmentsMutation(cacheContext);
@@ -134,12 +134,7 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
 
   const getSelectedSegmentIds = () => {
     if (isAllSelected) {
-      const contextSegments =
-        sourceId && speakerId
-          ? cachedSegments.filter((s) => s.speakerId === speakerId)
-          : cachedSegments;
-
-      return contextSegments
+      return cachedSegments
         .filter((s) => !excludedSegmentIds.has(s.id))
         .map((s) => s.id);
     }
@@ -182,11 +177,50 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
     store.clearSelection();
   };
 
+  // "Filter by active source" quick action
+  const sourceColumn = table.getColumn("source");
+  const currentSourceFilter = sourceColumn?.getFilterValue() as
+    | string
+    | undefined;
+  const isFilteredByActiveSource =
+    !!sourceId && currentSourceFilter === sourceId;
+
+  const handleFilterByActiveSource = () => {
+    if (!sourceColumn || !sourceId) return;
+    if (isFilteredByActiveSource) {
+      // Toggle off
+      sourceColumn.setFilterValue(undefined);
+    } else {
+      sourceColumn.setFilterValue(sourceId);
+    }
+  };
+
   return (
     <>
       <div className="flex shrink-0 items-center justify-between border-border border-b bg-muted/30 px-4 py-2">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           <TableFilterPopover table={table} />
+
+          {sourceId && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isFilteredByActiveSource ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-8 border-dashed"
+                  onClick={handleFilterByActiveSource}
+                >
+                  <FileAudio className="mr-1 size-3.5" />
+                  Active Source
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isFilteredByActiveSource
+                  ? "Clear source filter"
+                  : "Filter by active source in Clip Studio"}
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           <div className="text-muted-foreground text-sm">
             {hasSelection ? (
@@ -348,7 +382,7 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
           }
           segmentCount={selectedCount}
           projectId={projectId}
-          sourceId={sourceId}
+          sourceId={null}
           speakerId={speakerId}
           speakerName={currentSpeaker?.name ?? "Unknown"}
           onSuccess={(targetSpeakerId) => {
