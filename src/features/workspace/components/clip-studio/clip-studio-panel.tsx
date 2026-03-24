@@ -142,6 +142,9 @@ function ClipStudioTimelineInner({
 
   const [denoiseBeforeDiarization, setDenoiseBeforeDiarization] =
     useState(false);
+  const [diarizationProvider, setDiarizationProvider] = useState<
+    "pyannote" | "vibevoice"
+  >("pyannote");
 
   const allSpeakers = projectSpeakers.concat(sourceSpeakers);
 
@@ -184,6 +187,7 @@ function ClipStudioTimelineInner({
 
     startDiarizationMutation.mutate({
       sourceId,
+      provider: diarizationProvider,
       denoise: denoiseBeforeDiarization,
     });
   };
@@ -205,6 +209,8 @@ function ClipStudioTimelineInner({
       isDiarizationButtonDisabled={isDiarizationButtonDisabled}
       denoiseBeforeDiarization={denoiseBeforeDiarization}
       onDenoiseBeforeDiarizationChange={setDenoiseBeforeDiarization}
+      diarizationProvider={diarizationProvider}
+      onDiarizationProviderChange={setDiarizationProvider}
     />
   );
 }

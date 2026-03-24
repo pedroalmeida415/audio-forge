@@ -1,14 +1,12 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { Cause, Data, Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { DEFAULT_LOCAL_SPEAKER_COLOR } from "~/lib/speaker-colors";
+import { sources } from "~/server/db/schema";
 import {
-  type DiarizationInfo,
-  segments,
-  sources,
-  speakers,
-} from "~/server/db/schema";
+  type DiarizationSegmentResult,
+  processDiarizationCompleted,
+} from "~/server/diarization/process-result";
 import { AppRuntime } from "~/services";
 import { Database } from "~/services/infra/database";
 
@@ -87,85 +85,47 @@ const handleWebhook = (request: NextRequest) =>
       );
     }
 
-    const now = new Date();
-
     // Update based on status
     if (payload.status === "succeeded" && payload.output) {
-      // Extract unique speaker labels from diarization output
-      const speakerLabels = [
-        ...new Set(payload.output.diarization.map((s) => s.speaker)),
-      ];
-
-      // Create real speaker rows in DB
-      const speakerRows = yield* db
-        .insert(speakers)
-        .values(
-          speakerLabels.map((label) => ({
-            projectId: source.projectId!,
-            userId: source.userId,
-            name: label,
-            color: DEFAULT_LOCAL_SPEAKER_COLOR,
-            sourceId: source.id,
-            origin: "diarization" as const,
-          })),
-        )
-        .returning();
-
-      // Build speaker map (label -> speaker row) for segment creation
-      const speakerMap = new Map(
-        speakerRows.map((s, i) => [speakerLabels[i]!, s]),
-      );
-
-      // Create real segment rows in DB
-      yield* db.insert(segments).values(
+      // Map Pyannote segments to the shared format
+      const diarizationSegments: DiarizationSegmentResult[] =
         payload.output.diarization.map((seg) => ({
-          sourceId: source.id,
-          speakerId: speakerMap.get(seg.speaker)!.id,
-          startTime: seg.start,
-          endTime: seg.end,
-        })),
-      );
+          speaker: seg.speaker,
+          start: seg.start,
+          end: seg.end,
+        }));
 
-      // Update source diarization status
-      const completedDiarization: DiarizationInfo = {
-        ...source.diarization,
-        status: "completed",
-        completedAt: now.toISOString(),
-        error: undefined,
-      };
-      yield* db
-        .update(sources)
-        .set({ diarization: completedDiarization })
-        .where(eq(sources.id, source.id));
-
-      console.log(
-        `[Diarization] Completed for source ${source.id}: ${speakerRows.length} speakers, ${payload.output.diarization.length} segments`,
-      );
+      yield* processDiarizationCompleted({
+        source,
+        segments: diarizationSegments,
+      });
     } else if (payload.status === "failed" || payload.status === "canceled") {
-      // Update source with failed status
-      const failedDiarization: DiarizationInfo = {
-        ...source.diarization,
+      // Update source with failed status — use JSONB merge to preserve config
+      const patch = JSON.stringify({
         status: "failed",
-        completedAt: now.toISOString(),
+        completedAt: new Date().toISOString(),
         error:
           payload.status === "canceled"
             ? "Diarization was canceled"
             : "Diarization failed",
-      };
+      });
+
       yield* db
         .update(sources)
-        .set({ diarization: failedDiarization })
-        .where(eq(sources.id, source.id));
+        .set({
+          diarization: sql`COALESCE(${sources.diarization}, '{}') || ${patch}::jsonb`,
+        })
+        .where(sql`${sources.diarization}->>'jobId' = ${payload.jobId}`);
     } else if (payload.status === "running") {
-      // Update status to running
-      const runningDiarization: DiarizationInfo = {
-        ...source.diarization,
-        status: "running",
-      };
+      // Update status to running — use JSONB merge to preserve config
+      const patch = JSON.stringify({ status: "running" });
+
       yield* db
         .update(sources)
-        .set({ diarization: runningDiarization })
-        .where(eq(sources.id, source.id));
+        .set({
+          diarization: sql`COALESCE(${sources.diarization}, '{}') || ${patch}::jsonb`,
+        })
+        .where(sql`${sources.diarization}->>'jobId' = ${payload.jobId}`);
     }
 
     return NextResponse.json({ received: true });

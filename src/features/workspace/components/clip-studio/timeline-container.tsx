@@ -34,6 +34,8 @@ interface TimelineContainerProps {
   isDiarizationButtonDisabled: boolean;
   denoiseBeforeDiarization: boolean;
   onDenoiseBeforeDiarizationChange: (value: boolean) => void;
+  diarizationProvider: "pyannote" | "vibevoice";
+  onDiarizationProviderChange: (provider: "pyannote" | "vibevoice") => void;
 }
 
 /**
@@ -57,6 +59,8 @@ export function TimelineContainer({
   isDiarizationButtonDisabled,
   denoiseBeforeDiarization,
   onDenoiseBeforeDiarizationChange,
+  diarizationProvider,
+  onDiarizationProviderChange,
 }: TimelineContainerProps) {
   const { store } = useWorkspaceStore();
   const [activeSegmentId, setActiveSegmentId] = useQueryState(
@@ -102,6 +106,8 @@ export function TimelineContainer({
         isDiarizationButtonDisabled={isDiarizationButtonDisabled}
         denoiseBeforeDiarization={denoiseBeforeDiarization}
         onDenoiseBeforeDiarizationChange={onDenoiseBeforeDiarizationChange}
+        diarizationProvider={diarizationProvider}
+        onDiarizationProviderChange={onDiarizationProviderChange}
       />
 
       {/* Timeline content - no native scroll, manual handling via transforms */}

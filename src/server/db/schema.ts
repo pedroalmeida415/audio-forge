@@ -124,8 +124,12 @@ export interface AudioScores {
  */
 export type DiarizationStatus = "pending" | "running" | "completed" | "failed";
 
+export type DiarizationProvider = "pyannote" | "vibevoice";
+
 export interface DiarizationInfo {
   status: DiarizationStatus;
+  /** Which diarization backend to use (defaults to "pyannote" if unset) */
+  provider?: DiarizationProvider;
   /** Pyannote job ID (set once submitted to Pyannote) */
   jobId?: string;
   /** ISO timestamp — when diarization was requested */
@@ -134,7 +138,7 @@ export interface DiarizationInfo {
   completedAt?: string;
   /** Error message if failed */
   error?: string;
-  /** If true, denoise audio before sending to Pyannote */
+  /** If true, denoise audio before sending to diarization */
   denoise?: boolean;
 }
 
@@ -154,7 +158,6 @@ export const sourceStatus = pgEnum("source_status", [
   "completed",
   "failed",
 ]);
-
 
 export const speakerOrigin = pgEnum("speaker_origin", ["diarization", "user"]);
 

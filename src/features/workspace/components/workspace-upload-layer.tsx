@@ -27,6 +27,13 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Progress } from "~/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
 import { workspaceParams } from "~/features/workspace/search-params";
 import { api } from "~/trpc/react";
@@ -156,6 +163,9 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     useState(false);
   const [denoiseBeforeDiarization, setDenoiseBeforeDiarization] =
     useState(false);
+  const [diarizationProvider, setDiarizationProvider] = useState<
+    "pyannote" | "vibevoice"
+  >("pyannote");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadBatchItem[]>([]);
   const [selectedUploads, setSelectedUploads] = useState<SelectedUploadFile[]>(
@@ -245,6 +255,9 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
           filename: params.file.name || "upload",
           contentType: params.contentType,
           queueDiarization: queueDiarizationOnUpload,
+          diarizationProvider: queueDiarizationOnUpload
+            ? diarizationProvider
+            : undefined,
           denoise: queueDiarizationOnUpload && denoiseBeforeDiarization,
         });
 
@@ -583,22 +596,49 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
             </div>
 
             {queueDiarizationOnUpload && (
-              <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
-                <div className="space-y-1">
-                  <p className="font-medium text-sm">
-                    Denoise before diarization
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    Clean up background noise before sending to diarization for
-                    better speaker detection accuracy.
-                  </p>
+              <>
+                <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                  <div className="space-y-1">
+                    <p className="font-medium text-sm">Diarization provider</p>
+                    <p className="text-muted-foreground text-xs">
+                      Pyannote for speaker-only diarization. VibeVoice for
+                      diarization with transcription.
+                    </p>
+                  </div>
+                  <Select
+                    value={diarizationProvider}
+                    disabled={isUploading}
+                    onValueChange={(v) =>
+                      setDiarizationProvider(v as "pyannote" | "vibevoice")
+                    }
+                  >
+                    <SelectTrigger className="w-[130px] shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pyannote">Pyannote</SelectItem>
+                      <SelectItem value="vibevoice">VibeVoice</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Switch
-                  checked={denoiseBeforeDiarization}
-                  disabled={isUploading}
-                  onCheckedChange={setDenoiseBeforeDiarization}
-                />
-              </div>
+
+                <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                  <div className="space-y-1">
+                    <p className="font-medium text-sm">
+                      Denoise before diarization
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Clean up background noise before sending to diarization
+                      for better speaker detection accuracy.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={denoiseBeforeDiarization}
+                    disabled={isUploading}
+                    onCheckedChange={setDenoiseBeforeDiarization}
+                  />
+                </div>
+              </>
             )}
 
             <div className="flex items-center justify-between gap-2">

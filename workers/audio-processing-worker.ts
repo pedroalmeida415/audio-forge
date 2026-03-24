@@ -35,10 +35,23 @@ const fiber = AppRuntime.runFork(main);
 
 const shutdown = () => {
   console.log("\n[AudioQueue] Interrupting fiber...");
-  AppRuntime.runPromise(Fiber.interrupt(fiber)).then(() => {
-    console.log("\n[AudioQueue] Fiber interrupted. Exiting process...");
-    process.exit(0);
-  });
+
+  // Safety net: force exit if graceful shutdown takes too long
+  const forceTimer = setTimeout(() => {
+    console.error("\n[AudioQueue] Shutdown timed out. Force exiting...");
+    process.exit(1);
+  }, 5_000);
+  forceTimer.unref();
+
+  AppRuntime.runPromise(Fiber.interrupt(fiber))
+    .then(() => {
+      console.log("\n[AudioQueue] Fiber interrupted. Exiting process...");
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("\n[AudioQueue] Error during shutdown:", err);
+      process.exit(1);
+    });
 };
 
 process.on("SIGTERM", shutdown);

@@ -117,7 +117,7 @@ export const startWorker = Effect.acquireUseRelease(
   (worker) =>
     Effect.gen(function* () {
       console.log("[AudioWorker] Closing worker...");
-      yield* Effect.promise(() => worker.close());
+      yield* Effect.promise(() => worker.close(true));
       console.log("[AudioWorker] Worker closed.");
     }),
 );

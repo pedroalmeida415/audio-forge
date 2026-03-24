@@ -52,6 +52,9 @@ export const sourceRouter = createTRPCRouter({
         filename: z.string().min(1).max(MAX_FILENAME_LENGTH),
         contentType: z.string().min(1),
         queueDiarization: z.boolean().default(false),
+        diarizationProvider: z
+          .enum(["pyannote", "vibevoice"])
+          .default("pyannote"),
         denoise: z.boolean().default(false),
       }),
     )
@@ -95,6 +98,7 @@ export const sourceRouter = createTRPCRouter({
             const diarization: DiarizationInfo | null = input.queueDiarization
               ? {
                   status: "pending",
+                  provider: input.diarizationProvider,
                   denoise: input.denoise || undefined,
                   startedAt: new Date().toISOString(),
                 }
@@ -328,6 +332,7 @@ export const sourceRouter = createTRPCRouter({
     .input(
       z.object({
         sourceId: z.string().uuid(),
+        provider: z.enum(["pyannote", "vibevoice"]).default("pyannote"),
         numSpeakers: z.number().int().min(1).max(20).optional(),
         denoise: z.boolean().default(false),
       }),
@@ -375,6 +380,7 @@ export const sourceRouter = createTRPCRouter({
             // Set diarization to pending and enqueue a Diarize worker job
             const diarization: DiarizationInfo = {
               status: "pending",
+              provider: input.provider,
               startedAt: new Date().toISOString(),
               denoise: input.denoise || undefined,
             };
@@ -428,12 +434,16 @@ export const sourceRouter = createTRPCRouter({
               return { status: null };
             }
 
-            // If not completed, fetch latest status from Pyannote
-            if (d.status === "pending" || d.status === "running") {
+            // If Pyannote-based and not completed, fetch latest status from API
+            if (
+              (d.status === "pending" || d.status === "running") &&
+              (!d.provider || d.provider === "pyannote")
+            ) {
               if (!d.jobId) {
                 return {
                   status: d.status,
                   liveStatus: d.status,
+                  provider: d.provider ?? "pyannote",
                   startedAt: d.startedAt ?? null,
                   completedAt: null,
                   error: d.error ?? null,
@@ -451,14 +461,31 @@ export const sourceRouter = createTRPCRouter({
               return {
                 status: d.status,
                 liveStatus: statusResult.status,
+                provider: d.provider ?? "pyannote",
                 startedAt: d.startedAt ?? null,
                 completedAt: null,
                 error: null,
               };
             }
 
+            // VibeVoice-based or in-progress (status updates via worker directly)
+            if (
+              (d.status === "pending" || d.status === "running") &&
+              d.provider === "vibevoice"
+            ) {
+              return {
+                status: d.status,
+                liveStatus: d.status,
+                provider: d.provider,
+                startedAt: d.startedAt ?? null,
+                completedAt: null,
+                error: d.error ?? null,
+              };
+            }
+
             return {
               status: d.status,
+              provider: d.provider ?? "pyannote",
               startedAt: d.startedAt ?? null,
               completedAt: d.completedAt ?? null,
               error: d.error ?? null,

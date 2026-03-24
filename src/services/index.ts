@@ -1,6 +1,7 @@
 import { Layer, ManagedRuntime } from "effect";
 import { AudioProcessingService } from "./audio/audio-processing-service";
 import { PyannoteService } from "./diarization/pyannote-service";
+import { VibeVoiceService } from "./diarization/vibevoice-service";
 import { Database } from "./infra/database";
 import { RedisService } from "./infra/redis";
 import { QueueService } from "./queue/queue-service";
@@ -18,6 +19,7 @@ export const ServicesLive = Layer.mergeAll(
   StorageService.Default,
   QueueService.Default,
   PyannoteService.Default,
+  VibeVoiceService.Default,
   AudioProcessingService.Default,
 );
 

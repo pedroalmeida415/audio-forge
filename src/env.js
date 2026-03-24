@@ -23,9 +23,10 @@ export const env = createEnv({
     CLOUDFLARE_R2_SECRET_ACCESS_KEY: z.string(),
     CLOUDFLARE_R2_BUCKET: z.string(),
     CLOUDFLARE_R2_TEMP_BUCKET: z.string().default("temp-audio-forge"),
-    // Pyannote
+    // Diarization
     PYANNOTE_API_KEY: z.string(),
     PYANNOTE_WEBHOOK_URL: z.string().url(),
+    VIBEVOICE_ASR_URL: z.string().url(),
     // Redis (for BullMQ)
     REDIS_URL: z.string().url().optional(),
     // Media Server (for workers)
@@ -68,6 +69,8 @@ export const env = createEnv({
     // Pyannote
     PYANNOTE_API_KEY: process.env.PYANNOTE_API_KEY,
     PYANNOTE_WEBHOOK_URL: process.env.PYANNOTE_WEBHOOK_URL,
+    // VibeVoice ASR
+    VIBEVOICE_ASR_URL: process.env.VIBEVOICE_ASR_URL,
     // Redis
     REDIS_URL: process.env.REDIS_URL,
     // Media Server

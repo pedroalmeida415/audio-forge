@@ -91,6 +91,8 @@ interface TimelineToolbarProps {
   isDiarizationButtonDisabled: boolean;
   denoiseBeforeDiarization: boolean;
   onDenoiseBeforeDiarizationChange: (value: boolean) => void;
+  diarizationProvider: "pyannote" | "vibevoice";
+  onDiarizationProviderChange: (provider: "pyannote" | "vibevoice") => void;
 }
 
 export function TimelineToolbar({
@@ -107,6 +109,8 @@ export function TimelineToolbar({
   isDiarizationButtonDisabled,
   denoiseBeforeDiarization,
   onDenoiseBeforeDiarizationChange,
+  diarizationProvider,
+  onDiarizationProviderChange,
 }: TimelineToolbarProps) {
   const { store } = useWorkspaceStore();
 
@@ -227,22 +231,40 @@ export function TimelineToolbar({
 
         <div className="flex items-center gap-1">
           {!isDiarizationCompleted && !isDiarizationRunning && (
-            <div className="flex items-center gap-1.5 pr-1">
-              <Checkbox
-                id="denoise-before-diarization"
-                checked={denoiseBeforeDiarization}
-                onCheckedChange={(checked) =>
-                  onDenoiseBeforeDiarizationChange(checked === true)
+            <>
+              <Select
+                value={diarizationProvider}
+                onValueChange={(v) =>
+                  onDiarizationProviderChange(v as "pyannote" | "vibevoice")
                 }
                 disabled={isDiarizationButtonDisabled}
-              />
-              <Label
-                htmlFor="denoise-before-diarization"
-                className="cursor-pointer text-muted-foreground text-xs"
               >
-                Denoise
-              </Label>
-            </div>
+                <SelectTrigger className="h-8 w-[120px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pyannote">Pyannote</SelectItem>
+                  <SelectItem value="vibevoice">VibeVoice</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-1.5 pr-1">
+                <Checkbox
+                  id="denoise-before-diarization"
+                  checked={denoiseBeforeDiarization}
+                  onCheckedChange={(checked) =>
+                    onDenoiseBeforeDiarizationChange(checked === true)
+                  }
+                  disabled={isDiarizationButtonDisabled}
+                />
+                <Label
+                  htmlFor="denoise-before-diarization"
+                  className="cursor-pointer text-muted-foreground text-xs"
+                >
+                  Denoise
+                </Label>
+              </div>
+            </>
           )}
           <Button
             disabled={isDiarizationButtonDisabled}
