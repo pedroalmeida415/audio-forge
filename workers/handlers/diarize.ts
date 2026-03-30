@@ -5,7 +5,7 @@ import { type DiarizationInfo, sources } from "../../src/server/db/schema";
 import type { DiarizationSegmentResult } from "../../src/server/diarization/process-result";
 import { processDiarizationCompleted } from "../../src/server/diarization/process-result";
 import { PyannoteService } from "../../src/services/diarization/pyannote-service";
-import { VibeVoiceService } from "../../src/services/diarization/vibevoice-service";
+import { VibeVoiceService } from "../../src/services/diarization/vibevoice/vibevoice";
 import { Database } from "../../src/services/infra/database";
 import { StorageService } from "../../src/services/storage/storage-service";
 import { formatErrorMessage } from "../lib/errors";
@@ -192,10 +192,6 @@ function handleVibeVoiceDiarization(
       .update(sources)
       .set({ diarization: runningDiarization })
       .where(eq(sources.id, sourceId));
-
-    // Wait for vLLM server to be ready (cold start resilience)
-    console.log(`[Diarize] Waiting for VibeVoice server to be ready...`);
-    yield* VibeVoiceService.waitForReady();
 
     // Stream transcription with the presigned R2 URL directly
     const audioDuration = source.duration ?? 0;

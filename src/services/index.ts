@@ -1,7 +1,7 @@
 import { Layer, ManagedRuntime } from "effect";
 import { AudioProcessingService } from "./audio/audio-processing-service";
 import { PyannoteService } from "./diarization/pyannote-service";
-import { VibeVoiceService } from "./diarization/vibevoice-service";
+import { VibeVoiceService } from "./diarization/vibevoice/vibevoice";
 import { Database } from "./infra/database";
 import { RedisService } from "./infra/redis";
 import { QueueService } from "./queue/queue-service";
