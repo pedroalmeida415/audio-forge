@@ -138,6 +138,22 @@ class AudioProcessingService extends Effect.Service<AudioProcessingService>()("A
 - Use `accessors: true` to enable direct method calls via the service tag
 - Provide services via `.Default` layer which includes all dependencies
 
+**Composed Method + Stepdown Rule**: All code follows the Composed Method pattern (Kent Beck) with the Stepdown Rule (Robert C. Martin, *Clean Code*). This applies everywhere — services, utilities, handlers.
+
+- **Single Level of Abstraction (SLAP)**: Each function operates at one abstraction level. A high-level function describes *what* happens via well-named delegations; it never mixes orchestration with implementation details.
+- **Composed Method**: Break functions into sub-calls that are all at the same abstraction level 
+  so the body reads as a step-by-step narrative:
+  ```typescript
+  transcribe: (params) => Effect.gen(function* () {
+    yield* awaitServerReady();
+    const rawText = yield* streamTranscription(params);
+    const segments = extractSegments(rawText, params.maxDurationSeconds);
+    return { segments, rawText };
+  }),
+  ```
+- **Stepdown Rule**: Files read top-to-bottom by abstraction depth. The exported entry point goes first, then the functions it calls, then their helpers. The reader drills down progressively — like a newspaper article.
+- **Recursive**: This pattern applies at every level — the entry point tells a story, and each function it delegates to tells its own story at the next level down, all the way to leaf functions.
+
 **Effect-TS in tRPC Routers**: Procedures execute Effect programs via `AppRuntime`:
 ```typescript
 export const myRouter = createTRPCRouter({
@@ -297,3 +313,9 @@ Event bridges (`*-events-bridge.ts`) connect BullMQ job completion to SSE stream
 
 ### Path Alias
 Use `~` for src imports: `import { api } from "~/trpc/react"`
+
+## Local Effect Source
+
+The Effect v3 repository is cloned to `~/.local/share/effect-solutions/effect` for reference.
+Use this to explore APIs, find usage examples, and understand implementation
+details when the documentation isn't enough.
