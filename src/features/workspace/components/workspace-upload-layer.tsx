@@ -1,5 +1,6 @@
 "use client";
 
+import { Effect } from "effect";
 import {
   AlertCircle,
   CheckCircle2,
@@ -53,6 +54,8 @@ const EXTENSION_CONTENT_TYPE: Record<string, string> = {
   ".webm": "video/webm",
 };
 
+const MAX_CONCURRENT_UPLOADS = 3;
+
 type IngestStatus = "pending" | "processing" | "completed" | "failed";
 type UploadItemStatus = "queued" | "uploading" | "completed" | "failed";
 
@@ -70,6 +73,10 @@ interface SelectedUploadFile {
   contentType: string;
   itemId: string;
 }
+
+type UploadResult =
+  | { readonly _tag: "uploaded"; readonly sourceId: string }
+  | { readonly _tag: "failed"; readonly entry: SelectedUploadFile };
 
 interface WorkspaceUploadContextValue {
   openFilePicker: () => void;
@@ -235,83 +242,96 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     );
   }
 
-  async function uploadSingleFile(params: {
-    file: File;
-    contentType: string;
-    itemId: string;
-  }) {
-    updateUploadItem(params.itemId, (item) => ({
-      ...item,
-      status: "uploading",
-      progress: 0,
-      error: null,
-    }));
+  function makeUploadEffect(
+    entry: SelectedUploadFile,
+  ): Effect.Effect<UploadResult> {
+    const perform = Effect.gen(function* () {
+      updateUploadItem(entry.itemId, (item) => ({
+        ...item,
+        status: "uploading" as const,
+        progress: 0,
+        error: null,
+      }));
 
-    try {
-      // 1. Request upload URL and get sourceId
-      const { sourceId, uploadUrl } =
-        await utils.client.source.requestUpload.mutate({
+      const { sourceId, uploadUrl } = yield* requestPresignedUrl(entry);
+      yield* uploadViaXhr(entry, uploadUrl);
+
+      updateUploadItem(entry.itemId, (item) => ({
+        ...item,
+        status: "completed" as const,
+        progress: 100,
+      }));
+
+      return { _tag: "uploaded" as const, sourceId };
+    });
+
+    return perform.pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          updateUploadItem(entry.itemId, (item) => ({
+            ...item,
+            status: "failed" as const,
+            error: readErrorMessage(error, "Failed to upload source"),
+          }));
+          return { _tag: "failed" as const, entry };
+        }),
+      ),
+    );
+  }
+
+  function requestPresignedUrl(entry: SelectedUploadFile) {
+    return Effect.tryPromise({
+      try: () =>
+        utils.client.source.requestUpload.mutate({
           projectId,
-          filename: params.file.name || "upload",
-          contentType: params.contentType,
+          filename: entry.file.name || "upload",
+          contentType: entry.contentType,
           queueDiarization: queueDiarizationOnUpload,
           diarizationProvider: queueDiarizationOnUpload
             ? diarizationProvider
             : undefined,
           denoise: queueDiarizationOnUpload && denoiseBeforeDiarization,
-        });
+        }),
+      catch: (error) =>
+        new Error(readErrorMessage(error, "Failed to request upload URL")),
+    });
+  }
 
-      // 2. Upload file directly to R2 using the presigned URL with XHR to track progress
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+  function uploadViaXhr(entry: SelectedUploadFile, uploadUrl: string) {
+    return Effect.async<void, Error>((resume) => {
+      const xhr = new XMLHttpRequest();
 
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const progress = Math.round((event.loaded / event.total) * 100);
-            updateUploadItem(params.itemId, (item) => ({
-              ...item,
-              progress,
-            }));
-          }
-        };
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          updateUploadItem(entry.itemId, (item) => ({ ...item, progress }));
+        }
+      };
 
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resume(Effect.succeed(undefined));
+        } else {
+          resume(
+            Effect.fail(
               new Error(
                 `Upload failed with status: ${xhr.status} ${xhr.statusText}`,
               ),
-            );
-          }
-        };
+            ),
+          );
+        }
+      };
 
-        xhr.onerror = () => {
-          reject(new Error("Network error occurred during upload"));
-        };
+      xhr.onerror = () => {
+        resume(Effect.fail(new Error("Network error occurred during upload")));
+      };
 
-        xhr.open("PUT", uploadUrl, true);
-        xhr.setRequestHeader("Content-Type", params.contentType);
-        xhr.send(params.file);
-      });
+      xhr.open("PUT", uploadUrl, true);
+      xhr.setRequestHeader("Content-Type", entry.contentType);
+      xhr.send(entry.file);
 
-      updateUploadItem(params.itemId, (item) => ({
-        ...item,
-        status: "completed",
-        progress: 100,
-      }));
-
-      return sourceId;
-    } catch (error) {
-      const message = readErrorMessage(error, "Failed to upload source");
-      updateUploadItem(params.itemId, (item) => ({
-        ...item,
-        status: "failed",
-        error: message,
-      }));
-      throw new Error(message);
-    }
+      return Effect.sync(() => xhr.abort());
+    });
   }
 
   function selectFiles(files: File[]) {
@@ -391,24 +411,23 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
     );
     setIsUploading(true);
 
-    let failedCount = 0;
-    const failedUploads: SelectedUploadFile[] = [];
-    const uploadedSourceIds: string[] = [];
-
     try {
-      for (const entry of uploadsToRun) {
-        try {
-          const sourceId = await uploadSingleFile({
-            file: entry.file,
-            contentType: entry.contentType,
-            itemId: entry.itemId,
-          });
-          uploadedSourceIds.push(sourceId);
-        } catch {
-          failedCount += 1;
-          failedUploads.push(entry);
-        }
-      }
+      const results = await Effect.runPromise(
+        Effect.forEach(uploadsToRun, makeUploadEffect, {
+          concurrency: MAX_CONCURRENT_UPLOADS,
+        }),
+      );
+
+      const uploadedSourceIds = results
+        .filter(
+          (r): r is Extract<UploadResult, { _tag: "uploaded" }> =>
+            r._tag === "uploaded",
+        )
+        .map((r) => r.sourceId);
+      const failedResults = results.filter(
+        (r): r is Extract<UploadResult, { _tag: "failed" }> =>
+          r._tag === "failed",
+      );
 
       if (uploadedSourceIds.length > 0) {
         await Promise.all([
@@ -419,14 +438,15 @@ export function WorkspaceUploadLayer({ children }: { children: ReactNode }) {
         ]);
       }
 
-      if (failedCount > 0) {
+      if (failedResults.length > 0) {
+        const failedUploads = failedResults.map((r) => r.entry);
         const failedIds = new Set(
           failedUploads.map((failedUpload) => failedUpload.itemId),
         );
         setSelectedUploads(failedUploads);
         setUploadItems((prev) => prev.filter((item) => failedIds.has(item.id)));
         setUploadError(
-          `${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload.`,
+          `${failedResults.length} file${failedResults.length === 1 ? "" : "s"} failed to upload.`,
         );
         return;
       }

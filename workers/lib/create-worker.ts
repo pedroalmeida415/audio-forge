@@ -57,7 +57,7 @@ export const startWorker = Effect.acquireUseRelease(
       },
       {
         connection: redis,
-        concurrency: 4,
+        concurrency: 10,
       },
     );
 
