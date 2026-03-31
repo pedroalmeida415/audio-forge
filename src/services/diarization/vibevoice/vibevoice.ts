@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { extractSegments } from "./transcribe/parser";
+import { diagnoseParseFailure, extractSegments } from "./transcribe/parser";
 import { awaitServerReady } from "./transcribe/server-readiness";
 import { streamWithRecovery } from "./transcribe/stream";
 import type { TranscribeParams, TranscribeResult } from "./vibevoice.types";
@@ -11,6 +11,8 @@ export type {
   VibeVoiceSegment,
 } from "./vibevoice.types";
 export { VibeVoiceError } from "./vibevoice.types";
+
+const TAG = "[VibeVoice]";
 
 /**
  * VibeVoice-ASR client for speaker diarization + transcription.
@@ -38,7 +40,13 @@ export class VibeVoiceService extends Effect.Service<VibeVoiceService>()(
             (s) => s.start < params.maxDurationSeconds + 1,
           );
 
-          yield* Effect.log(`[VibeVoice] Parsed ${segments.length} segments`);
+          yield* Effect.log(`${TAG} Parsed ${segments.length} segments`);
+
+          if (segments.length === 0 && rawText.trim().length > 0) {
+            yield* Effect.log(
+              `${TAG} WARNING: 0 segments from ${rawText.length} chars of raw text\n${diagnoseParseFailure(rawText)}`,
+            );
+          }
 
           return { segments, rawText } satisfies TranscribeResult;
         }),

@@ -153,13 +153,22 @@ function trySimpleFixup(rawText: string): VibeVoiceSegment[] | null {
 
 // ── Strategy 3: brace-depth extraction ──────────────────────────────────────
 
+/**
+ * Scan for `{…}` objects using brace-depth tracking with string awareness.
+ *
+ * This is the last-resort fallback — it handles arbitrarily mangled text
+ * by individually extracting + parsing each top-level object.
+ *
+ * NOTE: we intentionally skip any preamble before the first `{`
+ * (the old code used `indexOf("[")` which matched `[` inside JSON
+ * string values like `"[Breath]"`, causing the scanner to start from
+ * a wrong position). The brace-depth scanner does not need `[`.
+ */
 function extractObjectsByDepth(text: string): VibeVoiceSegment[] {
-  let src = text;
-  if (!src.startsWith("[")) {
-    const arrayStart = src.indexOf("[");
-    if (arrayStart === -1) return [];
-    src = src.slice(arrayStart);
-  }
+  // Skip to the first `{` — ignores any non-JSON preamble.
+  const firstBrace = text.indexOf("{");
+  if (firstBrace === -1) return [];
+  const src = text.slice(firstBrace);
 
   const segments: VibeVoiceSegment[] = [];
   let depth = 0;
@@ -257,4 +266,98 @@ export function extractSegments(rawText: string): VibeVoiceSegment[] {
   if (fixed && fixed.length > 0) return fixed;
 
   return extractObjectsByDepth(text);
+}
+
+// ── Diagnostics ─────────────────────────────────────────────────────────────
+
+function tail(s: string, n = 120): string {
+  return s.length <= n ? s : `…${s.slice(-n)}`;
+}
+
+function head(s: string, n = 120): string {
+  return s.length <= n ? s : `${s.slice(0, n)}…`;
+}
+
+/** Try JSON.parse and return the error message, or null on success. */
+function jsonParseError(text: string): string | null {
+  try {
+    JSON.parse(text);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * Run every parsing strategy and report exactly what went wrong at each tier.
+ *
+ * Call this when `extractSegments` returns 0 segments on non-empty text
+ * to get a loggable diagnostic string that pinpoints the failure.
+ */
+export function diagnoseParseFailure(rawText: string): string {
+  const text = rawText.trim();
+  const lines: string[] = [
+    `Parse diagnostics for ${text.length} chars`,
+    `  head: ${head(text)}`,
+    `  tail: ${tail(text)}`,
+    `  startsWithBracket: ${text.startsWith("[")}`,
+    `  startsWithBrace: ${text.startsWith("{")}`,
+    `  endsWithBracket: ${text.endsWith("]")}`,
+  ];
+
+  // Strategy 1: direct parse
+  const directErr = jsonParseError(text);
+  if (directErr) {
+    lines.push(`  strategy1 (direct): FAILED — ${directErr}`);
+  } else {
+    const result = tryDirectParse(text);
+    lines.push(
+      `  strategy1 (direct): parsed OK — ${result?.length ?? 0} segment-like objects`,
+    );
+  }
+
+  // Strategy 2: bracket fixup
+  let fixedText = text;
+  if (!fixedText.startsWith("[")) fixedText = `[${fixedText}`;
+  if (!fixedText.endsWith("]")) {
+    if (fixedText.endsWith(",")) fixedText = fixedText.slice(0, -1);
+    const lastOpen = fixedText.lastIndexOf("{");
+    const lastClose = fixedText.lastIndexOf("}");
+    if (lastOpen > lastClose) {
+      lines.push(
+        `  strategy2 (fixup): FAILED — incomplete trailing object` +
+          ` (lastOpen=${lastOpen}, lastClose=${lastClose})`,
+      );
+    } else {
+      fixedText = `${fixedText}]`;
+    }
+  }
+  if (!lines.some((l) => l.includes("strategy2"))) {
+    const fixupErr = jsonParseError(fixedText);
+    if (fixupErr) {
+      // Try to narrow down where the JSON is broken
+      const posMatch = fixupErr.match(/position\s+(\d+)/i);
+      const pos = posMatch?.[1] ? Number(posMatch[1]) : null;
+      let context = "";
+      if (pos !== null) {
+        const start = Math.max(0, pos - 40);
+        const end = Math.min(fixedText.length, pos + 40);
+        context = ` | around pos ${pos}: «${fixedText.slice(start, end)}»`;
+      }
+      lines.push(`  strategy2 (fixup): FAILED — ${fixupErr}${context}`);
+    } else {
+      const result = trySimpleFixup(text);
+      lines.push(
+        `  strategy2 (fixup): parsed OK — ${result?.length ?? 0} segments`,
+      );
+    }
+  }
+
+  // Strategy 3: brace-depth
+  const braceResult = extractObjectsByDepth(text);
+  lines.push(
+    `  strategy3 (brace-depth): extracted ${braceResult.length} segments`,
+  );
+
+  return lines.join("\n");
 }
