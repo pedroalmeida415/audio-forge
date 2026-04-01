@@ -21,12 +21,15 @@ export const buildMediaServerUrl = (params: {
   start?: number;
   end?: number;
   format: string;
+  sampleRate?: number;
 }): string => {
   const url = new URL(`${mediaServerUrl}/audio`);
   url.searchParams.set("url", params.presignedUrl);
   if (params.start != null) url.searchParams.set("start", String(params.start));
   if (params.end != null) url.searchParams.set("end", String(params.end));
   url.searchParams.set("format", params.format);
+  if (params.sampleRate != null)
+    url.searchParams.set("sampleRate", String(params.sampleRate));
   return url.toString();
 };
 

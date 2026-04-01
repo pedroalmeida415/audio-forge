@@ -8,6 +8,7 @@ import {
   QueueService,
   Queues,
 } from "../../src/services/queue/queue-service";
+import { handleAlignToText } from "../handlers/align-to-text";
 import { handleCalculateScore } from "../handlers/calculate-score";
 import { handleDenoise } from "../handlers/denoise";
 import { handleDiarize } from "../handlers/diarize";
@@ -25,6 +26,7 @@ const handlers: Partial<Record<AudioJobName, AnyJobHandler>> = {
   [AudioJobs.Diarize]: handleDiarize,
   [AudioJobs.Denoise]: handleDenoise,
   [AudioJobs.Transcribe]: handleTranscribe,
+  [AudioJobs.AlignToText]: handleAlignToText,
   [AudioJobs.CalculateScore]: handleCalculateScore,
   [AudioJobs.LJSpeechExport]: handleLJSpeechExport,
 };

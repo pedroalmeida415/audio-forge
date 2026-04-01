@@ -115,3 +115,49 @@ export const callDenoiseServer = (audioUrl: string) =>
         `Failed to call denoise server: ${error instanceof Error ? error.message : String(error)}`,
       ),
   });
+
+// ============================================================================
+// Alignment
+// ============================================================================
+
+/** A single aligned segment with timestamps */
+export interface AlignmentSegment {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** Alignment response from speech processing server */
+export interface AlignmentResponse {
+  segments: AlignmentSegment[];
+}
+
+/**
+ * Call the speech processing server to perform CTC forced alignment.
+ * Sends a URL that the alignment server will download from, plus the text to align.
+ */
+export const callAlignmentServer = (
+  audioUrl: string,
+  text: string,
+  language = "eng",
+) =>
+  Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(`${speechProcessingServerUrl}/align`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: audioUrl, text, language }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Alignment server error: ${response.status} - ${text}`);
+      }
+
+      return (await response.json()) as AlignmentResponse;
+    },
+    catch: (error) =>
+      new Error(
+        `Failed to call alignment server: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+  });

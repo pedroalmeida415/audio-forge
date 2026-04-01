@@ -21,6 +21,7 @@ export const AudioJobs = {
   Diarize: "diarize",
   Denoise: "denoise",
   Transcribe: "transcribe",
+  AlignToText: "align_to_text",
   CalculateScore: "calculate_score",
   LJSpeechExport: "ljspeech_export",
 } as const;

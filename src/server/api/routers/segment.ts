@@ -111,7 +111,7 @@ export const segmentRouter = createTRPCRouter({
     .input(
       z.object({
         segmentIds: z.array(z.string().uuid()).min(1),
-        operation: z.enum(["denoise", "transcribe"]),
+        operation: z.enum(["denoise", "transcribe", "align_to_text"]),
         useExistingClip: z.boolean().optional(),
       }),
     )
@@ -159,6 +159,7 @@ export const segmentRouter = createTRPCRouter({
             const jobName = {
               denoise: AudioJobs.Denoise,
               transcribe: AudioJobs.Transcribe,
+              align_to_text: AudioJobs.AlignToText,
             }[input.operation];
 
             const payloads: AudioJobPayload[] = segmentResults.map((seg) => ({

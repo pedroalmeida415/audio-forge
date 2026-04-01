@@ -2,6 +2,7 @@
 
 import type { Table } from "@tanstack/react-table";
 import {
+  AlignLeft,
   ChevronDown,
   FileAudio,
   Loader2,
@@ -78,7 +79,7 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showChangeSpeakerDialog, setShowChangeSpeakerDialog] = useState(false);
   const [pendingProcess, setPendingProcess] = useState<{
-    operation: "denoise" | "transcribe";
+    operation: "denoise" | "transcribe" | "align_to_text";
     segmentIds: string[];
   } | null>(null);
 
@@ -141,7 +142,9 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
     return Array.from(selectedSegmentIds);
   };
 
-  const handleProcess = (operation: "denoise" | "transcribe") => {
+  const handleProcess = (
+    operation: "denoise" | "transcribe" | "align_to_text",
+  ) => {
     if (!hasSelection) return;
 
     const segmentIds = getSelectedSegmentIds();
@@ -152,14 +155,19 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
       (s) => segmentIds.includes(s.id) && s.clip !== null,
     );
 
-    // If it's a transcription job, we don't ask about overriding audio since it doesn't modify audio
-    if (hasExistingClips && operation !== "transcribe") {
+    // Transcription and alignment don't modify audio — bypass the clips dialog
+    if (
+      hasExistingClips &&
+      operation !== "transcribe" &&
+      operation !== "align_to_text"
+    ) {
       setPendingProcess({ operation, segmentIds });
     } else {
       queueProcessingMutation.mutate({
         segmentIds,
         operation,
         // Transcription should always use existing clips (not create new ones).
+        // Alignment doesn't use clips at all.
         // For non-transcribe without existing clips, false is fine (will create the first clip).
         useExistingClip: operation === "transcribe",
       });
@@ -270,6 +278,10 @@ export function TableToolbar({ table }: { table: Table<SegmentWithClip> }) {
               <DropdownMenuItem onClick={() => handleProcess("transcribe")}>
                 <Subtitles className="mr-2 size-4" />
                 Transcribe Speech
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleProcess("align_to_text")}>
+                <AlignLeft className="mr-2 size-4" />
+                Align to Text
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

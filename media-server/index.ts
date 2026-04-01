@@ -103,6 +103,7 @@ app.get("/audio", async (c) => {
   const startParam = c.req.query("start");
   const endParam = c.req.query("end");
   const format = c.req.query("format");
+  const sampleRateParam = c.req.query("sampleRate");
 
   if (!format) {
     return c.json({ error: "Format parameter is required" }, 400);
@@ -110,6 +111,7 @@ app.get("/audio", async (c) => {
 
   let start: number | undefined;
   let end: number | undefined;
+  let sampleRate: number | undefined;
 
   if (startParam || endParam) {
     if (!startParam || !endParam) {
@@ -127,13 +129,25 @@ app.get("/audio", async (c) => {
     }
   }
 
+  if (sampleRateParam) {
+    sampleRate = Number(sampleRateParam);
+    if (Number.isNaN(sampleRate) || sampleRate <= 0) {
+      return c.json({ error: "Invalid sampleRate parameter" }, 400);
+    }
+  }
+
   try {
     const localPath = await cache.getOrDownload(presignedUrl);
 
     const ext = localPath.split(".").pop()?.toLowerCase() || "";
 
     // Serve raw file directly if no processing or transcoding is needed
-    if (start === undefined && end === undefined && format === ext) {
+    if (
+      start === undefined &&
+      end === undefined &&
+      !sampleRate &&
+      format === ext
+    ) {
       return new Response(Bun.file(localPath), {
         headers: {
           "Content-Type": getContentType(ext),
@@ -147,6 +161,7 @@ app.get("/audio", async (c) => {
       start,
       end,
       format,
+      sampleRate,
       signal: c.req.raw.signal,
     });
 

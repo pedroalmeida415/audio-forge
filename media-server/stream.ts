@@ -23,6 +23,7 @@ export interface ProcessAudioOptions {
   start?: number;
   end?: number;
   format?: string;
+  sampleRate?: number;
   signal?: AbortSignal;
 }
 
@@ -43,7 +44,7 @@ export interface ProcessAudioResult {
 export async function processAudio(
   options: ProcessAudioOptions,
 ): Promise<ProcessAudioResult> {
-  const { localPath, start, end, format } = options;
+  const { localPath, start, end, format, sampleRate } = options;
 
   const requiresSlicing = start !== undefined && end !== undefined;
   const outputFormat = format || "flac";
@@ -56,6 +57,11 @@ export async function processAudio(
   }
 
   args.push("-i", localPath);
+
+  // Resample if requested (before codec/format args)
+  if (sampleRate) {
+    args.push("-ar", String(sampleRate));
+  }
 
   let contentType = "application/octet-stream";
 
