@@ -2,6 +2,62 @@
 
 A tool for creating high-quality speech datasets (LJSpeech format) from audio files. Upload audio, diarize speakers, curate segments in a workspace, and export datasets with transcriptions for TTS and ASR training.
 
+It is for speech dataset creators and researchers preparing recordings for text-to-speech (TTS) or automatic speech recognition (ASR) training.
+
+## Built With
+
+- Next.js 15, React 19, and TypeScript
+- Bun for package management and worker/media-server runtime
+- PostgreSQL with Drizzle ORM, and Redis with BullMQ for background jobs
+- tRPC for application APIs
+- Cloudflare R2 for audio storage
+- Pyannote for diarization, plus configurable VibeVoice ASR and speech-processing services
+
+## Run Locally
+
+### Prerequisites
+
+- Bun and Docker Compose
+- GitHub OAuth application credentials
+- Cloudflare R2 credentials and buckets
+- A Pyannote API key and a public webhook URL for diarization callbacks
+- VibeVoice ASR and speech-processing services for transcription, denoising, and quality scoring
+
+The web app can start without live provider credentials if the placeholder values are left in place, but provider-backed workflows will not work until you configure the services above.
+
+### Setup
+
+```sh
+git clone git@github.com:pedroalmeida415/audio-forge.git
+cd audio-forge
+bun install
+cp .env.example .env
+```
+
+Edit `.env` and replace the placeholder values. Keep the database password in `DATABASE_URL` and `POSTGRES_PASSWORD` the same. Never commit `.env` or real credentials.
+
+Start the local database and queue, apply the database schema, and start Next.js:
+
+```sh
+docker compose up -d postgres redis
+bun run db:push
+bun run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The app expects PostgreSQL and the required environment variables in `.env`; set the provider URLs and credentials before using external services.
+
+### Background services
+
+Run these in separate terminals when you need their functionality:
+
+```sh
+bun run worker:start  # audio processing jobs
+bun run media:start   # audio streaming and cache server
+bun run worker:admin  # BullMQ job dashboard
+```
+
+The worker and media server use `MEDIA_SERVER_URL` and the configured speech-processing service. Set up the VibeVoice ASR service separately and point `VIBEVOICE_ASR_URL` to it. `start-database.sh` is an alternative for starting a local PostgreSQL container; use the Docker Compose instructions above when you also need Redis.
+
 ## How It Works
 
 1. **Upload audio** (or video, which gets audio extracted)
